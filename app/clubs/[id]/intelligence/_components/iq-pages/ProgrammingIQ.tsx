@@ -10,7 +10,7 @@
  *   [3] Stats row      — 4 cards + contact-policy preview badge.
  *   [4] Main grid      — courts as tabs, 7-day × hourly matrix.
  *   [5] Cell popover   — right-side drawer with reasoning + edit form.
- *   [6] Sticky footer  — Approve Selected · Publish · Clear.
+ *   [6] Draft actions  — generate / regenerate / clear suggestions.
  *
  * Reuses:
  *   • tRPC procedures added in server/routers/intelligence.ts
@@ -21,15 +21,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   Brain, Calendar, Sparkles, Wand2, ChevronLeft, ChevronRight,
-  ShieldAlert, Users, TrendingUp, AlertTriangle, CheckCheck, Send,
-  Loader2, Info, Clock,
+  ShieldAlert, TrendingUp, AlertTriangle,
+  Loader2, Info, Clock, Trash2, X,
 } from 'lucide-react'
 import {
   useProgrammingScheduleGrid,
   useGenerateProgrammingSchedule,
   useUpdateProgrammingGridCell,
-  useBulkApproveProgrammingGrid,
-  usePublishProgrammingGrid,
+  useClearProgrammingScheduleDrafts,
   useIsDemo,
 } from '../../_hooks/use-intelligence'
 import { AILoadingAnimation } from './AILoadingAnimation'
@@ -65,6 +64,10 @@ function formatWeekRange(weekStart: string): string {
   return `${sMon} – ${eMon}`
 }
 
+function hasDraftWarning(draft: GridDraft): boolean {
+  return (draft.metadata?.warnings?.length || 0) > 0
+}
+
 // ── Component ────────────────────────────────────────────────────────
 
 interface ProgrammingIQProps {
@@ -75,9 +78,9 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const isDemo = useIsDemo()
   const [weekStart, setWeekStart] = useState<string>(() => toISODate(mondayOf(new Date())))
   const [regeneratePrompt, setRegeneratePrompt] = useState('')
-  const [selectedDraftIds, setSelectedDraftIds] = useState<Set<string>>(new Set())
   const [activeCell, setActiveCell] = useState<GridSelection | null>(null)
   const [generating, setGenerating] = useState(false)
+  const [showClearSuggestionsModal, setShowClearSuggestionsModal] = useState(false)
   const [lastGeneratedAt, setLastGeneratedAt] = useState<Date | null>(null)
   const [generationInsights, setGenerationInsights] = useState<string[]>([])
   const [generationSummary, setGenerationSummary] = useState<{
@@ -90,8 +93,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const gridQuery = useProgrammingScheduleGrid(clubId, weekStart)
   const generateMutation = useGenerateProgrammingSchedule()
   const updateCellMutation = useUpdateProgrammingGridCell()
-  const bulkApproveMutation = useBulkApproveProgrammingGrid()
-  const publishMutation = usePublishProgrammingGrid()
+  const clearDraftsMutation = useClearProgrammingScheduleDrafts()
 
   const gridData = gridQuery.data
   // Memoize the derived slices so downstream hooks (stats, grid) don't
@@ -100,13 +102,33 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const courts = useMemo(() => (gridData?.courts ?? []) as any[], [gridData])
   const liveSessions = useMemo(() => (gridData?.liveSessions ?? []) as any[], [gridData])
   const drafts = useMemo(() => ((gridData?.drafts ?? []) as any[]) as GridDraft[], [gridData])
+  const publishableDrafts = useMemo(
+    () => drafts.filter((draft) => !hasDraftWarning(draft)),
+    [drafts],
+  )
+  const calendarDrafts = useMemo(
+    () => drafts.filter((draft) => !!draft.courtId),
+    [drafts],
+  )
+  const riskDrafts = useMemo(
+    () => drafts.filter((draft) => hasDraftWarning(draft)),
+    [drafts],
+  )
+  const unplacedIdeas = useMemo(
+    () => drafts.filter((draft) => !draft.courtId),
+    [drafts],
+  )
+  const courtNamesById = useMemo(
+    () => new Map(courts.map((court: any) => [court.id, court.name])),
+    [courts],
+  )
 
   // Stats derived from the current grid. We keep these here (not in a
   // tRPC call) so switching weeks updates instantly without a round-trip.
   const stats = useMemo(() => {
-    const suggested = drafts.length
+    const suggested = publishableDrafts.length
     const liveKept = liveSessions.length
-    const saturations = drafts.filter((d) => (d.metadata?.warnings?.length || 0) > 0).length
+    const saturations = riskDrafts.length
     // Blend live (registeredCount/maxPlayers) with drafts (projectedOccupancy).
     // Skipping live made the metric read 0% on weeks with no AI drafts.
     const liveOccs = liveSessions
@@ -116,14 +138,14 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         return max > 0 ? (reg / max) * 100 : null
       })
       .filter((v): v is number => v !== null)
-    const draftOccs = drafts.map((d) => d.projectedOccupancy || 0)
+    const draftOccs = publishableDrafts.map((d) => d.projectedOccupancy || 0)
     const allOccs = [...liveOccs, ...draftOccs]
     const avgOccupancy = allOccs.length === 0
       ? 0
       : Math.round(allOccs.reduce((s, v) => s + v, 0) / allOccs.length)
-    const totalInvites = drafts.reduce((s, d) => s + Math.ceil((d.maxPlayers || 8) * 1.5), 0)
+    const totalInvites = publishableDrafts.reduce((s, d) => s + Math.ceil((d.maxPlayers || 8) * 1.5), 0)
     return { suggested, liveKept, saturations, avgOccupancy, totalInvites }
-  }, [drafts, liveSessions])
+  }, [liveSessions, publishableDrafts, riskDrafts.length])
 
   // Contact-policy preview: a rough "will admins spam their members?"
   // check. 3 invites/wk/member is the slot-filler default; the real
@@ -149,7 +171,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
 
   const handleGenerate = async () => {
     setGenerating(true)
-    setSelectedDraftIds(new Set())
     try {
       const result: any = await new Promise((resolve, reject) => {
         const mutation: any = generateMutation as any
@@ -186,25 +207,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     const d = new Date(weekStart)
     d.setDate(d.getDate() + days)
     setWeekStart(toISODate(mondayOf(d)))
-    setSelectedDraftIds(new Set())
     setActiveCell(null)
-  }
-
-  const handleToggleSelect = (draftId: string) => {
-    setSelectedDraftIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(draftId)) next.delete(draftId)
-      else next.add(draftId)
-      return next
-    })
-  }
-
-  const handleSelectAll = () => {
-    if (selectedDraftIds.size === drafts.length) {
-      setSelectedDraftIds(new Set())
-    } else {
-      setSelectedDraftIds(new Set(drafts.map((d) => d.id)))
-    }
   }
 
   const handleSaveCell = (draftId: string, patch: any) => {
@@ -219,31 +222,26 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     )
   }
 
-  const handlePublish = async () => {
-    const ids = Array.from(selectedDraftIds)
-    if (ids.length === 0) return
-    // Step 1: bulk-approve (READY_FOR_OPS → SESSION_DRAFT).
+  const handleClearSuggestions = async () => {
+    if (drafts.length === 0) return
+    setActiveCell(null)
     await new Promise((resolve) => {
-      (bulkApproveMutation as any).mutate({ clubId, draftIds: ids }, { onSuccess: resolve, onError: resolve })
-    })
-    // Step 2: publish SESSION_DRAFT → PlaySession.
-    ;(publishMutation as any).mutate(
-      { clubId, draftIds: ids, weekStartDate: weekStart },
-      {
-        onSuccess: async (result: any) => {
-          if (result?.counts?.published > 0) {
-            setSelectedDraftIds(new Set())
-            if ('refetch' in gridQuery) await (gridQuery as any).refetch?.()
-          }
+      (clearDraftsMutation as any).mutate(
+        { clubId, weekStartDate: weekStart },
+        {
+          onSuccess: () => {
+            setShowClearSuggestionsModal(false)
+            resolve(null)
+          },
+          onError: () => resolve(null),
         },
-      },
-    )
+      )
+    })
   }
 
   // Reset draft preview state when switching to a week that hasn't been
   // generated yet — don't keep a prior run's stats.
   useEffect(() => {
-    setSelectedDraftIds(new Set())
     setActiveCell(null)
   }, [weekStart])
 
@@ -259,9 +257,11 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
             <div>
               <h1 className="text-xl font-bold" style={{ color: 'var(--heading)' }}>Programming IQ</h1>
               <p className="text-xs" style={{ color: 'var(--t4)' }}>
-                {drafts.length > 0
-                  ? 'AI-generated weekly schedule, defended by 7 demand signals'
-                  : 'Live schedule from your booking system — click Generate for AI suggestions'}
+                {publishableDrafts.length > 0
+                  ? 'Suggested weekly schedule, with backup ideas marked in amber'
+                  : calendarDrafts.length > 0 || unplacedIdeas.length > 0
+                    ? 'No publish-ready suggestions yet — amber ideas show backup options and placement issues'
+                    : 'Published schedule from your booking system — click Generate for suggested sessions'}
               </p>
             </div>
           </div>
@@ -297,6 +297,20 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
               {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
               {generating ? 'Generating…' : drafts.length > 0 ? 'Regenerate' : 'Generate'}
             </button>
+
+            {drafts.length > 0 && (
+              <button
+                onClick={() => setShowClearSuggestionsModal(true)}
+                disabled={clearDraftsMutation.isPending}
+                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
+                style={{ color: '#B45309', border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.08)' }}
+              >
+                {clearDraftsMutation.isPending
+                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  : <Trash2 className="w-4 h-4" />}
+                Clear suggestions
+              </button>
+            )}
           </div>
         </div>
 
@@ -350,9 +364,9 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
 
       {/* [3] Stats ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard icon={Calendar} label="Live kept" value={stats.liveKept} color="#3B82F6" />
-        <StatCard icon={Sparkles} label="New suggestions" value={stats.suggested} color="#8B5CF6" />
-        <StatCard icon={AlertTriangle} label="Saturation flags" value={stats.saturations} color="#F59E0B" />
+        <StatCard icon={Calendar} label="Published sessions" value={stats.liveKept} color="#64748B" />
+        <StatCard icon={Sparkles} label="Suggested sessions" value={stats.suggested} color="#8B5CF6" />
+        <StatCard icon={AlertTriangle} label="Audience risks" value={stats.saturations} color="#F59E0B" />
         <StatCard icon={TrendingUp} label="Avg occupancy" value={`${stats.avgOccupancy}%`} color="#10B981" />
       </div>
 
@@ -370,7 +384,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           <span>
             At current invite caps, each of <b>{memberPool}</b> eligible member{memberPool === 1 ? '' : 's'} would see ~
             <b>{contactPolicyBadge.ratio.toFixed(1)}</b> invites this week
-            {contactPolicyBadge.safe ? ' (safe)' : ' — review before publishing'}.
+            {contactPolicyBadge.safe ? ' (safe)' : ' — review these suggestions carefully'}.
           </span>
         </div>
       )}
@@ -387,13 +401,98 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         <ProgrammingGrid
           courts={courts}
           liveSessions={liveSessions}
-          drafts={drafts}
+          drafts={calendarDrafts}
           weekStartDate={weekStart}
-          selectedDraftIds={selectedDraftIds}
-          onToggleSelect={handleToggleSelect}
           onSelectCell={setActiveCell}
         />
       )}
+
+      {!generating && unplacedIdeas.length > 0 && (
+        <div
+          className="rounded-2xl p-4 space-y-4"
+          style={{ background: 'var(--card-bg)', border: '1px solid rgba(245,158,11,0.25)' }}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(245,158,11,0.12)' }}
+            >
+              <AlertTriangle className="w-5 h-5" style={{ color: '#F59E0B' }} />
+            </div>
+            <div>
+              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                Unplaced ideas
+              </div>
+              <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                These ideas could not be pinned to a court in the calendar.
+                Open them to review the warning, then reassign or edit if you still want to use them.
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {unplacedIdeas.map((draft) => {
+              const warningText = draft.metadata?.warnings?.join(' ') || 'This idea could not be placed into the calendar as-is.'
+              const courtName = draft.courtId ? courtNamesById.get(draft.courtId) : null
+              return (
+                <button
+                  key={draft.id}
+                  onClick={() => setActiveCell({ kind: 'draft', draft })}
+                  className="w-full rounded-xl p-3 text-left transition-all hover:shadow-md"
+                  style={{
+                    background: 'rgba(245,158,11,0.08)',
+                    border: '1px solid rgba(245,158,11,0.22)',
+                  }}
+                >
+                  <div className="flex items-start gap-3 flex-wrap">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                        {draft.title}
+                      </div>
+                      <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                        {draft.dayOfWeek} · {draft.startTime}–{draft.endTime}
+                        {courtName ? ` · ${courtName}` : ' · No court assigned'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <span
+                        className="px-2 py-1 rounded-full font-medium"
+                        style={{ background: 'rgba(139,92,246,0.12)', color: '#7C3AED' }}
+                      >
+                        {draft.confidence}% confidence
+                      </span>
+                      <span
+                        className="px-2 py-1 rounded-full font-medium"
+                        style={{ background: 'rgba(16,185,129,0.12)', color: '#047857' }}
+                      >
+                        {draft.projectedOccupancy}% occupancy
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex items-start gap-2 text-xs" style={{ color: '#B45309' }}>
+                    <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                    <span>{warningText}</span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <ProgrammingClearSuggestionsModal
+        open={showClearSuggestionsModal}
+        weekLabel={formatWeekRange(weekStart)}
+        publishableCount={publishableDrafts.length}
+        riskCount={riskDrafts.length}
+        unplacedCount={unplacedIdeas.length}
+        isPending={clearDraftsMutation.isPending}
+        onClose={() => {
+          if (clearDraftsMutation.isPending) return
+          setShowClearSuggestionsModal(false)
+        }}
+        onConfirm={handleClearSuggestions}
+      />
 
       {!generating && courts.length === 0 && !gridQuery.isLoading && (
         <div
@@ -417,48 +516,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           onSave={handleSaveCell}
           saving={updateCellMutation.isPending}
         />
-      )}
-
-      {/* [6] Sticky footer ─────────────────────────────────────────── */}
-      {drafts.length > 0 && (
-        <div
-          // Wider footer (max-w-2xl) so the long "0 of 30 selected" label
-          // + Publish button fit without truncating "Publish" → "Pu...lish".
-          // Solid fallback bg so footer doesn't go transparent on the
-          // iqsport theme (same fix as CellEditPopover).
-          className="fixed bottom-0 left-0 right-0 md:left-auto md:right-4 md:bottom-4 md:rounded-2xl md:max-w-2xl mx-auto px-4 py-3 shadow-lg z-40"
-          style={{
-            background: 'var(--popover-bg, #0F172A)',
-            backgroundColor: 'var(--popover-bg, #0F172A)',
-            border: '1px solid var(--card-border)',
-          }}
-        >
-          <div className="flex items-center gap-3 flex-wrap">
-            <button
-              onClick={handleSelectAll}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-black/5"
-              style={{ color: 'var(--t3)', border: '1px solid var(--card-border)' }}
-            >
-              {selectedDraftIds.size === drafts.length ? 'Deselect all' : 'Select all'}
-            </button>
-            <span className="text-xs" style={{ color: 'var(--t4)' }}>
-              {selectedDraftIds.size} of {drafts.length} selected
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={handlePublish}
-                disabled={selectedDraftIds.size === 0 || publishMutation.isPending || bulkApproveMutation.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
-                style={{ background: '#10B981', color: 'white' }}
-              >
-                {publishMutation.isPending
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <Send className="w-4 h-4" />}
-                Publish {selectedDraftIds.size > 0 ? `(${selectedDraftIds.size})` : ''}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   )
@@ -487,6 +544,115 @@ function StatCard({
         <div className="text-xs" style={{ color: 'var(--t4)' }}>{label}</div>
       </div>
       <div className="text-xl font-bold mt-1" style={{ color: 'var(--heading)' }}>{value}</div>
+    </div>
+  )
+}
+
+function ProgrammingClearSuggestionsModal({
+  open,
+  weekLabel,
+  publishableCount,
+  riskCount,
+  unplacedCount,
+  isPending,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean
+  weekLabel: string
+  publishableCount: number
+  riskCount: number
+  unplacedCount: number
+  isPending: boolean
+  onClose: () => void
+  onConfirm: () => void
+}) {
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[140] flex items-center justify-center bg-[rgba(6,10,24,0.78)] px-4 py-6 backdrop-blur-md"
+      onClick={isPending ? undefined : onClose}
+    >
+      <div
+        className="relative w-full max-w-lg overflow-hidden rounded-[28px] border border-white/6 bg-[#0D1224]/95 shadow-[0_18px_60px_rgba(3,8,24,0.42)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="absolute -left-24 top-0 h-48 w-48 rounded-full bg-cyan-400/8 blur-3xl" />
+        <div className="absolute -right-24 bottom-0 h-56 w-56 rounded-full bg-violet-500/8 blur-3xl" />
+
+        <div className="relative p-6 sm:p-7">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(245,158,11,0.18), rgba(239,68,68,0.14))',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                  }}
+                >
+                  <Trash2 className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-white">
+                    Clear suggested sessions?
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-300">
+                    Remove all draft suggestions for <span className="text-white">{weekLabel}</span>.
+                    Published sessions will stay in the calendar.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="space-y-2 text-sm leading-6 text-slate-300">
+            <p>
+              This will remove <span className="text-white">{publishableCount}</span> suggested session{publishableCount === 1 ? '' : 's'},
+              <span className="text-white"> {riskCount}</span> backup idea{riskCount === 1 ? '' : 's'},
+              and <span className="text-white"> {unplacedCount}</span> unplaced idea{unplacedCount === 1 ? '' : 's'} for this week.
+            </p>
+            <p className="text-slate-400">
+              You can generate a fresh draft immediately after clearing.
+            </p>
+          </div>
+
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={isPending}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+              style={{
+                background: 'linear-gradient(135deg, #F97316, #EF4444)',
+                boxShadow: '0 12px 30px rgba(239,68,68,0.22)',
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+              {isPending ? 'Clearing…' : 'Clear suggestions'}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

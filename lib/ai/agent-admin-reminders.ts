@@ -74,7 +74,7 @@ export function buildAdminProactivePingCandidates(input: {
       itemId: 'proactive:morning-brief',
       title: 'Morning ops brief is ready',
       description: `${briefCounts.join(', ')}. Start the day from the agent cockpit instead of chasing issues manually.`,
-      href: `/clubs/${input.clubId}/intelligence/agent`,
+      href: `/clubs/${input.clubId}/intelligence/advisor`,
     }]
   }
 
@@ -84,7 +84,7 @@ export function buildAdminProactivePingCandidates(input: {
       itemId: 'proactive:before-close',
       title: 'Before close, the board still needs attention',
       description: `${briefCounts.join(', ')}. Clear the biggest blocker before the day ends.`,
-      href: `/clubs/${input.clubId}/intelligence/agent`,
+      href: `/clubs/${input.clubId}/intelligence/advisor`,
     }]
   }
 
@@ -101,7 +101,7 @@ export function buildAdminProactivePingCandidates(input: {
       description: input.nextOwnedDraftTitle
         ? `${input.nextOwnedDraftTitle} is the clearest owner-level ops risk right now.`
         : 'One of your assigned ops drafts needs attention before it slips further.',
-      href: `/clubs/${input.clubId}/intelligence/agent?focus=ops-queue`,
+      href: `/clubs/${input.clubId}/intelligence/advisor?focus=ops-queue`,
     })
   }
 
@@ -111,7 +111,7 @@ export function buildAdminProactivePingCandidates(input: {
       itemId: 'proactive:pending-reviews',
       title: `${pluralize(input.pendingReviewCount, 'approval')} still waiting`,
       description: 'Pending agent actions are stacking up. Review the queue before it slows the rest of the day down.',
-      href: `/clubs/${input.clubId}/intelligence/agent?focus=pending-queue`,
+      href: `/clubs/${input.clubId}/intelligence/advisor?focus=pending-queue`,
     })
   }
 
@@ -121,7 +121,7 @@ export function buildAdminProactivePingCandidates(input: {
       itemId: 'proactive:ops-ready',
       title: `${pluralize(input.readyOpsDraftCount, 'ops draft')} ready for scheduling review`,
       description: 'The agent already prepared internal session drafts. A quick ops pass can move them forward today.',
-      href: `/clubs/${input.clubId}/intelligence/agent?focus=ops-queue`,
+      href: `/clubs/${input.clubId}/intelligence/advisor?focus=ops-queue`,
     })
   }
 

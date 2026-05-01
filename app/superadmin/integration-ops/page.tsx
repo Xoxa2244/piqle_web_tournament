@@ -334,7 +334,7 @@ export default function SuperadminIntegrationOpsPage() {
                         <Link href={`/clubs/${club.id}/intelligence/integrations`}>
                           <Button variant="outline" size="sm">Open integrations</Button>
                         </Link>
-                        <Link href={`/clubs/${club.id}/intelligence/agent`}>
+                        <Link href={`/clubs/${club.id}/intelligence/advisor`}>
                           <Button size="sm">Open agent</Button>
                         </Link>
                       </div>
@@ -416,7 +416,7 @@ export default function SuperadminIntegrationOpsPage() {
                       <Link href={`/clubs/${club.id}/intelligence/integrations`}>
                         <Button variant="outline" size="sm">Open integrations</Button>
                       </Link>
-                      <Link href={`/clubs/${club.id}/intelligence/agent`}>
+                      <Link href={`/clubs/${club.id}/intelligence/advisor`}>
                         <Button size="sm">Open agent</Button>
                       </Link>
                     </div>

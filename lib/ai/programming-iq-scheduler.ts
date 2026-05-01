@@ -32,7 +32,9 @@
 import { randomUUID } from 'crypto'
 import {
   buildAdvisorProgrammingPlan,
+  parseAdvisorProgrammingRequest,
   type AdvisorProgrammingProposalDraft,
+  type ProgrammingAudienceProfile,
 } from './advisor-programming'
 import type {
   DayOfWeek,
@@ -138,6 +140,7 @@ export interface BuildWeeklyGridInput {
   }>
   preferences: SchedulerPreferenceRow[]
   interestRequests: SchedulerInterestRow[]
+  audienceProfile?: ProgrammingAudienceProfile | null
   contactPolicy: SchedulerContactPolicy
   /** Target total number of suggested cells (bounded by available capacity). */
   targetSuggestionCount?: number
@@ -149,6 +152,10 @@ export interface BuildWeeklyGridInput {
   /** Result of running `interpretRegeneratePrompt` on `regeneratePrompt`.
    *  Applied to the proposal set after scoring and before bin-packing. */
   regenerateHint?: import('./programming-iq-regenerate').RegenerateHint | null
+  /** Signatures from the currently visible suggestion set, so plain
+   *  Regenerate can explore a nearby variant instead of replaying the
+   *  exact same portfolio. */
+  previousSuggestionSignatures?: string[]
   /** Club's IANA timezone (`America/New_York` etc). Used to derive
    *  day-of-week from `date` columns that are stored as UTC midnights
    *  but represent local-day sessions. Without this, the conflict
@@ -335,6 +342,8 @@ interface CourtAssignment {
   isIndoor: boolean
   /** null when no court could hold this proposal without overlap. */
   failed?: 'no_court' | 'outside_hours'
+  /** Marks suggestions placed only after relaxing inferred court hours. */
+  usedHoursFallback?: boolean
 }
 
 /**
@@ -409,38 +418,39 @@ export function assignCourtsToProposals(
     })
 
     let picked: SchedulerCourt | null = null
-    let failReason: CourtAssignment['failed'] | undefined
+    let fallbackCourt: SchedulerCourt | null = null
+    let anyCourtWithinHours = false
+    let usedHoursFallback = false
     for (const candidate of courtCandidates) {
       const hours = hoursByCourt.get(candidate.id) || {
         earliestStart: DEFAULT_EARLIEST_START,
         latestEnd: DEFAULT_LATEST_END,
       }
+      const conflictReason = getCourtConflictReason({
+        courtId: candidate.id,
+        proposal,
+        liveByCourtDay,
+        assignedByCourtDay,
+      })
       // Outside court hours → skip this court.
       if (
         hhmmToMinutes(proposal.startTime) < hhmmToMinutes(hours.earliestStart)
         || hhmmToMinutes(proposal.endTime) > hhmmToMinutes(hours.latestEnd)
       ) {
-        failReason = failReason || 'outside_hours'
+        if (!fallbackCourt && !conflictReason) {
+          fallbackCourt = candidate
+        }
         continue
       }
-      // Conflict check: overlap with live PlaySession on this (court, dow)?
-      const liveKey = `${candidate.id}__${proposal.dayOfWeek}`
-      const liveOn = liveByCourtDay.get(liveKey) || []
-      const hasConflict = liveOn.some((s) =>
-        intervalsOverlap(proposal.startTime, proposal.endTime, s.startTime, s.endTime),
-      )
-      if (hasConflict) continue
-      // Conflict with a sibling assignment this run?
-      const assignedOn = assignedByCourtDay.get(liveKey) || []
-      const siblingClash = assignedOn.some((a) =>
-        intervalsOverlap(
-          proposal.startTime, proposal.endTime,
-          a.proposal.startTime, a.proposal.endTime,
-        ),
-      )
-      if (siblingClash) continue
+      anyCourtWithinHours = true
+      if (conflictReason) continue
       picked = candidate
       break
+    }
+
+    if (!picked && !anyCourtWithinHours && fallbackCourt) {
+      picked = fallbackCourt
+      usedHoursFallback = true
     }
 
     if (!picked) {
@@ -449,7 +459,7 @@ export function assignCourtsToProposals(
         courtId: '',
         courtName: '',
         isIndoor: false,
-        failed: failReason || 'no_court',
+        failed: anyCourtWithinHours ? 'no_court' : 'outside_hours',
       })
       continue
     }
@@ -459,6 +469,7 @@ export function assignCourtsToProposals(
       courtId: picked.id,
       courtName: picked.name,
       isIndoor: picked.isIndoor,
+      usedHoursFallback,
     }
     assignments.push(a)
     const liveKey = `${picked.id}__${proposal.dayOfWeek}`
@@ -518,6 +529,32 @@ function rankCourtsForProposal(args: {
     return a.court.name.localeCompare(b.court.name)
   })
   return scored.map((s) => s.court)
+}
+
+function getCourtConflictReason(args: {
+  courtId: string
+  proposal: AdvisorProgrammingProposalDraft
+  liveByCourtDay: Map<string, SchedulerExistingSession[]>
+  assignedByCourtDay: Map<string, CourtAssignment[]>
+}): 'live_overlap' | 'draft_overlap' | null {
+  const { courtId, proposal, liveByCourtDay, assignedByCourtDay } = args
+  const courtDayKey = `${courtId}__${proposal.dayOfWeek}`
+  const liveOn = liveByCourtDay.get(courtDayKey) || []
+  const hasLiveConflict = liveOn.some((session) =>
+    intervalsOverlap(proposal.startTime, proposal.endTime, session.startTime, session.endTime),
+  )
+  if (hasLiveConflict) return 'live_overlap'
+
+  const assignedOn = assignedByCourtDay.get(courtDayKey) || []
+  const hasDraftConflict = assignedOn.some((assignment) =>
+    intervalsOverlap(
+      proposal.startTime, proposal.endTime,
+      assignment.proposal.startTime, assignment.proposal.endTime,
+    ),
+  )
+  if (hasDraftConflict) return 'draft_overlap'
+
+  return null
 }
 
 function countSameSkillNearby(
@@ -620,6 +657,186 @@ function prettySkill(key: string): string {
   return map[key] || key.toLowerCase()
 }
 
+function isWeekend(dayOfWeek: DayOfWeek) {
+  return dayOfWeek === 'Saturday' || dayOfWeek === 'Sunday'
+}
+
+function isPrimeTimeProposal(proposal: AdvisorProgrammingProposalDraft) {
+  return proposal.timeSlot === 'evening' || (isWeekend(proposal.dayOfWeek) && proposal.timeSlot === 'morning')
+}
+
+function getFormatSkillKey(proposal: AdvisorProgrammingProposalDraft) {
+  return `${proposal.format}__${proposal.skillLevel}`
+}
+
+function getSlotSignature(proposal: AdvisorProgrammingProposalDraft) {
+  return `${proposal.dayOfWeek}__${proposal.timeSlot}__${proposal.startTime}__${proposal.format}__${proposal.skillLevel}`
+}
+
+function getSuggestionVariantSignature(proposal: Pick<
+  AdvisorProgrammingProposalDraft,
+  'dayOfWeek' | 'startTime' | 'format' | 'skillLevel'
+>) {
+  return `${proposal.dayOfWeek}__${proposal.startTime}__${proposal.format}__${proposal.skillLevel}`
+}
+
+function getConflictPenalty(proposal: AdvisorProgrammingProposalDraft) {
+  const conflict = proposal.conflict
+  if (!conflict) return 0
+
+  let penalty = 0
+  penalty += conflict.overlapRisk === 'high' ? 20 : conflict.overlapRisk === 'medium' ? 8 : 0
+  penalty += conflict.cannibalizationRisk === 'high' ? 28 : conflict.cannibalizationRisk === 'medium' ? 12 : 0
+  penalty += conflict.courtPressureRisk === 'high' ? 16 : conflict.courtPressureRisk === 'medium' ? 7 : 0
+  return penalty
+}
+
+function canDuplicateProposal(
+  proposal: AdvisorProgrammingProposalDraft,
+  selected: AdvisorProgrammingProposalDraft[],
+) {
+  const sameSlotSelected = selected.find((candidate) => getSlotSignature(candidate) === getSlotSignature(proposal))
+  if (!sameSlotSelected) return true
+  return (
+    proposal.projectedOccupancy >= 90 &&
+    proposal.conflict?.cannibalizationRisk === 'low' &&
+    proposal.conflict?.courtPressureRisk !== 'high'
+  )
+}
+
+function getPortfolioPenalty(
+  proposal: AdvisorProgrammingProposalDraft,
+  selected: AdvisorProgrammingProposalDraft[],
+) {
+  let penalty = 0
+
+  const sameFormatSkillCount = selected.filter(
+    (candidate) => getFormatSkillKey(candidate) === getFormatSkillKey(proposal),
+  ).length
+  if (sameFormatSkillCount > 0) {
+    penalty += sameFormatSkillCount === 1 ? 10 : 10 + (sameFormatSkillCount - 1) * 14
+  }
+
+  const sameFormatCount = selected.filter((candidate) => candidate.format === proposal.format).length
+  if (sameFormatCount >= 2) {
+    penalty += (sameFormatCount - 1) * 6
+  }
+
+  const sameSlotCount = selected.filter(
+    (candidate) => getSlotSignature(candidate) === getSlotSignature(proposal),
+  ).length
+  if (sameSlotCount > 0) {
+    if (!canDuplicateProposal(proposal, selected)) return 999
+    penalty += 14 * sameSlotCount
+  }
+
+  if (proposal.format === 'OPEN_PLAY' && isPrimeTimeProposal(proposal)) {
+    const primeOpenPlayCount = selected.filter(
+      (candidate) => candidate.format === 'OPEN_PLAY' && isPrimeTimeProposal(candidate),
+    ).length
+    if (primeOpenPlayCount >= 1) {
+      penalty += 12 * primeOpenPlayCount
+    }
+  }
+
+  return penalty
+}
+
+function getGreedySelectionScore(
+  proposal: AdvisorProgrammingProposalDraft,
+  selected: AdvisorProgrammingProposalDraft[],
+) {
+  const interestPressure = Math.min(
+    100,
+    Math.round((proposal.estimatedInterestedMembers / Math.max(proposal.maxPlayers || 1, 1)) * 100),
+  )
+  return (
+    proposal.confidence * 1.0 +
+    proposal.projectedOccupancy * 0.55 +
+    interestPressure * 0.4 -
+    getConflictPenalty(proposal) -
+    getPortfolioPenalty(proposal, selected)
+  )
+}
+
+function selectBalancedProposals(
+  proposals: AdvisorProgrammingProposalDraft[],
+  targetCount: number,
+  pinnedProposalIds: string[] = [],
+) {
+  const remaining = [...proposals]
+  const selected: AdvisorProgrammingProposalDraft[] = []
+  const MIN_SELECTION_SCORE = 62
+
+  if (pinnedProposalIds.length > 0) {
+    const pinnedSet = new Set(pinnedProposalIds)
+    const pinned = remaining.filter((proposal) => pinnedSet.has(proposal.id))
+
+    for (const proposal of pinned) {
+      if (selected.length >= targetCount) break
+      selected.push(proposal)
+    }
+
+    for (let index = remaining.length - 1; index >= 0; index -= 1) {
+      if (pinnedSet.has(remaining[index].id)) {
+        remaining.splice(index, 1)
+      }
+    }
+  }
+
+  while (selected.length < targetCount && remaining.length > 0) {
+    let bestIndex = -1
+    let bestScore = Number.NEGATIVE_INFINITY
+
+    for (let index = 0; index < remaining.length; index += 1) {
+      const score = getGreedySelectionScore(remaining[index], selected)
+      if (score > bestScore) {
+        bestScore = score
+        bestIndex = index
+      }
+    }
+
+    if (bestIndex < 0 || bestScore < MIN_SELECTION_SCORE) break
+
+    selected.push(remaining[bestIndex])
+    remaining.splice(bestIndex, 1)
+  }
+
+  if (selected.length === 0 && proposals.length > 0) {
+    const fallback = [...proposals]
+      .sort((left, right) => getGreedySelectionScore(right, []) - getGreedySelectionScore(left, []))[0]
+    if (fallback && getGreedySelectionScore(fallback, []) >= 55) {
+      selected.push(fallback)
+    }
+  }
+
+  return selected
+}
+
+function diversifyAgainstPreviousSuggestions(
+  proposals: AdvisorProgrammingProposalDraft[],
+  previousSuggestionSignatures: string[],
+) {
+  if (previousSuggestionSignatures.length === 0) return proposals
+
+  const seen = new Set(previousSuggestionSignatures)
+  const diversified = proposals.map((proposal) => {
+    if (!seen.has(getSuggestionVariantSignature(proposal))) return proposal
+    return {
+      ...proposal,
+      confidence: Math.max(0, proposal.confidence - 12),
+      rationale: [
+        'Regenerate is exploring a nearby alternative instead of repeating the exact same slot mix.',
+        ...proposal.rationale,
+      ].slice(0, 4),
+    }
+  })
+
+  return diversified.sort(
+    (left, right) => getGreedySelectionScore(right, []) - getGreedySelectionScore(left, []),
+  )
+}
+
 // ── buildWeeklyGrid ─────────────────────────────────────────────────
 
 /**
@@ -636,7 +853,9 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const generationId = randomUUID()
   const activeCourts = input.courts.filter((c) => c.isActive)
   const targetCount = input.targetSuggestionCount ?? Math.max(10, activeCourts.length * 6)
-  const DEMAND_THRESHOLD = 20
+  const regenerateRequest = input.regeneratePrompt?.trim()
+    ? parseAdvisorProgrammingRequest(input.regeneratePrompt)
+    : null
 
   // 1. Get a wide proposal set from the existing planner. We pass
   //    `limit` high enough to cover the grid; the planner dedupes.
@@ -644,6 +863,8 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     sessions: input.lastNDaysSessions,
     preferences: input.preferences,
     interestRequests: input.interestRequests,
+    audienceProfile: input.audienceProfile,
+    request: regenerateRequest,
     limit: Math.max(200, targetCount * 4),
     courtCount: activeCourts.length,
   })
@@ -660,31 +881,62 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     const { applyRegenerateHint } = require('./programming-iq-regenerate')
     rankedProposals = applyRegenerateHint(plan.proposals, input.regenerateHint)
   }
+  if (!input.regeneratePrompt?.trim() && (input.previousSuggestionSignatures?.length || 0) > 0) {
+    rankedProposals = diversifyAgainstPreviousSuggestions(
+      rankedProposals,
+      input.previousSuggestionSignatures || [],
+    )
+  }
+  const requestedProposals = plan.requestedAlternates?.length
+    ? plan.requestedAlternates
+    : plan.requested
+      ? [plan.requested]
+      : []
+  const selectionTargetCount = Math.max(targetCount, requestedProposals.length)
 
   // 2. Synthesise same-slot variants across multiple courts where demand
   //    exceeds one court's capacity (e.g. Saturday 10am 4.0 league could
   //    justifiably run on two courts). We treat projectedOccupancy as a
   //    proxy for "how much headroom is there to duplicate this slot".
   const expanded: AdvisorProgrammingProposalDraft[] = []
+  const seenExpandedIds = new Set<string>()
+  if (regenerateRequest && requestedProposals.length > 0) {
+    for (const requestedProposal of requestedProposals) {
+      if (seenExpandedIds.has(requestedProposal.id)) continue
+      expanded.push(requestedProposal)
+      seenExpandedIds.add(requestedProposal.id)
+    }
+  }
   for (const proposal of rankedProposals) {
+    if (seenExpandedIds.has(proposal.id)) continue
     expanded.push(proposal)
-    // Duplicate the top-scoring ~20% onto a second court when the pool
-    // clearly supports it. Gentle multiplier — we still filter by threshold.
-    if (proposal.projectedOccupancy >= 80 && expanded.length < targetCount) {
+    seenExpandedIds.add(proposal.id)
+    // Duplicate only when the underlying demand is extremely strong and
+    // conflict risk is still comparatively low. This keeps us from
+    // blindly splitting prime-time demand across two courts.
+    if (
+      proposal.projectedOccupancy >= 92 &&
+      proposal.conflict?.cannibalizationRisk === 'low' &&
+      proposal.conflict?.courtPressureRisk !== 'high' &&
+      expanded.length < targetCount * 2
+    ) {
       expanded.push({
         ...proposal,
         id: `${proposal.id}__dup`,
-        // second-instance confidence decays slightly so it ranks below
-        confidence: Math.max(40, proposal.confidence - 10),
+        confidence: Math.max(38, proposal.confidence - 14),
       })
+      seenExpandedIds.add(`${proposal.id}__dup`)
     }
     if (expanded.length >= targetCount * 2) break
   }
 
-  // 3. Drop below-threshold proposals — prefer empty cell over forced.
-  const eligible = expanded.filter(
-    (p) => (p.projectedOccupancy + p.confidence) >= DEMAND_THRESHOLD,
-  ).slice(0, targetCount)
+  // 3. Greedy portfolio selection. We deliberately stop early when the
+  // next candidate no longer clears the minimum business-quality bar.
+  const eligible = selectBalancedProposals(
+    expanded,
+    selectionTargetCount,
+    regenerateRequest ? requestedProposals.map((proposal) => proposal.id) : [],
+  )
 
   // 4. Bin-pack onto courts.
   const assignments = assignCourtsToProposals(
@@ -702,9 +954,31 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   let conflictCount = 0
   for (const a of assignments) {
     if (a.failed) {
-      // Proposal couldn't be placed — we surface this as a conflict cell
-      // on an implicit "placeholder" court so admins can still see the
-      // demand signal and consider adjusting.
+      // Proposal couldn't be placed — keep it as an off-grid idea so the
+      // admin still sees the demand signal and the reason it stayed out
+      // of the publish-ready grid.
+      const placementWarning =
+        a.failed === 'outside_hours'
+          ? 'This idea could not be placed because no active court has observed operating hours covering that window.'
+          : 'This idea could not be placed because every active court already has a conflicting live or suggested session in that window.'
+      cells.push({
+        key: `conflict__${a.proposal.id}`,
+        kind: 'conflict',
+        courtId: '',
+        courtName: 'Unassigned',
+        dayOfWeek: a.proposal.dayOfWeek,
+        startTime: a.proposal.startTime,
+        endTime: a.proposal.endTime,
+        title: a.proposal.title,
+        format: a.proposal.format,
+        skillLevel: a.proposal.skillLevel,
+        maxPlayers: a.proposal.maxPlayers,
+        projectedOccupancy: a.proposal.projectedOccupancy,
+        estimatedInterestedMembers: a.proposal.estimatedInterestedMembers,
+        confidence: a.proposal.confidence,
+        rationale: a.proposal.rationale,
+        warnings: [placementWarning, ...(a.proposal.conflict?.warnings || [])],
+      })
       conflictCount += 1
       continue
     }
@@ -723,7 +997,12 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       projectedOccupancy: a.proposal.projectedOccupancy,
       estimatedInterestedMembers: a.proposal.estimatedInterestedMembers,
       confidence: a.proposal.confidence,
-      rationale: a.proposal.rationale,
+      rationale: a.usedHoursFallback
+        ? [
+            ...a.proposal.rationale,
+            'Placed on an active court using relaxed availability because no historical court-hours signal covered this window.',
+          ]
+        : a.proposal.rationale,
       warnings: a.proposal.conflict && a.proposal.conflict.overallRisk !== 'low'
         ? [a.proposal.conflict.riskSummary, ...a.proposal.conflict.warnings]
         : [],
@@ -775,6 +1054,22 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const avgProjected = occupancyValues.length === 0
     ? 0
     : Math.round(occupancyValues.reduce((a, b) => a + b, 0) / occupancyValues.length)
+  const unmetInterestRequests = input.interestRequests.filter((request) => {
+    const status = String(request.status || '').toLowerCase()
+    return !request.sessionId && !['matched', 'fulfilled', 'completed', 'closed', 'cancelled'].includes(status)
+  }).length
+  const insights = [...plan.insights]
+  if (regenerateRequest && requestedProposals.length > 0) {
+    insights.unshift(
+      `${requestedProposals.length} slot${requestedProposals.length === 1 ? '' : 's'} came directly from the admin request and were scored after generation.`,
+    )
+  }
+  if (!input.regeneratePrompt?.trim() && (input.previousSuggestionSignatures?.length || 0) > 0) {
+    insights.unshift('Regenerate explored a nearby schedule variant instead of replaying the exact same portfolio.')
+  }
+  if (conflictCount > 0) {
+    insights.unshift(`${conflictCount} requested or high-signal idea${conflictCount === 1 ? '' : 's'} could not be placed on an active court this week and were moved to Other ideas.`)
+  }
 
   return {
     generationId,
@@ -787,11 +1082,11 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       saturations: saturationCount,
       avgProjectedOccupancy: avgProjected,
     },
-    insights: plan.insights,
+    insights,
     signalSummary: {
       monthsOfBookingData: 2,
       preferencesCount: input.preferences.length,
-      unmetInterestRequests: input.interestRequests.filter((r) => r.status === 'UNMATCHED').length,
+      unmetInterestRequests,
       activeCourts: activeCourts.length,
     },
   }

@@ -2,13 +2,22 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { motion } from 'motion/react'
-import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock3, Loader2, Plus, Radar, ShieldAlert, ShieldCheck, Sparkles, TestTube2, Users, X } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock3, Loader2, Plus, Radar, ShieldAlert, ShieldCheck, Sparkles, TestTube2, Users, X, BarChart3 } from 'lucide-react'
 import { CampaignKPIs } from './campaigns/CampaignKPIs'
 import { CampaignChart } from './campaigns/CampaignChart'
 import { CampaignList } from './campaigns/CampaignList'
-import { AutomationBanner } from './campaigns/AutomationBanner'
-import { CampaignCreator } from './campaigns/CampaignCreator'
+// P1-T5: AutomationBanner removed — equivalent automation status now lives
+// in Settings → Automation page (AgentCampaignLayer column 2: Live Rollout).
+// Kept commented for traceability:
+//   import { AutomationBanner } from './campaigns/AutomationBanner'
+// P2-T9: CampaignCreator removed — replaced everywhere by CampaignWizard.
+// P4-T1: New 4-step Campaign Wizard
+import { CampaignWizard } from '../CampaignWizard'
+// P4-T6: Active Campaigns table (lightweight)
+import { ActiveCampaignsTable } from '../ActiveCampaignsTable'
+import { CampaignsInsightsDrawer } from '../CampaignsInsightsDrawer'
 import { CampaignSuggestions } from './campaigns/CampaignSuggestions'
 import {
   buildAdvisorContextHref as buildCampaignAdvisorHref,
@@ -297,8 +306,37 @@ function matchesDraftText(draft: any, patterns: string[]) {
 }
 
 export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoading, campaignListLoading = false, clubId }: CampaignsIQProps) {
-  const [showCreator, setShowCreator] = useState(false)
-  const [initialType, setInitialType] = useState<string | null>(null)
+  // P4-T7: Campaign Wizard drawer (replaces "+ New Campaign" entry).
+  const [showWizard, setShowWizard] = useState(false)
+  // P2-T9: pre-fill the wizard's Goal step when launched from an
+  // AI-Recommended card. Mapped from the legacy CHECK_IN/etc enum.
+  const [wizardInitialGoal, setWizardInitialGoal] = useState<'reactivate_dormant' | 'onboard_new' | 'promote_event' | 'upsell_tier' | 'renewal_reminder' | 'custom' | null>(null)
+  // P2-T9: Insights drawer hosts Send Volume + legacy by-type event log,
+  // moved off the main page.
+  const [showInsights, setShowInsights] = useState(false)
+  // P5-T5 fix #5: read ?cohortId= from URL (set by Cohort Builder's
+  // "Save + Create Campaign →" handoff or by AI-Suggested → Campaign).
+  // Open the wizard once with the cohort pre-selected, then strip the
+  // param so refresh doesn't reopen the wizard unexpectedly.
+  const wizardSearchParams = useSearchParams()
+  const wizardRouter = useRouter()
+  const wizardPathname = usePathname()
+  const [wizardInitialCohortId, setWizardInitialCohortId] = useState<string | null>(null)
+  useEffect(() => {
+    const cohortIdFromUrl = wizardSearchParams?.get('cohortId') ?? null
+    if (cohortIdFromUrl && !showWizard) {
+      setWizardInitialCohortId(cohortIdFromUrl)
+      setShowWizard(true)
+      // Strip the param after we've consumed it.
+      if (wizardPathname) {
+        const next = new URLSearchParams(wizardSearchParams.toString())
+        next.delete('cohortId')
+        const qs = next.toString()
+        wizardRouter.replace(qs ? `${wizardPathname}?${qs}` : wizardPathname, { scroll: false })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardSearchParams])
   const [selectedCampaign, setSelectedCampaign] = useState<{ id: string; type: string; date: string; name?: string | null } | null>(null)
   const [activityOfferFilter, setActivityOfferFilter] = useState<string>('all')
   const [activityRouteFilter, setActivityRouteFilter] = useState<string>('all')
@@ -618,61 +656,10 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
       ].filter(Boolean)
     : []
 
-  const quickActions = (() => {
-    const actions = []
-
-    if (reviewReadyDrafts[0]) {
-      actions.push({
-        key: `review:${reviewReadyDrafts[0].id}`,
-        title: 'Review latest draft',
-        description: reviewReadyDrafts[0].title || 'Open the most recent campaign draft in Advisor.',
-        href: buildCampaignAdvisorHref(clubId, {
-          conversationId: reviewReadyDrafts[0].conversationId || null,
-          prompt: reviewReadyDrafts[0].originalIntent || undefined,
-        }),
-      })
-    }
-
-    actions.push({
-      key: 'reactivation',
-      title: 'Draft reactivation push',
-      description: 'Build a win-back draft for expired, cancelled, and drifting members.',
-      href: buildCampaignAdvisorHref(clubId, {
-        prompt: 'Draft a reactivation campaign for expired and cancelled members. Keep it as a review-ready draft first.',
-      }),
-    })
-
-    actions.push({
-      key: 'guest-conversion',
-      title: 'Convert guests',
-      description: 'Turn frequent guests and drop-ins into a campaign-ready membership offer.',
-      href: buildCampaignAdvisorHref(clubId, {
-        prompt: 'Draft a guest conversion campaign for frequent guests and drop-ins. Keep it in draft for review before sending.',
-      }),
-    })
-
-    if (pilotHealth?.recommendation) {
-      actions.push({
-        key: 'rework-risky',
-        title: 'Rework risky live action',
-        description: pilotHealth.recommendation.reason,
-        href: buildCampaignAdvisorHref(clubId, {
-          prompt: `Draft a safer ${pilotHealth.recommendation.label.toLowerCase()} alternative with a tighter audience and gentler copy. Keep it in draft only.`,
-        }),
-      })
-    } else {
-      actions.push({
-        key: 'vip-protect',
-        title: 'Protect VIP members',
-        description: 'Draft a high-touch campaign for unlimited and high-value members.',
-        href: buildCampaignAdvisorHref(clubId, {
-          prompt: 'Draft a VIP appreciation campaign for our unlimited and high-value members. Keep it as a review-ready draft first.',
-        }),
-      })
-    }
-
-    return actions.slice(0, 4)
-  })()
+  // P5-T5: dead-code removed — `quickActions` IIFE used to feed the
+  // "Agent Quick Starts" JSX block that P1-T4 deleted. The lookups it
+  // performs (reviewReadyDrafts[0], pilotHealth.recommendation, etc.)
+  // are still computed above for the AC Layer in Settings → Automation.
 
   const selectedCampaignName = selectedCampaign?.name || campaignDrilldown?.campaign?.name || 'Campaign'
   const selectedActionKind = selectedCampaign ? mapCampaignTypeToActionKind(selectedCampaign.type) : null
@@ -721,1719 +708,146 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
 
   return (
     <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5 max-w-[1400px] mx-auto">
-      {/* Automation status */}
-      <AutomationBanner clubId={clubId} />
+      {/* P1-T5: AutomationBanner removed — see import comment for context. */}
 
-      {/* Header + New Campaign */}
+      {/* Header + Insights / New Campaign CTAs */}
       <div className="flex items-center justify-between">
         <h1 style={{ fontSize: '22px', fontWeight: 800, color: 'var(--heading)' }}>Campaigns</h1>
-        <button
-          onClick={() => setShowCreator(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02]"
-          style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}
-        >
-          <Plus className="w-4 h-4" /> New Campaign
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowInsights(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm transition-all"
+            style={{
+              background: 'var(--subtle)',
+              color: 'var(--t2)',
+              fontWeight: 600,
+              border: '1px solid var(--card-border)',
+            }}
+          >
+            <BarChart3 className="w-4 h-4" />
+            Insights
+          </button>
+          <button
+            onClick={() => setShowWizard(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:scale-[1.02]"
+            style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)' }}
+          >
+            <Plus className="w-4 h-4" /> New Campaign
+          </button>
+        </div>
       </div>
 
-      <div
-        className="rounded-3xl p-5 md:p-6 space-y-5"
-        style={{
-          background: 'linear-gradient(135deg, rgba(139,92,246,0.16), rgba(6,182,212,0.08))',
-          border: '1px solid rgba(139,92,246,0.18)',
-          boxShadow: 'var(--card-shadow)',
-        }}
-      >
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}>
-              <Sparkles className="w-3.5 h-3.5" />
-              Agent Campaign Layer
-            </div>
-            <div>
-              <h2 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--heading)' }}>Campaign control, draft review, and live pilot health</h2>
-              <p className="text-sm mt-1" style={{ color: 'var(--t2)', maxWidth: 760 }}>
-                Advisor drafts, rollout posture, blocked live sends, and pilot outcomes now sit on top of the campaigns surface instead of living in separate corners of the product.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className="px-3 py-1.5 rounded-full text-xs font-semibold"
-              style={{ background: outreachModeStyle.bg, color: outreachModeStyle.color }}
-            >
-              Outreach mode: {outreachModeStyle.label}
-            </span>
-            <span
-              className="px-3 py-1.5 rounded-full text-xs font-semibold"
-              style={{ background: pilotStyle.bg, color: pilotStyle.color }}
-            >
-              Live health: {pilotStyle.label}
-            </span>
-          </div>
+      {/* P2-T9: Compact KPI strip — replaces the bigger CampaignKPIs block
+          that used to live below the gradient panel. Always visible at the
+          top of the page so admins see the week's pulse without scrolling. */}
+      {summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {(() => {
+            const totalSent = summary.totalSent ?? 0
+            const opens = variantData?.totalOpens ?? 0
+            const clicks = variantData?.totalClicks ?? 0
+            const openRate = totalSent > 0 ? Math.round((opens / totalSent) * 100) : 0
+            const clickRate = totalSent > 0 ? Math.round((clicks / totalSent) * 100) : 0
+            const attributedCents = (campaignListData as any)?.attributedRevenueCents ?? 0
+            const attributedDisplay = attributedCents >= 100_000
+              ? `$${(attributedCents / 100_000).toFixed(1)}K`
+              : `$${Math.round(attributedCents / 100)}`
+            const tiles = [
+              { label: 'Sent (this week)', value: String(summary.thisWeek ?? 0), sub: `${totalSent} in last 30d total` },
+              { label: 'Open rate', value: `${openRate}%`, sub: `${opens.toLocaleString()} opens` },
+              { label: 'Click rate', value: `${clickRate}%`, sub: `${clicks.toLocaleString()} clicks` },
+              { label: '$ attributed', value: attributedDisplay, sub: 'last 30 days' },
+            ]
+            return tiles.map((t) => (
+              <div
+                key={t.label}
+                className="rounded-2xl p-3"
+                style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+              >
+                <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+                  {t.label}
+                </div>
+                <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--heading)' }}>{t.value}</div>
+                <div className="text-[10px] mt-0.5" style={{ color: 'var(--t4)' }}>{t.sub}</div>
+              </div>
+            ))
+          })()}
         </div>
+      )}
 
-        <div className="grid gap-4 xl:grid-cols-3">
-          <div
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Draft queue</div>
-                <div className="text-lg font-bold mt-1" style={{ color: 'var(--heading)' }}>{campaignDrafts.length} agent campaign drafts</div>
-              </div>
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}>
-                <Clock3 className="w-5 h-5" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                { label: 'Review ready', value: reviewReadyDrafts.length },
-                { label: 'Sandboxed', value: sandboxedDrafts.length },
-                { label: 'Scheduled', value: scheduledDrafts.length },
-                { label: 'Blocked', value: blockedDrafts.length },
-              ].map((item) => (
-                <div key={item.label} className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>{item.label}</div>
-                  <div className="text-xl font-bold mt-1" style={{ color: 'var(--heading)' }}>{item.value}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="space-y-2">
-              {latestDrafts.length === 0 ? (
-                <div className="rounded-xl px-3 py-3 text-sm" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
-                  No campaign drafts are waiting right now. Use the quick starts below to seed a new one in Advisor.
-                </div>
-              ) : latestDrafts.map((draft: any) => {
-                const draftStatusStyle = DRAFT_STATUS_STYLES[draft.status] || DRAFT_STATUS_STYLES.draft_saved
-                return (
-                  <Link
-                    key={draft.id}
-                    href={buildCampaignAdvisorHref(clubId, {
-                      conversationId: draft.conversationId || null,
-                      prompt: draft.originalIntent || undefined,
-                    })}
-                    className="block rounded-xl px-3 py-3 transition-all hover:translate-x-[2px]"
-                    style={{ background: 'var(--subtle)' }}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold truncate" style={{ color: 'var(--heading)' }}>
-                          {draft.title || formatCampaignDraftKind(draft.kind)}
-                        </div>
-                        <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-                          {formatCampaignDraftKind(draft.kind)} · {formatRelativeTime(draft.updatedAt)}
-                        </div>
-                      </div>
-                      <span
-                        className="px-2 py-1 rounded-full text-[10px] font-semibold shrink-0"
-                        style={{ background: draftStatusStyle.bg, color: draftStatusStyle.color }}
-                      >
-                        {draftStatusStyle.label}
-                      </span>
-                    </div>
-                  </Link>
-                )
-              })}
-            </div>
-          </div>
-
-          <div
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Live rollout</div>
-                <div className="text-lg font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {rolloutStatus?.summary || 'Shadow-only until rollout is armed'}
-                </div>
-              </div>
-              <div
-                className="w-11 h-11 rounded-2xl flex items-center justify-center"
-                style={{
-                  background: rolloutStatus?.clubAllowlisted ? 'rgba(16,185,129,0.14)' : 'rgba(245,158,11,0.14)',
-                  color: rolloutStatus?.clubAllowlisted ? '#10B981' : '#F59E0B',
-                }}
-              >
-                {rolloutStatus?.clubAllowlisted ? <ShieldCheck className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Allowlist</div>
-                <div className="text-base font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {rolloutStatus?.clubAllowlisted ? 'Live enabled' : rolloutStatus?.envAllowlistConfigured ? 'Waiting on superadmin' : 'No env allowlist'}
-                </div>
-              </div>
-              <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Armed actions</div>
-                <div className="text-base font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {rolloutStatus?.enabledActionKinds?.length || 0} live types armed
-                </div>
-              </div>
-            </div>
-
-            {rolloutFriction.length > 0 ? (
-              <div className="space-y-2">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Recent rollout friction</div>
-                {rolloutFriction.slice(0, 3).map((record: any) => (
-                  <div key={record.id} className="rounded-xl px-3 py-3" style={{ background: 'var(--subtle)' }}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-sm" style={{ color: 'var(--heading)' }}>{record.summary}</div>
-                      <span
-                        className="px-2 py-1 rounded-full text-[10px] font-semibold shrink-0"
-                        style={{
-                          background: record.result === 'blocked' ? 'rgba(239,68,68,0.14)' : 'rgba(245,158,11,0.14)',
-                          color: record.result === 'blocked' ? '#EF4444' : '#F59E0B',
-                        }}
-                      >
-                        {record.result === 'blocked' ? 'Blocked' : 'Shadowed'}
-                      </span>
-                    </div>
-                    <div className="text-xs mt-2" style={{ color: 'var(--t3)' }}>
-                      {formatRelativeTime(record.createdAt)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-xl px-3 py-3 text-sm" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
-                No recent blocked or shadowed outreach sends. Rollout posture looks clean from this page.
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={`/clubs/${clubId}/intelligence/settings`}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
-                style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}
-              >
-                Open settings <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </div>
-
-          <div
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Live pilot health</div>
-                <div className="text-lg font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {pilotHealth?.summary || 'No live outreach outcomes in the last 14d.'}
-                </div>
-              </div>
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center" style={{ background: pilotStyle.bg, color: pilotStyle.color }}>
-                <Radar className="w-5 h-5" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top live action</div>
-                <div className="text-base font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {pilotHealth?.topAction?.label || 'No clear leader yet'}
-                </div>
-              </div>
-              <div className="rounded-xl px-3 py-2.5" style={{ background: 'var(--subtle)' }}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Bookings</div>
-                <div className="text-base font-bold mt-1" style={{ color: 'var(--heading)' }}>
-                  {pilotHealth?.totals?.converted || 0} booked from live sends
-                </div>
-              </div>
-            </div>
-
-            {pilotHealth?.recommendation ? (
-              <div
-                className="rounded-xl px-3 py-3 space-y-2"
-                style={{
-                  background: pilotHealth.recommendation.health === 'at_risk' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
-                  border: `1px solid ${pilotHealth.recommendation.health === 'at_risk' ? 'rgba(239,68,68,0.16)' : 'rgba(245,158,11,0.16)'}`,
-                }}
-              >
-                <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: pilotHealth.recommendation.health === 'at_risk' ? '#EF4444' : '#F59E0B' }}>
-                  <AlertTriangle className="w-4 h-4" />
-                  Shadow-back recommendation
-                </div>
-                <div className="text-sm" style={{ color: 'var(--heading)' }}>
-                  {pilotHealth.recommendation.reason}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-xl px-3 py-3 text-sm" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
-                No action currently needs to move back to shadow. This is a good place to monitor live campaign quality before widening rollout.
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href={buildCampaignAdvisorHref(clubId, {
-                  prompt: pilotHealth?.topAction
-                    ? `Draft another ${pilotHealth.topAction.label.toLowerCase()} based on our recent strongest live outreach, but keep it in review-ready draft mode first.`
-                    : 'Draft a high-confidence campaign for our best current audience. Keep it as a review-ready draft first.',
-                })}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
-                style={{ background: 'rgba(6,182,212,0.14)', color: '#06B6D4' }}
-              >
-                <TestTube2 className="w-3.5 h-3.5" />
-                Draft from live signal
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        <div
-          className="rounded-2xl p-4 space-y-3"
-          style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-        >
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Agent quick starts</div>
-              <div className="text-sm mt-1" style={{ color: 'var(--t2)' }}>
-                Jump into Advisor with a prepared campaign brief instead of starting from a blank message box.
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {quickActions.map((action) => (
-              <Link
-                key={action.key}
-                href={action.href}
-                className="rounded-2xl p-4 transition-all hover:-translate-y-[2px]"
-                style={{ background: 'var(--subtle)', border: '1px solid transparent' }}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}>
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <ArrowRight className="w-4 h-4" style={{ color: 'var(--t4)' }} />
-                </div>
-                <div className="mt-4 text-sm font-semibold" style={{ color: 'var(--heading)' }}>{action.title}</div>
-                <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--t3)' }}>{action.description}</div>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {guestTrialSummary && guestTrialPlays.length > 0 ? (
-          <div
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Guest / Trial Booking</div>
-                <div className="text-sm mt-1" style={{ color: 'var(--t2)', maxWidth: 780 }}>
-                  This top-of-funnel lane is purpose-built for guests and trials: get the first visit booked, protect the first show-up, and convert warm first-timers into the easiest paid step.
-                  {guestTrialOffers?.paidConversion ? ` Current paid default: ${guestTrialOffers.paidConversion.descriptor} via ${guestTrialOffers.paidConversion.destinationDescriptor}.` : ''}
-                </div>
-              </div>
-              <div
-                className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4' }}
-              >
-                {guestTrialSummary.totalCandidates} guest/trial actions
-              </div>
-            </div>
-
-            {guestTrialFunnel ? (
-              <>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {[
-                    {
-                      label: 'Entrants',
-                      value: guestTrialFunnel.entrantCount,
-                      sub: 'recent guest/trial entrants',
-                      accent: '#94A3B8',
-                    },
-                    {
-                      label: 'Booked first visit',
-                      value: guestTrialFunnel.bookedCount,
-                      sub: `${guestTrialFunnel.bookingRate}% of entrants`,
-                      accent: '#06B6D4',
-                    },
-                    {
-                      label: 'Showed up',
-                      value: guestTrialFunnel.showedUpCount,
-                      sub: `${guestTrialFunnel.showUpRate}% of booked`,
-                      accent: '#F59E0B',
-                    },
-                    {
-                      label: 'Paid tier',
-                      value: guestTrialFunnel.paidCount,
-                      sub: `${guestTrialFunnel.paidConversionRate}% of showed-up`,
-                      accent: '#10B981',
-                    },
-                  ].map((item) => (
-                    <div key={item.label} className="rounded-2xl p-4" style={{ background: 'var(--subtle)' }}>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>{item.label}</div>
-                      <div className="text-2xl font-bold mt-2" style={{ color: 'var(--heading)' }}>{item.value}</div>
-                      <div className="text-[11px] mt-1" style={{ color: item.accent }}>{item.sub}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--subtle)' }}>
-                  <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Guest / trial booking loop</div>
-                  <div className="text-sm mt-1.5" style={{ color: 'var(--t2)', lineHeight: 1.7 }}>
-                    {guestTrialFunnel.summary}
-                  </div>
-                </div>
-
-                {guestTrialOfferLoop.length > 0 ? (
-                  <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--subtle)' }}>
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div>
-                        <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Offer outcome loop</div>
-                        <div className="text-sm mt-1.5" style={{ color: 'var(--t2)', lineHeight: 1.7 }}>
-                          Each configured guest/trial offer now has a live funnel lens, so you can see which offer owns each stage and whether that stage is healthy, watch-level, or at risk.
-                        </div>
-                      </div>
-                      <span
-                        className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                        style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}
-                      >
-                        {guestTrialOfferLoop.length} tracked offers
-                      </span>
-                    </div>
-
-                    <div className="grid gap-3 xl:grid-cols-3 mt-4">
-                      {guestTrialOfferLoop.map((offer: any) => {
-                        const tone = GUEST_TRIAL_OFFER_LOOP_STYLES[offer.status] || GUEST_TRIAL_OFFER_LOOP_STYLES.watch
-                        const remediation = buildGuestTrialOfferRemediationPrompt({
-                          stage: offer.stage,
-                          status: offer.status,
-                          offerName: offer.name,
-                          descriptor: offer.descriptor,
-                          destinationDescriptor: offer.destinationDescriptor,
-                          rate: offer.rate,
-                          candidateCount: offer.candidateCount,
-                          outcomeCount: offer.outcomeCount,
-                          baseCount: offer.baseCount,
-                        })
-                        return (
-                          <div
-                            key={offer.key}
-                            className="rounded-2xl p-4"
-                            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>{offer.name}</div>
-                                <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>{offer.descriptor}</div>
-                                <div className="text-xs mt-1.5" style={{ color: tone.color, lineHeight: 1.6 }}>
-                                  Route: {offer.destinationDescriptor}
-                                </div>
-                              </div>
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px] font-semibold"
-                                style={{ background: tone.bg, color: tone.color }}
-                              >
-                                {tone.label}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-2 mt-4">
-                              <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-                                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--t4)' }}>In play</div>
-                                <div className="text-lg font-semibold mt-1" style={{ color: 'var(--heading)' }}>{offer.candidateCount}</div>
-                              </div>
-                              <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-                                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--t4)' }}>Outcome</div>
-                                <div className="text-lg font-semibold mt-1" style={{ color: 'var(--heading)' }}>{offer.outcomeCount}</div>
-                              </div>
-                              <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-                                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--t4)' }}>Rate</div>
-                                <div className="text-lg font-semibold mt-1" style={{ color: tone.color }}>{offer.rate}%</div>
-                              </div>
-                            </div>
-
-                            <div className="text-xs mt-4" style={{ color: tone.color, fontWeight: 700 }}>{offer.outcomeLabel}</div>
-                            <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--t3)' }}>
-                              {offer.summary}
-                            </div>
-
-                            <Link
-                              href={buildCampaignAdvisorHref(clubId, { prompt: remediation.prompt })}
-                              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:-translate-y-[1px] mt-4"
-                              style={{ background: tone.bg, color: tone.color }}
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                              {remediation.label}
-                            </Link>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-
-                {guestTrialRouteLoop.length > 0 ? (
-                  <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--subtle)' }}>
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div>
-                        <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Route attribution loop</div>
-                        <div className="text-sm mt-1.5" style={{ color: 'var(--t2)', lineHeight: 1.7 }}>
-                          This is the route layer: which booking or conversion path is currently carrying guest/trial progress, and which destination is adding or removing friction across the funnel.
-                        </div>
-                      </div>
-                      <span
-                        className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                        style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4' }}
-                      >
-                        {guestTrialRouteLoop.length} tracked routes
-                      </span>
-                    </div>
-
-                    <div className="grid gap-3 xl:grid-cols-3 mt-4">
-                      {guestTrialRouteLoop.map((route: any) => {
-                        const tone = GUEST_TRIAL_OFFER_LOOP_STYLES[route.status] || GUEST_TRIAL_OFFER_LOOP_STYLES.watch
-                        const remediation = buildGuestTrialRouteRemediationPrompt({
-                          destinationType: route.destinationType,
-                          destinationDescriptor: route.destinationDescriptor,
-                          stages: route.stages,
-                          offerNames: route.offerNames,
-                          status: route.status,
-                          rate: route.rate,
-                          candidateCount: route.candidateCount,
-                          outcomeCount: route.outcomeCount,
-                          baseCount: route.baseCount,
-                        })
-                        return (
-                          <div
-                            key={route.key}
-                            className="rounded-2xl p-4"
-                            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>{route.destinationDescriptor}</div>
-                                <div className="text-xs mt-1.5" style={{ color: tone.color, lineHeight: 1.6 }}>
-                                  {formatGuestTrialRouteType(route.destinationType)}
-                                </div>
-                              </div>
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px] font-semibold"
-                                style={{ background: tone.bg, color: tone.color }}
-                              >
-                                {tone.label}
-                              </span>
-                            </div>
-
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              {route.stages.map((stage: string) => (
-                                <span
-                                  key={`${route.key}-${stage}`}
-                                  className="px-2 py-1 rounded-full text-[10px] font-semibold"
-                                  style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}
-                                >
-                                  {stage === 'book_first_visit'
-                                    ? 'First visit'
-                                    : stage === 'protect_first_show_up'
-                                      ? 'Show-up'
-                                      : 'Paid'}
-                                </span>
-                              ))}
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-2 mt-4">
-                              <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-                                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--t4)' }}>In play</div>
-                                <div className="text-lg font-semibold mt-1" style={{ color: 'var(--heading)' }}>{route.candidateCount}</div>
-                              </div>
-                              <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-                                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--t4)' }}>Outcome</div>
-                                <div className="text-lg font-semibold mt-1" style={{ color: 'var(--heading)' }}>{route.outcomeCount}</div>
-                              </div>
-                              <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-                                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--t4)' }}>Rate</div>
-                                <div className="text-lg font-semibold mt-1" style={{ color: tone.color }}>{route.rate}%</div>
-                              </div>
-                            </div>
-
-                            <div className="text-xs mt-4" style={{ color: tone.color, fontWeight: 700 }}>{route.outcomeLabel}</div>
-                            <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--t3)' }}>
-                              {route.summary}
-                            </div>
-                            <div className="text-[11px] mt-2 leading-relaxed" style={{ color: 'var(--t4)' }}>
-                              Offers on this route: {route.offerNames.join(', ')}
-                            </div>
-
-                            <Link
-                              href={buildCampaignAdvisorHref(clubId, { prompt: remediation.prompt })}
-                              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:-translate-y-[1px] mt-4"
-                              style={{ background: tone.bg, color: tone.color }}
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                              {remediation.label}
-                            </Link>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-
-            <div className="grid gap-3 xl:grid-cols-3">
-              {guestTrialPlays.map((play: any) => (
-                <Link
-                  key={play.key}
-                  href={play.href}
-                  className="rounded-2xl p-4 transition-all hover:-translate-y-[2px]"
-                  style={{
-                    background: play.tone.bg,
-                    border: `1px solid ${play.tone.border}`,
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>{play.title}</div>
-                      <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--t2)' }}>
-                        {play.description}
-                      </div>
-                    </div>
-                    <ArrowRight className="w-4 h-4 shrink-0" style={{ color: play.tone.color }} />
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    <span
-                      className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                      style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}
-                    >
-                      {play.count} members
-                    </span>
-                    <span
-                      className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                      style={{ background: 'rgba(255,255,255,0.08)', color: play.tone.color }}
-                    >
-                      {play.draftCount} related drafts
-                    </span>
-                    {'descriptor' in play && play.descriptor ? (
-                      <span
-                        className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                        style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}
-                      >
-                        {play.descriptor}
-                      </span>
-                    ) : null}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {smartFirstSessionSummary && smartFirstSessionPlays.length > 0 ? (
-          <div
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Smart First Session Campaigns</div>
-                <div className="text-sm mt-1" style={{ color: 'var(--t2)', maxWidth: 780 }}>
-                  The newcomer growth lane is now campaign-ready too: one play for first booking, one for second-session habit, and one for guest-to-paid conversion.
-                </div>
-              </div>
-              <div
-                className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4' }}
-              >
-                {smartFirstSessionSummary.totalCandidates} newcomers in scope
-              </div>
-            </div>
-
-            {smartFirstSessionFunnel ? (
-              <>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {[
-                    {
-                      label: 'Joined recent',
-                      value: smartFirstSessionFunnel.newcomerCount,
-                      sub: 'newcomers in current window',
-                      accent: '#94A3B8',
-                    },
-                    {
-                      label: 'First booking',
-                      value: smartFirstSessionFunnel.firstBookedCount,
-                      sub: `${smartFirstSessionFunnel.firstBookingRate}% of joined`,
-                      accent: '#06B6D4',
-                    },
-                    {
-                      label: 'Second session',
-                      value: smartFirstSessionFunnel.secondBookedCount,
-                      sub: `${smartFirstSessionFunnel.secondSessionRate}% of first-bookers`,
-                      accent: '#8B5CF6',
-                    },
-                    {
-                      label: 'Paid tier',
-                      value: smartFirstSessionFunnel.paidMemberCount,
-                      sub: `${smartFirstSessionFunnel.paidConversionRate}% of first-bookers`,
-                      accent: '#10B981',
-                    },
-                  ].map((item) => (
-                    <div key={item.label} className="rounded-2xl p-4" style={{ background: 'var(--subtle)' }}>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>{item.label}</div>
-                      <div className="text-2xl font-bold mt-2" style={{ color: 'var(--heading)' }}>{item.value}</div>
-                      <div className="text-[11px] mt-1" style={{ color: item.accent }}>{item.sub}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--subtle)' }}>
-                  <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Newcomer outcome loop</div>
-                  <div className="text-sm mt-1.5" style={{ color: 'var(--t2)', lineHeight: 1.7 }}>
-                    {smartFirstSessionFunnel.summary}
-                  </div>
-                </div>
-              </>
-            ) : null}
-
-            <div className="grid gap-3 xl:grid-cols-3">
-              {smartFirstSessionPlays.map((play: any) => (
-                <Link
-                  key={play.key}
-                  href={play.href}
-                  className="rounded-2xl p-4 transition-all hover:-translate-y-[2px]"
-                  style={{
-                    background: play.tone.bg,
-                    border: `1px solid ${play.tone.border}`,
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>{play.title}</div>
-                      <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--t2)' }}>
-                        {play.description}
-                      </div>
-                    </div>
-                    <ArrowRight className="w-4 h-4 shrink-0" style={{ color: play.tone.color }} />
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    <span
-                      className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                      style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}
-                    >
-                      {play.count} members
-                    </span>
-                    <span
-                      className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                      style={{ background: 'rgba(255,255,255,0.08)', color: play.tone.color }}
-                    >
-                      {play.draftCount} related drafts
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {winBackSummary && winBackPlays.length > 0 ? (
-          <div
-            className="rounded-2xl p-4 space-y-4"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-          >
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Win-Back Campaigns</div>
-                <div className="text-sm mt-1" style={{ color: 'var(--t2)', maxWidth: 780 }}>
-                  This lane turns expired, cancelled, and high-value lapsed member signals into campaign-ready comeback plays instead of one generic reactivation blast.
-                </div>
-              </div>
-              <div
-                className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444' }}
-              >
-                {winBackSummary.totalCandidates} win-back opportunities
-              </div>
-            </div>
-
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              {[
-                {
-                  label: 'In scope',
-                  value: winBackSummary.totalCandidates,
-                  sub: 'members ready for comeback outreach',
-                  accent: '#EF4444',
-                },
-                {
-                  label: 'Expired',
-                  value: winBackSummary.expiredCount,
-                  sub: 'warm renewal rescue',
-                  accent: '#EF4444',
-                },
-                {
-                  label: 'Cancelled',
-                  value: winBackSummary.cancelledCount,
-                  sub: 'comeback after churn',
-                  accent: '#F97316',
-                },
-                {
-                  label: 'High-value lapsed',
-                  value: winBackSummary.lapsedCount,
-                  sub: 'quiet but worth saving',
-                  accent: '#8B5CF6',
-                },
-              ].map((item) => (
-                <div key={item.label} className="rounded-2xl p-4" style={{ background: 'var(--subtle)' }}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>{item.label}</div>
-                  <div className="text-2xl font-bold mt-2" style={{ color: 'var(--heading)' }}>{item.value}</div>
-                  <div className="text-[11px] mt-1" style={{ color: item.accent }}>{item.sub}</div>
-                </div>
-              ))}
-            </div>
-
-            {winBackFunnel ? (
-              <>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {[
-                    {
-                      label: 'Recoverable pool',
-                      value: winBackFunnel.recoverableCount,
-                      sub: 'members still worth a save',
-                      accent: '#94A3B8',
-                    },
-                    {
-                      label: 'Former paid',
-                      value: winBackFunnel.formerPaidCount,
-                      sub: 'expired or cancelled',
-                      accent: '#EF4444',
-                    },
-                    {
-                      label: 'Warm window',
-                      value: winBackFunnel.warmWindowCount,
-                      sub: `${winBackFunnel.warmWindowRate}% of former paid`,
-                      accent: '#F97316',
-                    },
-                    {
-                      label: 'High intent',
-                      value: winBackFunnel.highIntentCount,
-                      sub: `${winBackFunnel.highIntentRate}% of recoverable pool`,
-                      accent: '#8B5CF6',
-                    },
-                  ].map((item) => (
-                    <div key={item.label} className="rounded-2xl p-4" style={{ background: 'var(--subtle)' }}>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>{item.label}</div>
-                      <div className="text-2xl font-bold mt-2" style={{ color: 'var(--heading)' }}>{item.value}</div>
-                      <div className="text-[11px] mt-1" style={{ color: item.accent }}>{item.sub}</div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--subtle)' }}>
-                  <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Win-back recovery loop</div>
-                  <div className="text-sm mt-1.5" style={{ color: 'var(--t2)', lineHeight: 1.7 }}>
-                    {winBackFunnel.summary}
-                  </div>
-                </div>
-
-                {winBackLaneLoop.length > 0 ? (
-                  <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--subtle)' }}>
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div>
-                        <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Lane recovery loop</div>
-                        <div className="text-sm mt-1.5" style={{ color: 'var(--t2)', lineHeight: 1.7 }}>
-                          Each win-back lane now has its own health lens, so you can see whether renewal rescue, cancelled comeback, or high-value saves need a tighter comeback motion.
-                        </div>
-                      </div>
-                      <span
-                        className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                        style={{ background: 'rgba(239,68,68,0.12)', color: '#EF4444' }}
-                      >
-                        {winBackLaneLoop.length} tracked lanes
-                      </span>
-                    </div>
-
-                    <div className="grid gap-3 xl:grid-cols-3 mt-4">
-                      {winBackLaneLoop.map((lane: any) => {
-                        const tone = WIN_BACK_LANE_STYLES[lane.status] || WIN_BACK_LANE_STYLES.watch
-                        const remediation = buildWinBackLaneRemediationPrompt({
-                          stage: lane.stage,
-                          status: lane.status,
-                          title: lane.title,
-                          rate: lane.rate,
-                          candidateCount: lane.candidateCount,
-                          outcomeCount: lane.outcomeCount,
-                          baseCount: lane.baseCount,
-                        })
-                        return (
-                          <div
-                            key={lane.key}
-                            className="rounded-2xl p-4"
-                            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>{lane.title}</div>
-                                <div className="text-xs mt-1.5" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>{lane.outcomeLabel}</div>
-                              </div>
-                              <span
-                                className="px-2 py-1 rounded-full text-[10px] font-semibold"
-                                style={{ background: tone.bg, color: tone.color }}
-                              >
-                                {tone.label}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-2 mt-4">
-                              <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-                                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--t4)' }}>In lane</div>
-                                <div className="text-lg font-semibold mt-1" style={{ color: 'var(--heading)' }}>{lane.candidateCount}</div>
-                              </div>
-                              <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-                                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--t4)' }}>Outcome</div>
-                                <div className="text-lg font-semibold mt-1" style={{ color: 'var(--heading)' }}>{lane.outcomeCount}</div>
-                              </div>
-                              <div className="rounded-xl p-3" style={{ background: 'var(--subtle)' }}>
-                                <div className="text-[10px] uppercase tracking-[0.14em]" style={{ color: 'var(--t4)' }}>Rate</div>
-                                <div className="text-lg font-semibold mt-1" style={{ color: tone.color }}>{lane.rate}%</div>
-                              </div>
-                            </div>
-
-                            <div className="text-xs mt-4 leading-relaxed" style={{ color: 'var(--t3)' }}>
-                              {lane.summary}
-                            </div>
-
-                            <Link
-                              href={buildCampaignAdvisorHref(clubId, { prompt: remediation.prompt })}
-                              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:-translate-y-[1px] mt-4"
-                              style={{ background: tone.bg, color: tone.color }}
-                            >
-                              <Sparkles className="w-3.5 h-3.5" />
-                              {remediation.label}
-                            </Link>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-
-            <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--subtle)' }}>
-              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>Win-back summary</div>
-              <div className="text-sm mt-1.5" style={{ color: 'var(--t2)', lineHeight: 1.7 }}>
-                {winBackSummary.summary}
-              </div>
-            </div>
-
-            <div className="grid gap-3 xl:grid-cols-3">
-              {winBackPlays.map((play: any) => (
-                <Link
-                  key={play.key}
-                  href={play.href}
-                  className="rounded-2xl p-4 transition-all hover:-translate-y-[2px]"
-                  style={{
-                    background: play.tone.bg,
-                    border: `1px solid ${play.tone.border}`,
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>{play.title}</div>
-                      <div className="text-xs mt-1.5 leading-relaxed" style={{ color: 'var(--t2)' }}>
-                        {play.description}
-                      </div>
-                    </div>
-                    <ArrowRight className="w-4 h-4 shrink-0" style={{ color: play.tone.color }} />
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    <span
-                      className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                      style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}
-                    >
-                      {play.count} members
-                    </span>
-                    <span
-                      className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                      style={{ background: 'rgba(255,255,255,0.08)', color: play.tone.color }}
-                    >
-                      {play.draftCount} related drafts
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <ReferralCampaignsSection
+      {/* P4-T1: Campaign Wizard drawer.
+          P5-T5 fix #5: initialCohortId wired from ?cohortId= URL param
+          (set by Cohort Builder's "Save + Create Campaign →"). */}
+      {showWizard && (
+        <CampaignWizard
           clubId={clubId}
-          referralSummary={referralSummary}
-          referralPlays={referralPlays}
-          referralHasLiveTracking={referralHasLiveTracking}
-          referralFunnel={referralFunnel}
-          referralOffers={referralOffers}
-          referralOutcomeFunnel={referralOutcomeFunnel}
-          referralLaneLoop={referralLaneLoop}
-          referralOfferLoop={referralOfferLoop}
-          referralRouteLoop={referralRouteLoop}
-          referralOutcomeLoop={referralOutcomeLoop}
-          referralRewardLoop={referralRewardLoop}
-          referralRewardSummary={referralRewardSummary}
-          referralRewardIssuanceSummary={referralRewardIssuanceSummary}
-          referralReferredGuestFunnel={referralReferredGuestFunnel}
-          referralReferredGuests={referralReferredGuests}
-          referralRewardIssuances={referralRewardIssuances}
-          referralRewardLedger={referralRewardLedger}
-          guestTrialOffers={guestTrialOffers}
-          activeReferralRewardIssuanceKey={activeReferralRewardIssuanceKey}
-          isRewardIssuancePending={updateReferralRewardIssuance.isPending}
-          onUpdateReferralRewardIssuance={handleReferralRewardIssuanceUpdate}
-        />
-
-      </div>
-
-      {!summary ? (
-        <CampaignSuggestions
-          clubId={clubId}
-          onSelectType={(type) => {
-            setInitialType(type)
-            setShowCreator(true)
+          initialCohortId={wizardInitialCohortId}
+          initialGoal={wizardInitialGoal}
+          onClose={() => {
+            setShowWizard(false)
+            setWizardInitialCohortId(null)
+            setWizardInitialGoal(null)
           }}
         />
-      ) : (
-        <>
-          {/* KPI cards */}
-          <CampaignKPIs summary={summary} variantData={variantData} />
-
-          {/* Performance chart */}
-          {byDay?.length > 0 && <CampaignChart byDay={byDay} />}
-
-          {/* Campaign list */}
-          <CampaignList
-            campaigns={campaigns}
-            isLoading={campaignListLoading}
-            clubId={clubId}
-            advisorDrafts={campaignDrafts}
-            outreachMode={outreachMode}
-            rolloutStatus={rolloutStatus}
-            pilotHealth={pilotHealth}
-            onCampaignClick={(campaign) => setSelectedCampaign(campaign)}
-          />
-
-          {recentActivityLogs.length > 0 ? (
-            <div
-              className="rounded-3xl p-5 md:p-6 space-y-5"
-              style={{
-                background: 'var(--card-bg)',
-                border: '1px solid var(--card-border)',
-                boxShadow: 'var(--card-shadow)',
-              }}
-            >
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="space-y-2">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4' }}>
-                    <Radar className="w-3.5 h-3.5" />
-                    Campaign analytics rows
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--heading)' }}>Recent activity by offer and route</h3>
-                    <p className="text-sm mt-1" style={{ color: 'var(--t2)', maxWidth: 760 }}>
-                      Filter the latest campaign rows by exact guest/trial offer, referral offer, referral lane, and destination route so you can see performance by motion, plus where referred guests are entering the club funnel.
-                    </p>
-                  </div>
-                </div>
-                <div
-                  className="px-3 py-1.5 rounded-full text-xs font-semibold"
-                  style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}
-                >
-                  {filteredRecentActivity.length} of {recentActivityLogs.length} rows
-                </div>
-              </div>
-
-              {topActivityGuestTrialOffers.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Filter by offer</div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActivityOfferFilter('all')}
-                      className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                      style={{
-                        background: activityOfferFilter === 'all' ? 'rgba(16,185,129,0.14)' : 'var(--subtle)',
-                        color: activityOfferFilter === 'all' ? '#10B981' : 'var(--heading)',
-                      }}
-                    >
-                      All offers
-                    </button>
-                    {topActivityGuestTrialOffers.map((offer: any) => (
-                      <button
-                        key={offer.key}
-                        type="button"
-                        onClick={() => setActivityOfferFilter(offer.key)}
-                        className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                        style={{
-                          background: activityOfferFilter === offer.key ? 'rgba(16,185,129,0.14)' : 'var(--subtle)',
-                          color: activityOfferFilter === offer.key ? '#10B981' : 'var(--heading)',
-                        }}
-                      >
-                        {offer.label} · {offer.count}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {topActivityGuestTrialRoutes.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Filter by route</div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActivityRouteFilter('all')}
-                      className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                      style={{
-                        background: activityRouteFilter === 'all' ? 'rgba(6,182,212,0.14)' : 'var(--subtle)',
-                        color: activityRouteFilter === 'all' ? '#06B6D4' : 'var(--heading)',
-                      }}
-                    >
-                      All routes
-                    </button>
-                    {topActivityGuestTrialRoutes.map((route: any) => (
-                      <button
-                        key={route.key}
-                        type="button"
-                        onClick={() => setActivityRouteFilter(route.key)}
-                        className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                        style={{
-                          background: activityRouteFilter === route.key ? 'rgba(6,182,212,0.14)' : 'var(--subtle)',
-                          color: activityRouteFilter === route.key ? '#06B6D4' : 'var(--heading)',
-                        }}
-                      >
-                        {route.label} · {route.count}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {topActivityReferralOffers.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Filter by referral offer</div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActivityReferralOfferFilter('all')}
-                      className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                      style={{
-                        background: activityReferralOfferFilter === 'all' ? 'rgba(245,158,11,0.14)' : 'var(--subtle)',
-                        color: activityReferralOfferFilter === 'all' ? '#F59E0B' : 'var(--heading)',
-                      }}
-                    >
-                      All referral offers
-                    </button>
-                    {topActivityReferralOffers.map((offer: any) => (
-                      <button
-                        key={offer.key}
-                        type="button"
-                        onClick={() => setActivityReferralOfferFilter(offer.key)}
-                        className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                        style={{
-                          background: activityReferralOfferFilter === offer.key ? 'rgba(245,158,11,0.14)' : 'var(--subtle)',
-                          color: activityReferralOfferFilter === offer.key ? '#F59E0B' : 'var(--heading)',
-                        }}
-                      >
-                        {offer.label} · {offer.count}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {topActivityReferralLanes.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Filter by referral lane</div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActivityReferralLaneFilter('all')}
-                      className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                      style={{
-                        background: activityReferralLaneFilter === 'all' ? 'rgba(139,92,246,0.14)' : 'var(--subtle)',
-                        color: activityReferralLaneFilter === 'all' ? '#8B5CF6' : 'var(--heading)',
-                      }}
-                    >
-                      All lanes
-                    </button>
-                    {topActivityReferralLanes.map((lane: any) => (
-                      <button
-                        key={lane.key}
-                        type="button"
-                        onClick={() => setActivityReferralLaneFilter(lane.key)}
-                        className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                        style={{
-                          background: activityReferralLaneFilter === lane.key ? 'rgba(139,92,246,0.14)' : 'var(--subtle)',
-                          color: activityReferralLaneFilter === lane.key ? '#8B5CF6' : 'var(--heading)',
-                        }}
-                      >
-                        {formatReferralLaneLabel(lane.key)} · {lane.count}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {topActivityReferralRoutes.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Filter by referral route</div>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActivityReferralRouteFilter('all')}
-                      className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                      style={{
-                        background: activityReferralRouteFilter === 'all' ? 'rgba(250,204,21,0.14)' : 'var(--subtle)',
-                        color: activityReferralRouteFilter === 'all' ? '#FACC15' : 'var(--heading)',
-                      }}
-                    >
-                      All referral routes
-                    </button>
-                    {topActivityReferralRoutes.map((route: any) => (
-                      <button
-                        key={route.key}
-                        type="button"
-                        onClick={() => setActivityReferralRouteFilter(route.key)}
-                        className="px-3 py-2 rounded-xl text-xs font-semibold transition-all"
-                        style={{
-                          background: activityReferralRouteFilter === route.key ? 'rgba(250,204,21,0.14)' : 'var(--subtle)',
-                          color: activityReferralRouteFilter === route.key ? '#FACC15' : 'var(--heading)',
-                        }}
-                      >
-                        {route.label} · {route.count}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {topActivityReferredGuestSources.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Referred guest capture sources</div>
-                  <div className="flex flex-wrap gap-2">
-                    {topActivityReferredGuestSources.map((source: any) => (
-                      <span
-                        key={source.key}
-                        className="px-3 py-2 rounded-xl text-xs font-semibold"
-                        style={{ background: 'rgba(14,165,233,0.14)', color: '#38BDF8' }}
-                      >
-                        {source.label}
-                        {source.lane ? ` · ${formatReferralLaneLabel(source.lane)}` : ''}
-                        {` · ${source.count}`}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {topActivityReferredGuestRoutes.length > 0 ? (
-                <div className="space-y-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Referred guest routes into guest / trial</div>
-                  <div className="flex flex-wrap gap-2">
-                    {topActivityReferredGuestRoutes.map((route: any) => (
-                      <span
-                        key={route.key}
-                        className="px-3 py-2 rounded-xl text-xs font-semibold"
-                        style={{ background: 'rgba(45,212,191,0.14)', color: '#2DD4BF' }}
-                      >
-                        {route.label} · {route.count}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {filteredRecentActivity.length === 0 ? (
-                <div className="rounded-2xl px-4 py-4 text-sm" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
-                  No recent campaign rows match this exact offer/lane/route combination yet. Clear one of the filters or wait for the next live or shadowed campaign activity.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {visibleRecentActivity.map((log: any) => (
-                    <div
-                      key={log.id}
-                      className="rounded-2xl p-4"
-                      style={{ background: 'var(--subtle)', border: '1px solid transparent' }}
-                    >
-                      <div className="flex items-start justify-between gap-3 flex-wrap">
-                        <div>
-                          <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>{log.userName}</div>
-                          <div className="text-xs mt-1.5" style={{ color: 'var(--t3)' }}>
-                            {formatCampaignActivityType(log.type)} · {log.channel ? String(log.channel).toUpperCase() : 'No channel'} · {formatRelativeTime(log.createdAt)}
-                          </div>
-                        </div>
-                        <span
-                          className="px-2.5 py-1 rounded-full text-[11px] font-semibold"
-                          style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}
-                        >
-                          {formatCampaignActivityStatus(log.status)}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        {log.guestTrialOfferName ? (
-                          <span
-                            className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: 'rgba(16,185,129,0.14)', color: '#10B981' }}
-                          >
-                            {formatGuestTrialActivityStage(log.guestTrialOfferStage)} · {log.guestTrialOfferName}
-                          </span>
-                        ) : null}
-                        {log.guestTrialDestinationDescriptor ? (
-                          <span
-                            className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: 'rgba(6,182,212,0.14)', color: '#06B6D4' }}
-                          >
-                            {log.guestTrialDestinationDescriptor}
-                          </span>
-                        ) : null}
-                        {log.referralOfferName ? (
-                          <span
-                            className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: 'rgba(245,158,11,0.14)', color: '#F59E0B' }}
-                          >
-                            {log.referralOfferName}
-                          </span>
-                        ) : null}
-                        {log.referralOfferLane ? (
-                          <span
-                            className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}
-                          >
-                            {formatReferralLaneLabel(log.referralOfferLane)}
-                          </span>
-                        ) : null}
-                        {log.referralDestinationDescriptor ? (
-                          <span
-                            className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: 'rgba(250,204,21,0.14)', color: '#FACC15' }}
-                          >
-                            {log.referralDestinationDescriptor}
-                          </span>
-                        ) : null}
-                        {log.referredGuestSourceOfferName ? (
-                          <span
-                            className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: 'rgba(14,165,233,0.14)', color: '#38BDF8' }}
-                          >
-                            Referred guest from {log.referredGuestSourceOfferName}
-                          </span>
-                        ) : null}
-                        {log.referredGuestSourceLane ? (
-                          <span
-                            className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: 'rgba(45,212,191,0.14)', color: '#2DD4BF' }}
-                          >
-                            {formatReferralLaneLabel(log.referredGuestSourceLane)}
-                          </span>
-                        ) : null}
-                        {log.referredGuestSourceDestinationDescriptor ? (
-                          <span
-                            className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: 'rgba(34,197,94,0.14)', color: '#22C55E' }}
-                          >
-                            {log.referredGuestSourceDestinationDescriptor}
-                          </span>
-                        ) : null}
-                        {!log.guestTrialOfferName && !log.guestTrialDestinationDescriptor ? (
-                          <span
-                            className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                            style={{ background: 'rgba(148,163,184,0.14)', color: '#94A3B8' }}
-                          >
-                            {!log.referralOfferName && !log.referralDestinationDescriptor ? 'No growth attribution' : 'No guest / trial attribution'}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-
-                  {filteredRecentActivity.length > visibleRecentActivity.length ? (
-                    <div className="text-xs" style={{ color: 'var(--t4)' }}>
-                      Showing the latest {visibleRecentActivity.length} matching rows.
-                    </div>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          ) : null}
-
-          {selectedCampaign ? (
-            <div
-              className="rounded-3xl p-5 md:p-6 space-y-5"
-              style={{
-                background: 'linear-gradient(135deg, rgba(6,182,212,0.10), rgba(139,92,246,0.08))',
-                border: '1px solid rgba(6,182,212,0.14)',
-                boxShadow: 'var(--card-shadow)',
-              }}
-            >
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="space-y-2">
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(255,255,255,0.08)', color: 'var(--heading)' }}>
-                    <CalendarDays className="w-3.5 h-3.5" />
-                    After-Send Drilldown
-                  </div>
-                  <div>
-                    <h3 style={{ fontSize: '18px', fontWeight: 800, color: 'var(--heading)' }}>{selectedCampaignName}</h3>
-                    <p className="text-sm mt-1" style={{ color: 'var(--t2)' }}>
-                      Channel mix, audience outcomes, and the fastest way to rework this campaign based on what actually happened after send.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setSelectedCampaign(null)}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
-                  style={{ background: 'rgba(148,163,184,0.14)', color: '#64748B' }}
-                >
-                  <X className="w-3.5 h-3.5" />
-                  Close
-                </button>
-              </div>
-
-              {isCampaignDrilldownLoading ? (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="animate-pulse rounded-2xl h-28" style={{ background: 'var(--subtle)' }} />
-                  ))}
-                </div>
-              ) : campaignDrilldown ? (
-                <>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                    {[
-                      { label: 'Sent', value: campaignDrilldown.campaign.sent },
-                      { label: 'Opened', value: campaignDrilldown.campaign.opened },
-                      { label: 'Clicked', value: campaignDrilldown.campaign.clicked },
-                      { label: 'Booked', value: campaignDrilldown.campaign.converted },
-                      { label: 'Failed / Bounced', value: campaignDrilldown.campaign.failed + campaignDrilldown.campaign.bounced },
-                    ].map((item) => (
-                      <div key={item.label} className="rounded-2xl px-4 py-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>{item.label}</div>
-                        <div className="text-2xl font-bold mt-2" style={{ color: 'var(--heading)' }}>{item.value}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="grid gap-4 xl:grid-cols-3">
-                    <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Channel mix</div>
-                      <div className="space-y-2">
-                        {campaignDrilldown.channels.length === 0 ? (
-                          <div className="text-sm" style={{ color: 'var(--t3)' }}>No channel breakdown yet.</div>
-                        ) : campaignDrilldown.channels.map((channel: any) => (
-                          <div key={channel.channel} className="rounded-xl px-3 py-3" style={{ background: 'var(--subtle)' }}>
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>{String(channel.channel).toUpperCase()}</div>
-                              <div className="text-xs" style={{ color: 'var(--t3)' }}>{channel.sent} sent</div>
-                            </div>
-                            <div className="flex items-center gap-3 flex-wrap text-xs mt-2" style={{ color: 'var(--t3)' }}>
-                              <span>{channel.opened} opened</span>
-                              <span>{channel.clicked} clicked</span>
-                              <span>{channel.converted} booked</span>
-                              <span>{channel.failed} failed</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Outcome shape</div>
-                      <div className="flex flex-wrap gap-2">
-                        {campaignDrilldown.outcomes.map((outcome: any) => (
-                          <span
-                            key={outcome.key}
-                            className="px-3 py-2 rounded-xl text-xs font-semibold"
-                            style={{ background: 'var(--subtle)', color: 'var(--heading)' }}
-                          >
-                            {String(outcome.key).replace(/_/g, ' ')} · {outcome.count}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="space-y-2">
-                        {campaignDrilldown.topSources?.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top sources</div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {campaignDrilldown.topSources.map((source: any) => (
-                                <span key={source.key} className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}>
-                                  {source.key} · {source.count}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                        {campaignDrilldown.topGuestTrialOffers?.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top guest / trial offers</div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {campaignDrilldown.topGuestTrialOffers.map((offer: any) => (
-                                <span key={offer.key} className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(16,185,129,0.14)', color: '#10B981' }}>
-                                  {offer.label} · {offer.count}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                        {campaignDrilldown.topGuestTrialRoutes?.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top guest / trial routes</div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {campaignDrilldown.topGuestTrialRoutes.map((route: any) => (
-                                <span key={route.key} className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(6,182,212,0.14)', color: '#06B6D4' }}>
-                                  {route.label} · {route.count}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                        {campaignDrilldown.topReferralOffers?.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top referral offers</div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {campaignDrilldown.topReferralOffers.map((offer: any) => (
-                                <span key={offer.key} className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(245,158,11,0.14)', color: '#F59E0B' }}>
-                                  {offer.label} · {offer.count}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                        {campaignDrilldown.topReferralRoutes?.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top referral routes</div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {campaignDrilldown.topReferralRoutes.map((route: any) => (
-                                <span key={route.key} className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(250,204,21,0.14)', color: '#FACC15' }}>
-                                  {route.label} · {route.count}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                        {campaignDrilldown.topReferredGuestSources?.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top referred guest sources</div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {campaignDrilldown.topReferredGuestSources.map((source: any) => (
-                                <span key={source.key} className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(14,165,233,0.14)', color: '#38BDF8' }}>
-                                  {source.label}
-                                  {source.lane ? ` · ${formatReferralLaneLabel(source.lane)}` : ''}
-                                  {` · ${source.count}`}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                        {campaignDrilldown.topReferredGuestRoutes?.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top referred guest routes</div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {campaignDrilldown.topReferredGuestRoutes.map((route: any) => (
-                                <span key={route.key} className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(45,212,191,0.14)', color: '#2DD4BF' }}>
-                                  {route.label} · {route.count}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                        {campaignDrilldown.topVariants?.length > 0 ? (
-                          <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: 'var(--t4)' }}>Top variants</div>
-                            <div className="flex flex-wrap gap-2 mt-2">
-                              {campaignDrilldown.topVariants.map((variant: any) => (
-                                <span key={variant.key} className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold" style={{ background: 'rgba(6,182,212,0.14)', color: '#06B6D4' }}>
-                                  {variant.key} · {variant.count}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Next best move</div>
-                      <div className="rounded-xl px-3 py-3 text-sm" style={{ background: 'var(--subtle)', color: 'var(--heading)' }}>
-                        {campaignDrilldown.campaign.failed + campaignDrilldown.campaign.bounced > 0
-                          ? 'Failure or bounce pressure is showing up here. Rework the audience and delivery mix before widening this campaign.'
-                          : campaignDrilldown.campaign.converted > 0
-                            ? 'This campaign is producing bookings. Use it as the baseline for a smarter follow-up or the next iteration.'
-                            : 'This campaign reached people, but it still needs a sharper angle or tighter audience to convert better.'}
-                      </div>
-                      {selectedPilotAction && (selectedPilotAction.health === 'watch' || selectedPilotAction.health === 'at_risk') ? (
-                        <div
-                          className="rounded-xl px-3 py-3 space-y-2"
-                          style={{
-                            background: selectedPilotAction.health === 'at_risk' ? 'rgba(239,68,68,0.08)' : 'rgba(245,158,11,0.08)',
-                            border: `1px solid ${selectedPilotAction.health === 'at_risk' ? 'rgba(239,68,68,0.16)' : 'rgba(245,158,11,0.16)'}`,
-                          }}
-                        >
-                          <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: selectedPilotAction.health === 'at_risk' ? '#EF4444' : '#F59E0B' }}>
-                            <AlertTriangle className="w-4 h-4" />
-                            Shadow-back recommendation
-                          </div>
-                          <div className="text-sm" style={{ color: 'var(--heading)' }}>
-                            {selectedPilotAction.label || formatCampaignActionKind(selectedActionKind || 'create_campaign')} is showing risky live behavior for this campaign family.
-                          </div>
-                          <div className="text-xs" style={{ color: 'var(--t3)', lineHeight: 1.6 }}>
-                            {pilotHealth?.recommendation?.actionKind === selectedActionKind
-                              ? pilotHealth.recommendation.reason
-                              : `Live ${formatCampaignActionKind(selectedActionKind || 'create_campaign').toLowerCase()} should move back to shadow until this campaign is reworked.`}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleShadowBackFromDrilldown}
-                            disabled={!canManageRollout || isShadowBackPending}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed"
-                            style={{
-                              background: 'rgba(255,255,255,0.08)',
-                              border: '1px solid rgba(255,255,255,0.1)',
-                              color: 'var(--heading)',
-                            }}
-                          >
-                            <ShieldAlert className="w-3.5 h-3.5" />
-                            {isShadowBackPending ? 'Moving to shadow...' : 'Move back to shadow'}
-                          </button>
-                          {!canManageRollout ? (
-                            <div className="text-[11px]" style={{ color: '#FCA5A5', lineHeight: 1.5 }}>
-                              Only admins can change live rollout posture from this page.
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      <div className="flex flex-wrap gap-2">
-                        <Link
-                          href={buildCampaignAdvisorHref(clubId, {
-                            prompt: `Rework the ${selectedCampaignName} campaign based on these results: ${campaignDrilldown.campaign.opened} opened, ${campaignDrilldown.campaign.clicked} clicked, ${campaignDrilldown.campaign.converted} booked, ${campaignDrilldown.campaign.failed + campaignDrilldown.campaign.bounced} failed or bounced. Keep it as a review-ready draft first.`,
-                          })}
-                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
-                          style={{ background: 'rgba(139,92,246,0.14)', color: '#8B5CF6' }}
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          Rework in Advisor
-                        </Link>
-                        <Link
-                          href={buildCampaignAdvisorHref(clubId, {
-                            prompt: `Tighten the audience for ${selectedCampaignName}. Focus on the segments most likely to respond, reduce delivery risk, and explain who should be excluded after seeing ${campaignDrilldown.campaign.failed + campaignDrilldown.campaign.bounced} failed or bounced outcomes. Keep it as a review-ready draft.`,
-                          })}
-                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
-                          style={{ background: 'rgba(245,158,11,0.14)', color: '#F59E0B' }}
-                        >
-                          <AlertTriangle className="w-3.5 h-3.5" />
-                          Tighten audience
-                        </Link>
-                        <Link
-                          href={buildCampaignAdvisorHref(clubId, {
-                            prompt: `Draft a follow-up to ${selectedCampaignName} for members who opened or clicked but did not book. Keep it draft-only for review.`,
-                          })}
-                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
-                          style={{ background: 'rgba(6,182,212,0.14)', color: '#06B6D4' }}
-                        >
-                          <ArrowRight className="w-3.5 h-3.5" />
-                          Draft follow-up
-                        </Link>
-                        <Link
-                          href={buildCampaignAdvisorHref(clubId, {
-                            prompt: `Draft the next iteration of ${selectedCampaignName} using ${topVariant ? `best-performing variant ${topVariant.key}` : 'the strongest-performing angle'}${topSource ? ` and leaning into source ${topSource.key}` : ''}. Keep it review-ready, not live.`,
-                          })}
-                          className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:translate-x-[2px]"
-                          style={{ background: 'rgba(16,185,129,0.14)', color: '#10B981' }}
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                          Clone best variant
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: 'var(--t4)' }}>Recent audience outcomes</div>
-                    {campaignDrilldown.recipients.length === 0 ? (
-                      <div className="text-sm" style={{ color: 'var(--t3)' }}>No audience rows available for this campaign yet.</div>
-                    ) : (
-                      <div className="space-y-2">
-                        {campaignDrilldown.recipients.map((recipient: any) => (
-                          <div key={recipient.id} className="rounded-xl px-3 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ background: 'var(--subtle)' }}>
-                            <div className="min-w-0">
-                              <div className="text-sm font-semibold truncate" style={{ color: 'var(--heading)' }}>{recipient.name}</div>
-                              <div className="text-xs mt-1 flex items-center gap-2 flex-wrap" style={{ color: 'var(--t3)' }}>
-                                <span>{recipient.email || 'No email on file'}</span>
-                                <span>{String(recipient.channel).toUpperCase()}</span>
-                                {recipient.membershipType ? <span>{recipient.membershipType}</span> : null}
-                                {recipient.membershipStatus ? <span>{recipient.membershipStatus}</span> : null}
-                                {recipient.source ? <span>{recipient.source}</span> : null}
-                                {recipient.guestTrialOfferName ? <span>{recipient.guestTrialOfferName}</span> : null}
-                                {recipient.guestTrialDestinationDescriptor ? <span>{recipient.guestTrialDestinationDescriptor}</span> : null}
-                                {recipient.referredGuestSourceOfferName ? <span>{`from ${recipient.referredGuestSourceOfferName}`}</span> : null}
-                                {recipient.referredGuestSourceLane ? <span>{formatReferralLaneLabel(recipient.referredGuestSourceLane)}</span> : null}
-                                {recipient.referredGuestSourceDestinationDescriptor ? <span>{recipient.referredGuestSourceDestinationDescriptor}</span> : null}
-                                {recipient.referralOfferName ? <span>{recipient.referralOfferName}</span> : null}
-                                {recipient.referralOfferLane ? <span>{String(recipient.referralOfferLane).replace(/_/g, ' ')}</span> : null}
-                                {recipient.referralDestinationDescriptor ? <span>{recipient.referralDestinationDescriptor}</span> : null}
-                              </div>
-                            </div>
-                            <span
-                              className="px-2.5 py-1.5 rounded-full text-[11px] font-semibold"
-                              style={{
-                                background: recipient.outcome === 'booked'
-                                  ? 'rgba(16,185,129,0.15)'
-                                  : recipient.outcome === 'failed' || recipient.outcome === 'bounced'
-                                    ? 'rgba(239,68,68,0.15)'
-                                    : recipient.outcome === 'clicked' || recipient.outcome === 'opened'
-                                      ? 'rgba(6,182,212,0.15)'
-                                      : 'rgba(148,163,184,0.15)',
-                                color: recipient.outcome === 'booked'
-                                  ? '#10B981'
-                                  : recipient.outcome === 'failed' || recipient.outcome === 'bounced'
-                                    ? '#EF4444'
-                                    : recipient.outcome === 'clicked' || recipient.outcome === 'opened'
-                                      ? '#06B6D4'
-                                      : '#64748B',
-                              }}
-                            >
-                              {String(recipient.outcome).replace(/_/g, ' ')}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <div className="rounded-2xl px-4 py-4 text-sm" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--t3)' }}>
-                  I could not load the detailed send breakdown for this campaign right now.
-                </div>
-              )}
-            </div>
-          ) : campaigns.length > 0 ? (
-            <div className="rounded-2xl px-4 py-4 text-sm" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--t3)' }}>
-              Click any campaign row to open its after-send drilldown: channel mix, audience outcomes, and rework/follow-up actions.
-            </div>
-          ) : null}
-        </>
       )}
 
-      {/* Campaign Creator modal */}
-      {showCreator && (
-        <CampaignCreator
-          clubId={clubId}
-          initialType={initialType}
-          onClose={() => { setShowCreator(false); setInitialType(null) }}
-          onSuccess={() => { setShowCreator(false); setInitialType(null) }}
-        />
-      )}
+      {/* P1-T4: AI-Recommended Campaigns lifted to top — first content block.
+          P2-T9: "Preview & Launch" now opens the new CampaignWizard with the
+          mapped Goal pre-filled (was opening the deprecated CampaignCreator). */}
+      <CampaignSuggestions
+        clubId={clubId}
+        onSelectType={(type) => {
+          // Map the legacy AI-suggestion enum (CHECK_IN/RETENTION_BOOST/...)
+          // to the wizard's CampaignGoal vocabulary.
+          const map: Record<string, typeof wizardInitialGoal> = {
+            CHECK_IN: 'reactivate_dormant',
+            RETENTION_BOOST: 'reactivate_dormant',
+            REACTIVATION: 'reactivate_dormant',
+            SLOT_FILLER: 'promote_event',
+            EVENT_INVITE: 'promote_event',
+            NEW_MEMBER_WELCOME: 'onboard_new',
+          }
+          setWizardInitialGoal(map[type] ?? 'custom')
+          setShowWizard(true)
+        }}
+      />
+
+      {/* P4-T6: Active Campaigns lightweight table (empty until launch
+          backend lands in P5-T2). See SPEC §6 P4-T6. */}
+      <ActiveCampaignsTable clubId={clubId} />
+
+      {/* P5-T5: Campaign History collapsed accordion. Empty state until
+          Campaign model is live (P5-T2 deploy); keeps the UX shape so
+          directors know where past campaigns will appear. */}
+      <details className="rounded-2xl px-5 py-3 transition-all" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+        <summary className="cursor-pointer flex items-center justify-between text-sm" style={{ color: 'var(--heading)', fontWeight: 600 }}>
+          <span>Campaign History</span>
+          <span className="text-[11px]" style={{ color: 'var(--t4)' }}>0 past campaigns · $0 attributed (v1 — populates after Phase 5 launch)</span>
+        </summary>
+        <div className="mt-3 text-xs" style={{ color: 'var(--t3)' }}>
+          Past campaigns will appear here, sorted by recency, with attributed revenue
+          per row. Open rate and conversion rolled up to the Money Story widget on
+          the Dashboard (deferred to Dashboard redesign — see PLAN §11).
+        </div>
+      </details>
+
+
+      {/* P2-T9: Insights drawer — Send Volume + legacy by-type event log
+          live here now, off the main page so the focus stays on
+          AI-Recommended → Active → History. */}
+      <CampaignsInsightsDrawer
+        open={showInsights}
+        onClose={() => setShowInsights(false)}
+        byDay={byDay ?? []}
+        campaigns={campaigns}
+        campaignListLoading={campaignListLoading}
+        clubId={clubId}
+        advisorDrafts={campaignDrafts}
+        outreachMode={outreachMode}
+        rolloutStatus={rolloutStatus}
+        pilotHealth={pilotHealth}
+        onCampaignClick={(campaign) => setSelectedCampaign(campaign)}
+      />
     </motion.div>
   )
 }
