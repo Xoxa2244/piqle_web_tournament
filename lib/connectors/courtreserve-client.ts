@@ -340,8 +340,15 @@ function mapCRMember(raw: any): CRMember {
 function mapCRReservation(raw: any): CRReservation {
   return {
     reservationId: String(raw.Id || raw.reservationId || ''),
-    courtId: String(raw.Id || ''),
-    courtName: raw.Courts || raw.courtName,
+    courtId: String(
+      raw.CourtId ||
+      raw.courtId ||
+      raw.Court?.Id ||
+      raw.court?.id ||
+      raw.Id ||
+      '',
+    ),
+    courtName: raw.Courts || raw.CourtName || raw.courtName,
     reservationDate: (raw.StartTime || raw.reservationDate || '').split('T')[0],
     startTime: raw.StartTime || raw.startTime || '',
     endTime: raw.EndTime || raw.endTime || '',

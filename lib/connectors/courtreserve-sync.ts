@@ -63,6 +63,88 @@ function parseDate(dateStr: string): Date {
   return new Date(`${dateStr}T12:00:00Z`)
 }
 
+function getEventExternalKey(raw: any): string | null {
+  const key = raw?.EventDateId || raw?.eventDateId || raw?.EventId || raw?.eventId || raw?.Id || raw?.id
+  if (!key) return null
+  return `evt_${String(key)}`
+}
+
+function getEventTitle(raw: any): string {
+  return String(
+    raw?.EventName ||
+    raw?.eventName ||
+    raw?.Title ||
+    raw?.title ||
+    raw?.Name ||
+    raw?.name ||
+    raw?.ProgrammingName ||
+    'Event',
+  )
+}
+
+function getEventCategoryLabel(raw: any): string {
+  return String(
+    raw?.EventCategoryName ||
+    raw?.eventCategoryName ||
+    raw?.CategoryName ||
+    raw?.categoryName ||
+    raw?.ProgrammingCategory ||
+    raw?.programmingCategory ||
+    getEventTitle(raw),
+  )
+}
+
+function getEventCourtNames(raw: any): string[] {
+  const courts = raw?.Courts || raw?.courts
+  if (Array.isArray(courts)) {
+    const names = courts
+      .map((court: any) => String(court?.CourtName || court?.courtName || court?.Name || court?.name || '').trim())
+      .filter(Boolean)
+    if (names.length > 0) return names
+  }
+
+  const inlineCourts = String(
+    raw?.CourtName ||
+    raw?.courtName ||
+    raw?.ProgrammingCourts ||
+    raw?.programmingCourts ||
+    raw?.Courts ||
+    '',
+  )
+  if (!inlineCourts) return []
+
+  return inlineCourts
+    .split(',')
+    .map((court: string) => court.trim())
+    .filter(Boolean)
+}
+
+function getEventRegistrationCount(raw: any): number {
+  const value =
+    raw?.CurrentRegistrations ??
+    raw?.currentRegistrations ??
+    raw?.RegistrationCount ??
+    raw?.registrationCount ??
+    raw?.Registrations ??
+    raw?.registrations ??
+    0
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function getEventMaxRegistrations(raw: any, fallback: number): number {
+  const value =
+    raw?.MaxRegistrations ??
+    raw?.maxRegistrations ??
+    raw?.MaxParticipants ??
+    raw?.maxParticipants ??
+    raw?.Capacity ??
+    raw?.capacity ??
+    fallback
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
 // ── External ID Mapping (simplified, no dependency on partner utils) ──
 
 async function getInternalId(partnerId: string, entityType: ExternalEntityType, externalId: string): Promise<string | null> {
@@ -457,6 +539,117 @@ async function upsertReservation(
 /** Sync event registrations → PlaySessions + PlaySessionBookings
  *  This is the PRIMARY data source for pickleball clubs (Open Play, Clinics, Leagues).
  *  Reservations (above) are only for private court bookings. */
+async function syncEventCalendar(
+  client: CourtReserveClient,
+  clubId: string,
+  partnerId: string,
+  from: Date,
+  to: Date,
+): Promise<{ created: number; updated: number; errors: number }> {
+  const result = { created: 0, updated: 0, errors: 0 }
+
+  const [rawEvents, courts, existingMappings] = await Promise.all([
+    client.getEvents(from, to).catch(() => [] as any[]),
+    prisma.clubCourt.findMany({
+      where: { clubId },
+      select: { id: true, name: true },
+    }),
+    prisma.externalIdMapping.findMany({
+      where: { partnerId, entityType: ExternalEntityType.PLAY_SESSION },
+      select: { externalId: true, internalId: true },
+    }),
+  ])
+
+  const courtIdByName = new Map(
+    courts.map((court) => [court.name.trim().toLowerCase(), court.id]),
+  )
+  const sessionIdByExternalId = new Map(
+    existingMappings.map((mapping) => [mapping.externalId, mapping.internalId]),
+  )
+
+  for (const rawEvent of rawEvents as any[]) {
+    try {
+      const externalKey = getEventExternalKey(rawEvent)
+      if (!externalKey) continue
+
+      const title = getEventTitle(rawEvent)
+      const categoryLabel = getEventCategoryLabel(rawEvent)
+      const date = parseDate(
+        rawEvent?.StartTime ||
+        rawEvent?.startTime ||
+        rawEvent?.StartDateTime ||
+        rawEvent?.startDateTime ||
+        rawEvent?.EventDate ||
+        rawEvent?.eventDate ||
+        formatDate(from),
+      )
+      const startTime = parseTime(
+        rawEvent?.StartTime ||
+        rawEvent?.startTime ||
+        rawEvent?.StartDateTime ||
+        rawEvent?.startDateTime ||
+        '00:00',
+      )
+      const endTime = parseTime(
+        rawEvent?.EndTime ||
+        rawEvent?.endTime ||
+        rawEvent?.EndDateTime ||
+        rawEvent?.endDateTime ||
+        '01:00',
+      )
+      const courtNames = getEventCourtNames(rawEvent)
+      const primaryCourtName = courtNames[0] || ''
+      const courtId = primaryCourtName
+        ? (courtIdByName.get(primaryCourtName.trim().toLowerCase()) || undefined)
+        : undefined
+      const registeredCount = getEventRegistrationCount(rawEvent)
+      const maxPlayers = Math.max(
+        registeredCount,
+        getEventMaxRegistrations(rawEvent, Math.max(courtNames.length, 1) * 4),
+      )
+      const sessionDay = new Date(date)
+      sessionDay.setHours(0, 0, 0, 0)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const isCancelled = Boolean(rawEvent?.CancelledOnUtc || rawEvent?.cancelledOnUtc || rawEvent?.IsCancelled || rawEvent?.isCancelled)
+
+      const sessionData = {
+        clubId,
+        courtId,
+        title,
+        date,
+        startTime,
+        endTime,
+        format: mapFormat(categoryLabel) as any,
+        skillLevel: mapSkillLevelFromEvent(categoryLabel) as any,
+        maxPlayers,
+        registeredCount: isCancelled ? 0 : registeredCount,
+        status: isCancelled ? 'CANCELLED' as any : (sessionDay >= today ? 'SCHEDULED' as any : 'COMPLETED' as any),
+        pricePerSlot: rawEvent?.PriceToPay ?? rawEvent?.priceToPay ?? rawEvent?.Price ?? rawEvent?.price ?? null,
+      }
+
+      const existingSessionId = sessionIdByExternalId.get(externalKey)
+      if (existingSessionId) {
+        await prisma.playSession.update({
+          where: { id: existingSessionId },
+          data: sessionData,
+        })
+        result.updated++
+      } else {
+        const session = await prisma.playSession.create({ data: sessionData })
+        await setMapping(partnerId, ExternalEntityType.PLAY_SESSION, externalKey, session.id)
+        sessionIdByExternalId.set(externalKey, session.id)
+        result.created++
+      }
+    } catch (err: any) {
+      console.error(`[CR Sync] Event calendar item error:`, err?.message || err)
+      result.errors++
+    }
+  }
+
+  return result
+}
+
 async function syncEventRegistrations(
   client: CourtReserveClient,
   clubId: string,
@@ -846,6 +1039,10 @@ export async function runCourtReserveSync(
       try {
         const windowFrom = new Date(window.from)
         const windowTo = new Date(window.to)
+        const eventCalendarResult = await syncEventCalendar(client, clubId, partnerId, windowFrom, windowTo)
+        sessionsResult.created += eventCalendarResult.created
+        sessionsResult.updated += eventCalendarResult.updated
+        sessionsResult.errors += eventCalendarResult.errors
         const eventResult = await syncEventRegistrations(client, clubId, partnerId, windowFrom, windowTo, connectorId)
         sessionsResult.created += eventResult.sessions.created; sessionsResult.updated += eventResult.sessions.updated; sessionsResult.errors += eventResult.sessions.errors
         bookingsResult.created += eventResult.bookings.created; bookingsResult.errors += eventResult.bookings.errors
