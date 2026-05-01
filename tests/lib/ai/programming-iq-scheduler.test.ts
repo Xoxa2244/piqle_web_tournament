@@ -27,6 +27,7 @@ import {
   assignCourtsToProposals,
   supplyDemandCheck,
   buildWeeklyGrid,
+  selectBalancedProposals,
   type SchedulerCourt,
   type SchedulerExistingSession,
   type SchedulerHistoricalSession,
@@ -624,6 +625,87 @@ describe('buildWeeklyGrid — smoke', () => {
       ),
     ).toBe(true)
     expect(out.insights.join(' ')).toContain('moved to Other ideas')
+  })
+
+  it('avoids piling many sibling ideas into the same hot window', () => {
+    const selected = selectBalancedProposals([
+      proposal({
+        id: 'fri-open',
+        dayOfWeek: 'Friday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'ALL_LEVELS',
+        confidence: 82,
+        projectedOccupancy: 76,
+        estimatedInterestedMembers: 12,
+        source: 'fill_gap',
+      }),
+      proposal({
+        id: 'fri-drill',
+        dayOfWeek: 'Friday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'DRILL',
+        skillLevel: 'BEGINNER',
+        confidence: 80,
+        projectedOccupancy: 74,
+        estimatedInterestedMembers: 11,
+        source: 'fill_gap',
+      }),
+      proposal({
+        id: 'fri-social',
+        dayOfWeek: 'Friday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'SOCIAL',
+        skillLevel: 'INTERMEDIATE',
+        confidence: 79,
+        projectedOccupancy: 73,
+        estimatedInterestedMembers: 11,
+        source: 'fill_gap',
+      }),
+      proposal({
+        id: 'thu-open',
+        dayOfWeek: 'Thursday',
+        timeSlot: 'afternoon',
+        startTime: '13:00',
+        endTime: '14:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'INTERMEDIATE',
+        confidence: 72,
+        projectedOccupancy: 66,
+        estimatedInterestedMembers: 8,
+        source: 'fill_gap',
+      }),
+      proposal({
+        id: 'mon-social',
+        dayOfWeek: 'Monday',
+        timeSlot: 'evening',
+        startTime: '18:00',
+        endTime: '19:30',
+        format: 'SOCIAL',
+        skillLevel: 'BEGINNER',
+        confidence: 74,
+        projectedOccupancy: 68,
+        estimatedInterestedMembers: 8,
+      }),
+    ], 4)
+
+    const fridayMorningSelections = selected.filter(
+      (item) =>
+        item.dayOfWeek === 'Friday' &&
+        item.startTime === '09:00' &&
+        item.endTime === '10:30',
+    )
+
+    expect(fridayMorningSelections).toHaveLength(1)
+    expect(selected.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['fri-open', 'thu-open', 'mon-social']),
+    )
   })
 })
 

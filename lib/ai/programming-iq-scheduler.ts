@@ -755,6 +755,13 @@ function getSlotSignature(proposal: AdvisorProgrammingProposalDraft) {
   return `${proposal.dayOfWeek}__${proposal.timeSlot}__${proposal.startTime}__${proposal.format}__${proposal.skillLevel}`
 }
 
+function getWindowSignature(proposal: Pick<
+  AdvisorProgrammingProposalDraft,
+  'dayOfWeek' | 'startTime' | 'endTime'
+>) {
+  return `${proposal.dayOfWeek}__${proposal.startTime}__${proposal.endTime}`
+}
+
 function getSuggestionVariantSignature(proposal: Pick<
   AdvisorProgrammingProposalDraft,
   'dayOfWeek' | 'startTime' | 'format' | 'skillLevel'
@@ -786,9 +793,36 @@ function canDuplicateProposal(
   )
 }
 
+function canShareWindow(
+  proposal: AdvisorProgrammingProposalDraft,
+  selected: AdvisorProgrammingProposalDraft[],
+  pinnedProposalIds: Set<string>,
+) {
+  const sameWindowSelected = selected.filter(
+    (candidate) => getWindowSignature(candidate) === getWindowSignature(proposal),
+  )
+  if (sameWindowSelected.length === 0) return true
+
+  const sameSlotSelected = sameWindowSelected.filter(
+    (candidate) => getSlotSignature(candidate) === getSlotSignature(proposal),
+  )
+  if (sameSlotSelected.length > 0) {
+    return sameWindowSelected.length === 1 && canDuplicateProposal(proposal, selected)
+  }
+
+  if (!pinnedProposalIds.has(proposal.id)) return false
+
+  const pinnedWindowCount = sameWindowSelected.filter((candidate) =>
+    pinnedProposalIds.has(candidate.id),
+  ).length
+
+  return pinnedWindowCount === 0 && sameWindowSelected.length < 2
+}
+
 function getPortfolioPenalty(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
+  pinnedProposalIds: Set<string> = new Set<string>(),
 ) {
   let penalty = 0
 
@@ -802,6 +836,14 @@ function getPortfolioPenalty(
   const sameFormatCount = selected.filter((candidate) => candidate.format === proposal.format).length
   if (sameFormatCount >= 2) {
     penalty += (sameFormatCount - 1) * 6
+  }
+
+  const sameWindowCount = selected.filter(
+    (candidate) => getWindowSignature(candidate) === getWindowSignature(proposal),
+  ).length
+  if (sameWindowCount > 0) {
+    if (!canShareWindow(proposal, selected, pinnedProposalIds)) return 999
+    penalty += proposal.projectedOccupancy >= 90 ? 12 * sameWindowCount : 22 * sameWindowCount
   }
 
   const sameSlotCount = selected.filter(
@@ -842,7 +884,8 @@ function getGoalScores(
     Math.round((proposal.estimatedInterestedMembers / Math.max(proposal.maxPlayers || 1, 1)) * 100),
   )
   const conflictPenalty = getConflictPenalty(proposal)
-  const portfolioPenalty = getPortfolioPenalty(proposal, selected)
+  const portfolioPenalty = getPortfolioPenalty(proposal, selected, context.pinnedProposalIds)
+  const blocked = portfolioPenalty >= 999
   const demandFit = Math.max(
     0,
     Math.min(100, proposal.confidence * 0.6 + proposal.projectedOccupancy * 0.2 + interestPressure * 0.2),
@@ -882,6 +925,7 @@ function getGoalScores(
       )
 
   return {
+    blocked,
     demandFit,
     utilization,
     audienceProtection,
@@ -897,6 +941,7 @@ function getGreedySelectionScore(
   context: SelectionScoringContext,
 ) {
   const goalScores = getGoalScores(proposal, selected, context)
+  if (goalScores.blocked) return Number.NEGATIVE_INFINITY
   const weighted =
     goalScores.demandFit * context.goalWeights.demandFit +
     goalScores.utilization * context.goalWeights.utilization +
@@ -1067,6 +1112,7 @@ function buildLiveOptimizations(input: {
 
   const pinnedProposalIds = candidates
     .slice()
+    .filter((candidate) => candidate.type === 'replace')
     .sort((left, right) => right.scoreDelta - left.scoreDelta)
     .slice(0, 3)
     .map((candidate) => candidate.after.proposalId)
@@ -1079,7 +1125,7 @@ function buildLiveOptimizations(input: {
   }
 }
 
-function selectBalancedProposals(
+export function selectBalancedProposals(
   proposals: AdvisorProgrammingProposalDraft[],
   targetCount: number,
   pinnedProposalIds: string[] = [],

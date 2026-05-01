@@ -113,7 +113,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const [activeCell, setActiveCell] = useState<GridSelection | null>(null)
   const [generating, setGenerating] = useState(false)
   const [showClearSuggestionsModal, setShowClearSuggestionsModal] = useState(false)
-  const [showGenerationSummaryModal, setShowGenerationSummaryModal] = useState(false)
+  const [showGenerationSummaryPanel, setShowGenerationSummaryPanel] = useState(false)
   const [lastGeneratedAt, setLastGeneratedAt] = useState<Date | null>(null)
   const [generationInsights, setGenerationInsights] = useState<string[]>([])
   const [generationSummary, setGenerationSummary] = useState<{
@@ -251,7 +251,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
       setGenerationInsights(result?.insights || [])
       setGenerationSummary(result?.signalSummary || null)
       setGenerationOutcomeSummary(result?.summary || null)
-      setShowGenerationSummaryModal(Boolean(result?.summary))
+      setShowGenerationSummaryPanel(Boolean(result?.summary))
       if (!isDemo && 'refetch' in gridQuery) {
         await (gridQuery as any).refetch?.()
       }
@@ -613,6 +613,15 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         </div>
       )}
 
+      {!generating && generationOutcomeSummary && (
+        <ProgrammingGenerationSummaryPanel
+          open={showGenerationSummaryPanel}
+          prompt={regeneratePrompt.trim()}
+          summary={generationOutcomeSummary}
+          onToggle={() => setShowGenerationSummaryPanel((current) => !current)}
+        />
+      )}
+
       {/* Generating overlay */}
       {generating && (
         <div className="rounded-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
@@ -705,13 +714,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         </div>
       )}
 
-      <ProgrammingGenerationSummaryModal
-        open={showGenerationSummaryModal}
-        prompt={regeneratePrompt.trim()}
-        summary={generationOutcomeSummary}
-        onClose={() => setShowGenerationSummaryModal(false)}
-      />
-
       <ProgrammingClearSuggestionsModal
         open={showClearSuggestionsModal}
         weekLabel={formatWeekRange(weekStart)}
@@ -780,73 +782,70 @@ function StatCard({
   )
 }
 
-function ProgrammingGenerationSummaryModal({
+function ProgrammingGenerationSummaryPanel({
   open,
   prompt,
   summary,
-  onClose,
+  onToggle,
 }: {
   open: boolean
   prompt: string
   summary: ProgrammingGenerationSummary | null
-  onClose: () => void
+  onToggle: () => void
 }) {
-  if (!open || !summary) return null
+  if (!summary) return null
 
   return (
     <div
-      className="fixed inset-0 z-[145] flex items-center justify-center bg-[rgba(6,10,24,0.78)] px-4 py-6 backdrop-blur-md"
-      onClick={onClose}
+      className="rounded-2xl border border-white/8 bg-[#0D1224]/70 shadow-[0_12px_40px_rgba(3,8,24,0.18)] overflow-hidden"
     >
-      <div
-        className="relative w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/6 bg-[#0D1224]/95 shadow-[0_18px_60px_rgba(3,8,24,0.42)]"
-        onClick={(e) => e.stopPropagation()}
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-start gap-3 p-4 text-left"
       >
-        <div className="absolute -left-24 top-0 h-48 w-48 rounded-full bg-cyan-400/8 blur-3xl" />
-        <div className="absolute -right-24 bottom-0 h-56 w-56 rounded-full bg-violet-500/8 blur-3xl" />
-
-        <div className="relative p-6 sm:p-7">
-          <div className="mb-6 flex items-start justify-between gap-4">
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <div
-                  className="flex h-11 w-11 items-center justify-center rounded-2xl"
-                  style={{
-                    background: 'linear-gradient(135deg, rgba(139,92,246,0.18), rgba(59,130,246,0.12))',
-                    border: '1px solid rgba(255,255,255,0.06)',
-                  }}
-                >
-                  <Sparkles className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-semibold text-white">
-                    Refresh summary
-                  </h3>
-                  <p className="mt-1 text-sm leading-6 text-slate-300">
-                    What improved, what changed, and how your request scored.
-                  </p>
-                </div>
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-2xl flex-shrink-0"
+          style={{
+            background: 'linear-gradient(135deg, rgba(139,92,246,0.18), rgba(59,130,246,0.12))',
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}
+        >
+          <Sparkles className="h-5 w-5 text-white" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-white">Latest refresh summary</div>
+              <div className="mt-1 text-xs text-slate-400">
+                {summary.changes.length} changes · {summary.improvements.length} improvements
+                {summary.requestSummary ? ` · ${summary.requestSummary.requestedIdeas} requested ideas reviewed` : ''}
               </div>
               {prompt && (
                 <div
-                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-violet-400/18 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-100"
+                  className="mt-2 inline-flex max-w-full items-center gap-2 rounded-full border border-violet-400/18 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-100"
                 >
                   <Sparkles className="h-3.5 w-3.5 text-violet-300" />
                   <span className="truncate">Request: {prompt}</span>
                 </div>
               )}
             </div>
-
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
-              aria-label="Close"
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform"
+              style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(148,163,184,0.14)',
+                transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
+              }}
             >
-              <X className="h-4 w-4" />
-            </button>
+              <ChevronDown className="w-4 h-4" style={{ color: '#CBD5E1' }} />
+            </div>
           </div>
+        </div>
+      </button>
 
+      {open && (
+        <div className="px-4 pb-4">
           <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
             <div className="space-y-4">
               <section
@@ -958,18 +957,8 @@ function ProgrammingGenerationSummaryModal({
               )}
             </section>
           </div>
-
-          <div className="mt-6 flex justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/10"
-            >
-              Close
-            </button>
-          </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }
