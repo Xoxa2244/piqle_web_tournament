@@ -22,7 +22,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import {
   Brain, Calendar, Sparkles, Wand2, ChevronLeft, ChevronRight,
   ShieldAlert, TrendingUp, AlertTriangle,
-  Loader2, Info, Clock, Trash2, X, SlidersHorizontal, CheckCircle2,
+  Loader2, Info, Clock, Trash2, X, SlidersHorizontal, CheckCircle2, ChevronDown, HelpCircle,
 } from 'lucide-react'
 import {
   useProgrammingScheduleGrid,
@@ -109,6 +109,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const [regeneratePrompt, setRegeneratePrompt] = useState('')
   const [selectedPresetIds, setSelectedPresetIds] = useState<ProgrammingStrategyPresetId[]>([])
   const [prioritizeRequest, setPrioritizeRequest] = useState(false)
+  const [showStrategyPanel, setShowStrategyPanel] = useState(false)
   const [activeCell, setActiveCell] = useState<GridSelection | null>(null)
   const [generating, setGenerating] = useState(false)
   const [showClearSuggestionsModal, setShowClearSuggestionsModal] = useState(false)
@@ -156,6 +157,20 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     () => new Map(courts.map((court: any) => [court.id, court.name])),
     [courts],
   )
+  const strategySummaryText = useMemo(() => {
+    const parts: string[] = []
+    if (selectedPresetIds.length > 0) {
+      parts.push(
+        `${selectedPresetIds.length} priorit${selectedPresetIds.length === 1 ? 'y' : 'ies'} selected`,
+      )
+    } else {
+      parts.push('Auto mode')
+    }
+    if (regeneratePrompt.trim()) {
+      parts.push(prioritizeRequest ? 'Priority request enabled' : 'Request will be scored normally')
+    }
+    return parts.join(' · ')
+  }, [prioritizeRequest, regeneratePrompt, selectedPresetIds.length])
 
   // Stats derived from the current grid. We keep these here (not in a
   // tRPC call) so switching weeks updates instantly without a round-trip.
@@ -392,100 +407,147 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           )}
         </div>
 
+        {regeneratePrompt.trim() && (
+          <button
+            type="button"
+            onClick={() => setPrioritizeRequest((current) => !current)}
+            className="w-full rounded-2xl p-3 text-left transition-all"
+            style={{
+              background: prioritizeRequest ? 'rgba(16,185,129,0.10)' : 'rgba(15,23,42,0.32)',
+              border: prioritizeRequest
+                ? '1px solid rgba(16,185,129,0.3)'
+                : '1px solid rgba(148,163,184,0.18)',
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <div
+                className="mt-0.5 h-5 w-5 rounded-full border flex items-center justify-center flex-shrink-0"
+                style={{
+                  borderColor: prioritizeRequest ? 'rgba(16,185,129,0.5)' : 'rgba(148,163,184,0.28)',
+                  background: prioritizeRequest ? 'rgba(16,185,129,0.18)' : 'transparent',
+                }}
+              >
+                {prioritizeRequest && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#10B981' }} />}
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <div className="text-sm font-medium" style={{ color: 'var(--heading)' }}>
+                    Treat this request as a priority
+                  </div>
+                  <div className="group relative">
+                    <div
+                      className="inline-flex h-5 w-5 items-center justify-center rounded-full"
+                      style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--t4)' }}
+                    >
+                      <HelpCircle className="w-3.5 h-3.5" />
+                    </div>
+                    <div
+                      className="pointer-events-none absolute left-1/2 top-[calc(100%+10px)] z-10 w-64 -translate-x-1/2 rounded-xl px-3 py-2 text-xs leading-5 opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100"
+                      style={{
+                        background: 'rgba(15,23,42,0.96)',
+                        border: '1px solid rgba(148,163,184,0.18)',
+                        color: '#CBD5E1',
+                      }}
+                    >
+                      This boosts ideas that match your typed request. It does not change the overall weekly strategy by itself.
+                    </div>
+                  </div>
+                </div>
+                <div className="text-xs mt-1 leading-5" style={{ color: 'var(--t4)' }}>
+                  Your request is always evaluated. Turn this on when you want the engine to push your request harder before ranking the rest of the week.
+                </div>
+              </div>
+            </div>
+          </button>
+        )}
+
         <div
           className="rounded-2xl p-4 space-y-4"
           style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
         >
-          <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={() => setShowStrategyPanel((current) => !current)}
+            className="w-full flex items-start gap-3 text-left"
+          >
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: 'rgba(139,92,246,0.12)' }}
             >
               <SlidersHorizontal className="w-5 h-5" style={{ color: '#8B5CF6' }} />
             </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
-                Strategy priorities
-              </div>
-              <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
-                Choose any priorities you want to emphasize, or leave them empty for Auto mode.
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                    Strategy priorities
+                  </div>
+                  <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                    {strategySummaryText}
+                  </div>
+                </div>
+                <div
+                  className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform"
+                  style={{
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(148,163,184,0.14)',
+                    transform: showStrategyPanel ? 'rotate(180deg)' : 'rotate(0deg)',
+                  }}
+                >
+                  <ChevronDown className="w-4 h-4" style={{ color: 'var(--t4)' }} />
+                </div>
               </div>
             </div>
-          </div>
+          </button>
 
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {strategyPresets.map((preset) => {
-              const selected = selectedPresetIds.includes(preset.id)
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => togglePreset(preset.id)}
-                  className="rounded-2xl p-3 text-left transition-all"
-                  style={{
-                    background: selected ? 'rgba(139,92,246,0.12)' : 'rgba(15,23,42,0.32)',
-                    border: selected
-                      ? '1px solid rgba(139,92,246,0.38)'
-                      : '1px solid rgba(148,163,184,0.18)',
-                    boxShadow: selected ? '0 10px 28px rgba(139,92,246,0.12)' : 'none',
-                  }}
-                >
-                  <div className="flex items-start gap-2">
-                    <div
-                      className="mt-0.5 h-5 w-5 rounded-full border flex items-center justify-center flex-shrink-0"
+          {showStrategyPanel && (
+            <div className="space-y-4 pt-1">
+              <div className="text-xs" style={{ color: 'var(--t4)' }}>
+                Choose any priorities you want to emphasize, or leave them empty for Auto mode.
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {strategyPresets.map((preset) => {
+                  const selected = selectedPresetIds.includes(preset.id)
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => togglePreset(preset.id)}
+                      className="rounded-2xl p-3 text-left transition-all"
                       style={{
-                        borderColor: selected ? 'rgba(139,92,246,0.55)' : 'rgba(148,163,184,0.28)',
-                        background: selected ? 'rgba(139,92,246,0.18)' : 'transparent',
+                        background: selected ? 'rgba(139,92,246,0.12)' : 'rgba(15,23,42,0.32)',
+                        border: selected
+                          ? '1px solid rgba(139,92,246,0.38)'
+                          : '1px solid rgba(148,163,184,0.18)',
+                        boxShadow: selected ? '0 10px 28px rgba(139,92,246,0.12)' : 'none',
                       }}
                     >
-                      {selected && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium" style={{ color: 'var(--heading)' }}>
-                        {preset.label}
+                      <div className="flex items-start gap-2">
+                        <div
+                          className="mt-0.5 h-5 w-5 rounded-full border flex items-center justify-center flex-shrink-0"
+                          style={{
+                            borderColor: selected ? 'rgba(139,92,246,0.55)' : 'rgba(148,163,184,0.28)',
+                            background: selected ? 'rgba(139,92,246,0.18)' : 'transparent',
+                          }}
+                        >
+                          {selected && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium" style={{ color: 'var(--heading)' }}>
+                            {preset.label}
+                          </div>
+                          <div className="text-xs mt-1 leading-5" style={{ color: 'var(--t4)' }}>
+                            {preset.description}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs mt-1 leading-5" style={{ color: 'var(--t4)' }}>
-                        {preset.description}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-
-          {regeneratePrompt.trim() && (
-            <button
-              type="button"
-              onClick={() => setPrioritizeRequest((current) => !current)}
-              className="w-full rounded-2xl p-3 text-left transition-all"
-              style={{
-                background: prioritizeRequest ? 'rgba(16,185,129,0.10)' : 'rgba(15,23,42,0.32)',
-                border: prioritizeRequest
-                  ? '1px solid rgba(16,185,129,0.3)'
-                  : '1px solid rgba(148,163,184,0.18)',
-              }}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  className="mt-0.5 h-5 w-5 rounded-full border flex items-center justify-center flex-shrink-0"
-                  style={{
-                    borderColor: prioritizeRequest ? 'rgba(16,185,129,0.5)' : 'rgba(148,163,184,0.28)',
-                    background: prioritizeRequest ? 'rgba(16,185,129,0.18)' : 'transparent',
-                  }}
-                >
-                  {prioritizeRequest && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#10B981' }} />}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-medium" style={{ color: 'var(--heading)' }}>
-                    Treat this request as a priority
-                  </div>
-                  <div className="text-xs mt-1 leading-5" style={{ color: 'var(--t4)' }}>
-                    Your request is always evaluated. Turn this on when you want the engine to push your request harder before ranking the rest of the week.
-                  </div>
-                </div>
+                    </button>
+                  )
+                })}
               </div>
-            </button>
+
+            </div>
           )}
         </div>
       </header>
