@@ -1588,6 +1588,17 @@ export function mockProgrammingGrid(weekStartDate: string) {
           '12 Beginner members available in pool',
         ],
         warnings: [],
+        requestedByAdmin: true,
+        requestEvaluation: {
+          verdict: 'viable_with_risks',
+          label: 'Viable with risks',
+          summary: 'Requested idea can work, but it carries noticeable tradeoffs.',
+          reasons: [
+            'Could be placed directly in the calendar.',
+            'Demand is weaker than your strongest evening options.',
+          ],
+          score: 63,
+        },
       },
     },
     {
@@ -1661,6 +1672,41 @@ export function mockProgrammingGenerationResult() {
       preferencesCount: 89,
       unmetInterestRequests: 14,
       activeCourts: 3,
+    },
+    summary: {
+      appliedPresets: [
+        {
+          id: 'FILL_IDLE_HOURS',
+          label: 'Fill idle hours',
+          description: 'Focus on empty court time and improve court utilization.',
+          source: 'selected',
+        },
+        {
+          id: 'BALANCE_THE_WEEK',
+          label: 'Balance the week',
+          description: 'Keep a healthier mix of skill levels, formats, and times.',
+          source: 'inferred',
+        },
+      ],
+      requestPriorityNote: 'Your request is included and scored normally against the week.',
+      requestSummary: {
+        requestedIdeas: 2,
+        placed: 1,
+        backup: 1,
+        unplaced: 0,
+        overallVerdict: 'Viable with risks',
+        overallSummary: 'Requested idea can work, but it carries noticeable tradeoffs.',
+      },
+      improvements: [
+        '6 publish-ready suggestions generated across 3 active courts.',
+        'Average projected occupancy for calendar-ready suggestions is 72%.',
+        '2 off-peak ideas were evaluated to improve idle court coverage.',
+      ],
+      changes: [
+        'Added Tuesday 19:30 Intermediate Open Play.',
+        'Added Wednesday 18:30 Beginner Clinic.',
+        'Added as backup Thursday 19:00 Intermediate Drill.',
+      ],
     },
     draftCount: 6,
   }

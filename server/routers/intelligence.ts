@@ -53,6 +53,7 @@ import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guard
 import { buildPlatformUrl, getPlatformBaseUrl, getPlatformBaseUrlFromRequest } from '@/lib/platform-base-url'
 import { normalizeMembership } from '@/lib/ai/membership-intelligence'
 import { classifyActivityLevel, classifyEngagementTrend, classifyValueTier } from '@/lib/ai/member-health'
+import { PROGRAMMING_IQ_PRESET_IDS } from '@/lib/ai/programming-iq-strategy'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
@@ -8217,6 +8218,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       clubId: z.string().uuid(),
       weekStartDate: z.string(),
       regeneratePrompt: z.string().max(1000).optional(),
+      selectedPresetIds: z.array(z.enum(PROGRAMMING_IQ_PRESET_IDS)).max(PROGRAMMING_IQ_PRESET_IDS.length).optional(),
+      prioritizeRequest: z.boolean().optional(),
       courtIds: z.array(z.string()).max(50).optional(),
       targetSuggestionCount: z.number().int().min(1).max(100).optional(),
     }))
@@ -8462,6 +8465,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         targetSuggestionCount: input.targetSuggestionCount,
         regeneratePrompt: input.regeneratePrompt,
         regenerateHint,
+        selectedPresetIds: input.selectedPresetIds,
+        inferredPresetIds: regenerateHint?.inferredPresets || [],
+        prioritizeRequest: input.prioritizeRequest,
         previousSuggestionSignatures,
         timezone: clubTimezone,
       })
@@ -8497,18 +8503,26 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             clubId: input.clubId,
             weekStartDate: input.weekStartDate,
             regeneratePrompt: input.regeneratePrompt || null,
+            selectedPresetIds: input.selectedPresetIds || [],
+            prioritizeRequest: !!input.prioritizeRequest,
           },
           workingAction: {
             kind: 'program_schedule',
             clubId: input.clubId,
             weekStartDate: input.weekStartDate,
             regeneratePrompt: input.regeneratePrompt || null,
+            selectedPresetIds: input.selectedPresetIds || [],
+            prioritizeRequest: !!input.prioritizeRequest,
           },
           sandboxMode: false,
           metadata: {
             source: 'programming_iq',
             weekStartDate: input.weekStartDate,
             generationId: grid.generationId,
+            selectedPresetIds: input.selectedPresetIds || [],
+            inferredPresetIds: regenerateHint?.inferredPresets || [],
+            prioritizeRequest: !!input.prioritizeRequest,
+            summary: grid.summary,
           },
         } as any,
         select: { id: true },
@@ -8545,6 +8559,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
               warnings: cell.warnings || [],
               origin: 'programming_iq',
               cellKind: cell.kind,
+              requestedByAdmin: !!cell.requestedByAdmin,
+              requestEvaluation: cell.requestEvaluation || null,
+              selectedPresetIds: input.selectedPresetIds || [],
+              inferredPresetIds: regenerateHint?.inferredPresets || [],
             },
           },
         }).catch((err: any) => {
@@ -8571,6 +8589,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           weekStartDate: input.weekStartDate,
           stats: grid.stats,
           regeneratePrompt: input.regeneratePrompt || null,
+          selectedPresetIds: input.selectedPresetIds || [],
+          inferredPresetIds: regenerateHint?.inferredPresets || [],
+          prioritizeRequest: !!input.prioritizeRequest,
+          summary: grid.summary,
         },
       })
 

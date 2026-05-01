@@ -22,7 +22,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import {
   Brain, Calendar, Sparkles, Wand2, ChevronLeft, ChevronRight,
   ShieldAlert, TrendingUp, AlertTriangle,
-  Loader2, Info, Clock, Trash2, X,
+  Loader2, Info, Clock, Trash2, X, SlidersHorizontal, CheckCircle2,
 } from 'lucide-react'
 import {
   useProgrammingScheduleGrid,
@@ -34,6 +34,11 @@ import {
 import { AILoadingAnimation } from './AILoadingAnimation'
 import { ProgrammingGrid, type GridSelection, type GridDraft } from './programming/ProgrammingGrid'
 import { CellEditPopover } from './programming/CellEditPopover'
+import {
+  getProgrammingStrategyPresets,
+  type ProgrammingAppliedPreset,
+  type ProgrammingStrategyPresetId,
+} from '@/lib/ai/programming-iq-strategy'
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -82,13 +87,32 @@ interface ProgrammingIQProps {
   clubId: string
 }
 
+interface ProgrammingGenerationSummary {
+  appliedPresets: ProgrammingAppliedPreset[]
+  requestPriorityNote: string | null
+  requestSummary: {
+    requestedIdeas: number
+    placed: number
+    backup: number
+    unplaced: number
+    overallVerdict: string | null
+    overallSummary: string | null
+  } | null
+  improvements: string[]
+  changes: string[]
+}
+
 export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
+  const strategyPresets = useMemo(() => getProgrammingStrategyPresets(), [])
   const isDemo = useIsDemo()
   const [weekStart, setWeekStart] = useState<string>(() => toLocalISODate(mondayOf(new Date())))
   const [regeneratePrompt, setRegeneratePrompt] = useState('')
+  const [selectedPresetIds, setSelectedPresetIds] = useState<ProgrammingStrategyPresetId[]>([])
+  const [prioritizeRequest, setPrioritizeRequest] = useState(false)
   const [activeCell, setActiveCell] = useState<GridSelection | null>(null)
   const [generating, setGenerating] = useState(false)
   const [showClearSuggestionsModal, setShowClearSuggestionsModal] = useState(false)
+  const [showGenerationSummaryModal, setShowGenerationSummaryModal] = useState(false)
   const [lastGeneratedAt, setLastGeneratedAt] = useState<Date | null>(null)
   const [generationInsights, setGenerationInsights] = useState<string[]>([])
   const [generationSummary, setGenerationSummary] = useState<{
@@ -97,6 +121,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     unmetInterestRequests: number
     activeCourts: number
   } | null>(null)
+  const [generationOutcomeSummary, setGenerationOutcomeSummary] = useState<ProgrammingGenerationSummary | null>(null)
 
   const gridQuery = useProgrammingScheduleGrid(clubId, weekStart)
   const generateMutation = useGenerateProgrammingSchedule()
@@ -189,12 +214,20 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
               clubId,
               weekStartDate: weekStart,
               regeneratePrompt: regeneratePrompt.trim() || undefined,
+              selectedPresetIds,
+              prioritizeRequest: regeneratePrompt.trim() ? prioritizeRequest : false,
             })
             .then(resolve)
             .catch(reject)
         } else {
           mutation.mutate(
-            { clubId, weekStartDate: weekStart, regeneratePrompt: regeneratePrompt.trim() || undefined },
+            {
+              clubId,
+              weekStartDate: weekStart,
+              regeneratePrompt: regeneratePrompt.trim() || undefined,
+              selectedPresetIds,
+              prioritizeRequest: regeneratePrompt.trim() ? prioritizeRequest : false,
+            },
             { onSuccess: resolve, onError: reject },
           )
         }
@@ -202,6 +235,8 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
       setLastGeneratedAt(new Date())
       setGenerationInsights(result?.insights || [])
       setGenerationSummary(result?.signalSummary || null)
+      setGenerationOutcomeSummary(result?.summary || null)
+      setShowGenerationSummaryModal(Boolean(result?.summary))
       if (!isDemo && 'refetch' in gridQuery) {
         await (gridQuery as any).refetch?.()
       }
@@ -248,11 +283,26 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     })
   }
 
+  const togglePreset = (presetId: ProgrammingStrategyPresetId) => {
+    setSelectedPresetIds((current) => {
+      if (current.includes(presetId)) {
+        return current.filter((id) => id !== presetId)
+      }
+      return [...current, presetId]
+    })
+  }
+
   // Reset draft preview state when switching to a week that hasn't been
   // generated yet — don't keep a prior run's stats.
   useEffect(() => {
     setActiveCell(null)
   }, [weekStart])
+
+  useEffect(() => {
+    if (!regeneratePrompt.trim()) {
+      setPrioritizeRequest(false)
+    }
+  }, [regeneratePrompt])
 
   return (
     <div className="space-y-5 pb-32 md:pb-24">
@@ -339,6 +389,103 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
               <Clock className="w-3 h-3" />
               Generated {timeSince(lastGeneratedAt)}
             </span>
+          )}
+        </div>
+
+        <div
+          className="rounded-2xl p-4 space-y-4"
+          style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: 'rgba(139,92,246,0.12)' }}
+            >
+              <SlidersHorizontal className="w-5 h-5" style={{ color: '#8B5CF6' }} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                Strategy priorities
+              </div>
+              <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                Choose any priorities you want to emphasize, or leave them empty for Auto mode.
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {strategyPresets.map((preset) => {
+              const selected = selectedPresetIds.includes(preset.id)
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => togglePreset(preset.id)}
+                  className="rounded-2xl p-3 text-left transition-all"
+                  style={{
+                    background: selected ? 'rgba(139,92,246,0.12)' : 'rgba(15,23,42,0.32)',
+                    border: selected
+                      ? '1px solid rgba(139,92,246,0.38)'
+                      : '1px solid rgba(148,163,184,0.18)',
+                    boxShadow: selected ? '0 10px 28px rgba(139,92,246,0.12)' : 'none',
+                  }}
+                >
+                  <div className="flex items-start gap-2">
+                    <div
+                      className="mt-0.5 h-5 w-5 rounded-full border flex items-center justify-center flex-shrink-0"
+                      style={{
+                        borderColor: selected ? 'rgba(139,92,246,0.55)' : 'rgba(148,163,184,0.28)',
+                        background: selected ? 'rgba(139,92,246,0.18)' : 'transparent',
+                      }}
+                    >
+                      {selected && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium" style={{ color: 'var(--heading)' }}>
+                        {preset.label}
+                      </div>
+                      <div className="text-xs mt-1 leading-5" style={{ color: 'var(--t4)' }}>
+                        {preset.description}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {regeneratePrompt.trim() && (
+            <button
+              type="button"
+              onClick={() => setPrioritizeRequest((current) => !current)}
+              className="w-full rounded-2xl p-3 text-left transition-all"
+              style={{
+                background: prioritizeRequest ? 'rgba(16,185,129,0.10)' : 'rgba(15,23,42,0.32)',
+                border: prioritizeRequest
+                  ? '1px solid rgba(16,185,129,0.3)'
+                  : '1px solid rgba(148,163,184,0.18)',
+              }}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="mt-0.5 h-5 w-5 rounded-full border flex items-center justify-center flex-shrink-0"
+                  style={{
+                    borderColor: prioritizeRequest ? 'rgba(16,185,129,0.5)' : 'rgba(148,163,184,0.28)',
+                    background: prioritizeRequest ? 'rgba(16,185,129,0.18)' : 'transparent',
+                  }}
+                >
+                  {prioritizeRequest && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#10B981' }} />}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-medium" style={{ color: 'var(--heading)' }}>
+                    Treat this request as a priority
+                  </div>
+                  <div className="text-xs mt-1 leading-5" style={{ color: 'var(--t4)' }}>
+                    Your request is always evaluated. Turn this on when you want the engine to push your request harder before ranking the rest of the week.
+                  </div>
+                </div>
+              </div>
+            </button>
           )}
         </div>
       </header>
@@ -490,6 +637,13 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         </div>
       )}
 
+      <ProgrammingGenerationSummaryModal
+        open={showGenerationSummaryModal}
+        prompt={regeneratePrompt.trim()}
+        summary={generationOutcomeSummary}
+        onClose={() => setShowGenerationSummaryModal(false)}
+      />
+
       <ProgrammingClearSuggestionsModal
         open={showClearSuggestionsModal}
         weekLabel={formatWeekRange(weekStart)}
@@ -554,6 +708,200 @@ function StatCard({
         <div className="text-xs" style={{ color: 'var(--t4)' }}>{label}</div>
       </div>
       <div className="text-xl font-bold mt-1" style={{ color: 'var(--heading)' }}>{value}</div>
+    </div>
+  )
+}
+
+function ProgrammingGenerationSummaryModal({
+  open,
+  prompt,
+  summary,
+  onClose,
+}: {
+  open: boolean
+  prompt: string
+  summary: ProgrammingGenerationSummary | null
+  onClose: () => void
+}) {
+  if (!open || !summary) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-[145] flex items-center justify-center bg-[rgba(6,10,24,0.78)] px-4 py-6 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <div
+        className="relative w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/6 bg-[#0D1224]/95 shadow-[0_18px_60px_rgba(3,8,24,0.42)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="absolute -left-24 top-0 h-48 w-48 rounded-full bg-cyan-400/8 blur-3xl" />
+        <div className="absolute -right-24 bottom-0 h-56 w-56 rounded-full bg-violet-500/8 blur-3xl" />
+
+        <div className="relative p-6 sm:p-7">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex h-11 w-11 items-center justify-center rounded-2xl"
+                  style={{
+                    background: 'linear-gradient(135deg, rgba(139,92,246,0.18), rgba(59,130,246,0.12))',
+                    border: '1px solid rgba(255,255,255,0.06)',
+                  }}
+                >
+                  <Sparkles className="h-5 w-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold text-white">
+                    Refresh summary
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-300">
+                    What improved, what changed, and how your request scored.
+                  </p>
+                </div>
+              </div>
+              {prompt && (
+                <div
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-violet-400/18 bg-violet-500/10 px-3 py-1.5 text-xs text-violet-100"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+                  <span className="truncate">Request: {prompt}</span>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+            <div className="space-y-4">
+              <section
+                className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
+              >
+                <div className="text-sm font-semibold text-white">Applied priorities</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {summary.appliedPresets.length > 0 ? summary.appliedPresets.map((preset) => (
+                    <div
+                      key={`${preset.source}-${preset.id}`}
+                      className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-white">{preset.label}</span>
+                        <span
+                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                          style={{
+                            background: preset.source === 'selected' ? 'rgba(139,92,246,0.18)' : 'rgba(59,130,246,0.16)',
+                            color: preset.source === 'selected' ? '#C4B5FD' : '#BFDBFE',
+                          }}
+                        >
+                          {preset.source === 'selected' ? 'Selected' : 'Inferred'}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs leading-5 text-slate-400">
+                        {preset.description}
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-slate-300">
+                      Auto mode balanced the week without any explicit priorities.
+                    </div>
+                  )}
+                </div>
+                {summary.requestPriorityNote && (
+                  <div className="mt-3 text-xs leading-5 text-slate-400">
+                    {summary.requestPriorityNote}
+                  </div>
+                )}
+              </section>
+
+              <section
+                className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
+              >
+                <div className="text-sm font-semibold text-white">What improved</div>
+                <div className="mt-3 space-y-2">
+                  {summary.improvements.length > 0 ? summary.improvements.map((item, index) => (
+                    <div key={index} className="flex items-start gap-2 text-sm text-slate-300">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
+                      <span>{item}</span>
+                    </div>
+                  )) : (
+                    <div className="text-sm text-slate-400">No improvement summary recorded for this run.</div>
+                  )}
+                </div>
+              </section>
+
+              <section
+                className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
+              >
+                <div className="text-sm font-semibold text-white">What changed</div>
+                <div className="mt-3 space-y-2">
+                  {summary.changes.length > 0 ? summary.changes.map((item, index) => (
+                    <div key={index} className="flex items-start gap-2 text-sm text-slate-300">
+                      <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-violet-400" />
+                      <span>{item}</span>
+                    </div>
+                  )) : (
+                    <div className="text-sm text-slate-400">No schedule changes were summarized.</div>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <section
+              className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
+            >
+              <div className="text-sm font-semibold text-white">Request evaluation</div>
+              {summary.requestSummary ? (
+                <>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <SummaryBadge label="Requested" value={summary.requestSummary.requestedIdeas} tone="neutral" />
+                    <SummaryBadge label="Placed" value={summary.requestSummary.placed} tone="good" />
+                    <SummaryBadge label="Backup" value={summary.requestSummary.backup} tone="warn" />
+                    <SummaryBadge label="Unplaced" value={summary.requestSummary.unplaced} tone="neutral" />
+                  </div>
+
+                  <div
+                    className="mt-4 rounded-2xl border px-4 py-3"
+                    style={getVerdictContainerStyle(summary.requestSummary.overallVerdict)}
+                  >
+                    <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: getVerdictAccent(summary.requestSummary.overallVerdict) }}>
+                      Overall verdict
+                    </div>
+                    <div className="mt-1 text-base font-semibold text-white">
+                      {summary.requestSummary.overallVerdict || 'Request evaluated'}
+                    </div>
+                    {summary.requestSummary.overallSummary && (
+                      <div className="mt-2 text-sm leading-6 text-slate-300">
+                        {summary.requestSummary.overallSummary}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-3 text-sm leading-6 text-slate-400">
+                  No direct admin request was evaluated in this refresh.
+                </div>
+              )}
+            </section>
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-slate-200 transition hover:bg-white/10"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -665,6 +1013,78 @@ function ProgrammingClearSuggestionsModal({
       </div>
     </div>
   )
+}
+
+function SummaryBadge({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: number
+  tone: 'neutral' | 'good' | 'warn'
+}) {
+  const styles =
+    tone === 'good'
+      ? { background: 'rgba(16,185,129,0.12)', color: '#A7F3D0' }
+      : tone === 'warn'
+        ? { background: 'rgba(245,158,11,0.12)', color: '#FCD34D' }
+        : { background: 'rgba(148,163,184,0.12)', color: '#CBD5E1' }
+
+  return (
+    <div
+      className="rounded-2xl px-3 py-2 text-sm"
+      style={styles}
+    >
+      <span className="font-semibold">{value}</span>{' '}
+      <span className="opacity-90">{label}</span>
+    </div>
+  )
+}
+
+function getVerdictAccent(verdict: string | null) {
+  switch (verdict) {
+    case 'Strong fit':
+      return '#34D399'
+    case 'Viable with risks':
+      return '#FBBF24'
+    case 'Weak idea':
+      return '#F59E0B'
+    case 'Not recommended':
+      return '#F87171'
+    default:
+      return '#A78BFA'
+  }
+}
+
+function getVerdictContainerStyle(verdict: string | null): React.CSSProperties {
+  switch (verdict) {
+    case 'Strong fit':
+      return {
+        background: 'rgba(16,185,129,0.10)',
+        borderColor: 'rgba(16,185,129,0.22)',
+      }
+    case 'Viable with risks':
+      return {
+        background: 'rgba(245,158,11,0.10)',
+        borderColor: 'rgba(245,158,11,0.22)',
+      }
+    case 'Weak idea':
+      return {
+        background: 'rgba(249,115,22,0.10)',
+        borderColor: 'rgba(249,115,22,0.22)',
+      }
+    case 'Not recommended':
+      return {
+        background: 'rgba(239,68,68,0.10)',
+        borderColor: 'rgba(239,68,68,0.22)',
+      }
+    default:
+      return {
+        background: 'rgba(139,92,246,0.10)',
+        borderColor: 'rgba(139,92,246,0.22)',
+      }
+  }
 }
 
 function timeSince(d: Date): string {

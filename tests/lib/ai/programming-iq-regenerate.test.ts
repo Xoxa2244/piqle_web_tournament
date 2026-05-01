@@ -54,6 +54,7 @@ const EMPTY_HINT: RegenerateHint = {
   penalizeDays: [],
   boostTimeSlots: [],
   penalizeTimeSlots: [],
+  inferredPresets: [],
   reasoning: '',
 }
 

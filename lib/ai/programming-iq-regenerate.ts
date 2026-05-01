@@ -21,6 +21,8 @@
  */
 
 import type { AdvisorProgrammingProposalDraft } from './advisor-programming'
+import type { ProgrammingStrategyPresetId } from './programming-iq-strategy'
+import { inferProgrammingStrategyPresetsFromPrompt } from './programming-iq-strategy'
 
 // ── Hint schema ─────────────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ export interface RegenerateHint {
   penalizeDays: string[]
   boostTimeSlots: Array<'morning' | 'afternoon' | 'evening'>
   penalizeTimeSlots: Array<'morning' | 'afternoon' | 'evening'>
+  inferredPresets: ProgrammingStrategyPresetId[]
   /** One-sentence summary of what the LLM understood. Surfaced in insights. */
   reasoning: string
 }
@@ -52,6 +55,7 @@ const EMPTY_HINT: RegenerateHint = {
   penalizeDays: [],
   boostTimeSlots: [],
   penalizeTimeSlots: [],
+  inferredPresets: [],
   reasoning: '',
 }
 
@@ -211,6 +215,8 @@ export function buildHeuristicHintFromPrompt(prompt: string): RegenerateHint {
     boostTimeSlots.size > 0 ||
     penalizeTimeSlots.size > 0
 
+  const inferredPresets = inferProgrammingStrategyPresetsFromPrompt(prompt)
+
   return {
     boostFormats: Array.from(boostFormats),
     penalizeFormats: Array.from(penalizeFormats),
@@ -220,8 +226,9 @@ export function buildHeuristicHintFromPrompt(prompt: string): RegenerateHint {
     penalizeDays: Array.from(penalizeDays),
     boostTimeSlots: Array.from(boostTimeSlots),
     penalizeTimeSlots: Array.from(penalizeTimeSlots),
+    inferredPresets,
     reasoning: hasDirectionalSignal
-      ? 'Prompt reweighted with heuristic fallback.'
+      ? 'Prompt mapped to fixed strategy presets with heuristic fallback.'
       : '',
   }
 }
@@ -240,6 +247,7 @@ You MUST respond with valid JSON matching this exact shape:
   "penalizeDays": string[],
   "boostTimeSlots": string[],     // subset of ["morning", "afternoon", "evening"]
   "penalizeTimeSlots": string[],
+  "inferredPresets": string[],    // subset of ["FOLLOW_MEMBER_DEMAND","FILL_IDLE_HOURS","PROTECT_AUDIENCE","BALANCE_THE_WEEK","TEST_NEW_IDEAS"]
   "reasoning": string             // ≤ 120 chars, plain English
 }
 
@@ -248,6 +256,7 @@ Rules:
 - Use UPPER_SNAKE_CASE for skills: ALL_LEVELS, BEGINNER, CASUAL, INTERMEDIATE, COMPETITIVE, ADVANCED.
 - Use full day names: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday.
 - Time slots are always lowercase: morning, afternoon, evening.
+- Only use preset ids from: FOLLOW_MEMBER_DEMAND, FILL_IDLE_HOURS, PROTECT_AUDIENCE, BALANCE_THE_WEEK, TEST_NEW_IDEAS.
 - Leave lists empty if the admin didn't mention that dimension.
 - Don't invent preferences the admin didn't express. Ambiguous → empty.
 - NEVER add commentary outside the JSON block.`
@@ -342,6 +351,15 @@ export function parseHint(raw: string): RegenerateHint {
     penalizeDays: arr(parsed.penalizeDays),
     boostTimeSlots: timeSlotArr(parsed.boostTimeSlots),
     penalizeTimeSlots: timeSlotArr(parsed.penalizeTimeSlots),
+    inferredPresets: arr(parsed.inferredPresets)
+      .map((s) => s.toUpperCase())
+      .filter((s): s is ProgrammingStrategyPresetId =>
+        s === 'FOLLOW_MEMBER_DEMAND'
+        || s === 'FILL_IDLE_HOURS'
+        || s === 'PROTECT_AUDIENCE'
+        || s === 'BALANCE_THE_WEEK'
+        || s === 'TEST_NEW_IDEAS',
+      ),
     reasoning: typeof parsed.reasoning === 'string'
       ? parsed.reasoning.slice(0, 200)
       : '',

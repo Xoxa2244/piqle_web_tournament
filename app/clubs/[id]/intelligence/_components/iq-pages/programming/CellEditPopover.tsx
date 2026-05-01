@@ -129,6 +129,14 @@ function DraftPanel({
 
   const rationale = draft.metadata?.rationale || []
   const warnings = draft.metadata?.warnings || []
+  const requestedByAdmin = Boolean(draft.metadata?.requestedByAdmin)
+  const requestEvaluation = (draft.metadata?.requestEvaluation || null) as
+    | {
+        label?: string
+        summary?: string
+        reasons?: string[]
+      }
+    | null
 
   const handleSave = () => {
     onSave(draft.id, {
@@ -145,7 +153,7 @@ function DraftPanel({
   return (
     <div>
       <Header
-        title="Suggested session"
+        title={requestedByAdmin ? 'Requested idea' : 'Suggested session'}
         badge={`${draft.confidence}% confidence`}
         onClose={onClose}
         tone="suggestion"
@@ -170,6 +178,37 @@ function DraftPanel({
             </li>
           ))}
         </ul>
+
+        {requestEvaluation && (
+          <div
+            className="mt-4 rounded-lg p-3 text-xs"
+            style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.22)' }}
+          >
+            <div className="font-semibold mb-1" style={{ color: '#C4B5FD' }}>
+              {requestedByAdmin ? 'Requested idea verdict' : 'Evaluation'}
+            </div>
+            {requestEvaluation.label && (
+              <div className="text-sm font-semibold mb-1" style={{ color: 'var(--heading)' }}>
+                {requestEvaluation.label}
+              </div>
+            )}
+            {requestEvaluation.summary && (
+              <div style={{ color: 'var(--t3)' }}>
+                {requestEvaluation.summary}
+              </div>
+            )}
+            {(requestEvaluation.reasons || []).length > 0 && (
+              <div className="mt-2 space-y-1" style={{ color: 'var(--t4)' }}>
+                {(requestEvaluation.reasons || []).slice(0, 3).map((reason, index) => (
+                  <div key={index} className="flex gap-2">
+                    <span className="text-violet-400">•</span>
+                    <span>{reason}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Demand metrics */}
         <div className="grid grid-cols-3 gap-2 mt-4">

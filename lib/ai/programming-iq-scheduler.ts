@@ -36,6 +36,14 @@ import {
   type AdvisorProgrammingProposalDraft,
   type ProgrammingAudienceProfile,
 } from './advisor-programming'
+import {
+  buildProgrammingRequestEvaluation,
+  computeProgrammingStrategyProfile,
+  describeProgrammingRequestPriority,
+  scoreProgrammingRequestMatch,
+  type ProgrammingRequestEvaluation,
+  type ProgrammingStrategyPresetId,
+} from './programming-iq-strategy'
 import type {
   DayOfWeek,
   PlaySessionFormat,
@@ -121,6 +129,8 @@ export interface GridCell {
   playSessionId?: string | null
   /** Risk annotations — human-readable, shown in the cell popover. */
   warnings?: string[]
+  requestedByAdmin?: boolean
+  requestEvaluation?: ProgrammingRequestEvaluation | null
 }
 
 export interface BuildWeeklyGridInput {
@@ -156,6 +166,9 @@ export interface BuildWeeklyGridInput {
    *  Regenerate can explore a nearby variant instead of replaying the
    *  exact same portfolio. */
   previousSuggestionSignatures?: string[]
+  selectedPresetIds?: ProgrammingStrategyPresetId[]
+  inferredPresetIds?: ProgrammingStrategyPresetId[]
+  prioritizeRequest?: boolean
   /** Club's IANA timezone (`America/New_York` etc). Used to derive
    *  day-of-week from `date` columns that are stored as UTC midnights
    *  but represent local-day sessions. Without this, the conflict
@@ -182,6 +195,25 @@ export interface BuildWeeklyGridResult {
     preferencesCount: number
     unmetInterestRequests: number
     activeCourts: number
+  }
+  summary: {
+    appliedPresets: Array<{
+      id: ProgrammingStrategyPresetId
+      label: string
+      description: string
+      source: 'selected' | 'inferred'
+    }>
+    requestPriorityNote: string | null
+    requestSummary: {
+      requestedIdeas: number
+      placed: number
+      backup: number
+      unplaced: number
+      overallVerdict: string | null
+      overallSummary: string | null
+    } | null
+    improvements: string[]
+    changes: string[]
   }
 }
 
@@ -742,31 +774,106 @@ function getPortfolioPenalty(
   return penalty
 }
 
-function getGreedySelectionScore(
+type SelectionScoringContext = {
+  goalWeights: ReturnType<typeof computeProgrammingStrategyProfile>['goalWeights']
+  request: ReturnType<typeof parseAdvisorProgrammingRequest> | null
+  pinnedProposalIds: Set<string>
+}
+
+function getGoalScores(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
+  context: SelectionScoringContext,
 ) {
   const interestPressure = Math.min(
     100,
     Math.round((proposal.estimatedInterestedMembers / Math.max(proposal.maxPlayers || 1, 1)) * 100),
   )
-  return (
-    proposal.confidence * 1.0 +
-    proposal.projectedOccupancy * 0.55 +
-    interestPressure * 0.4 -
-    getConflictPenalty(proposal) -
-    getPortfolioPenalty(proposal, selected)
+  const conflictPenalty = getConflictPenalty(proposal)
+  const portfolioPenalty = getPortfolioPenalty(proposal, selected)
+  const demandFit = Math.max(
+    0,
+    Math.min(100, proposal.confidence * 0.6 + proposal.projectedOccupancy * 0.2 + interestPressure * 0.2),
   )
+  const utilization = Math.max(
+    0,
+    Math.min(
+      100,
+      proposal.projectedOccupancy * 0.7
+      + (proposal.source === 'fill_gap' ? 16 : 6)
+      + (proposal.timeSlot === 'morning' || proposal.timeSlot === 'afternoon' ? 8 : 0),
+    ),
+  )
+  const audienceProtection = Math.max(
+    0,
+    Math.min(100, 100 - conflictPenalty * 1.4 - (portfolioPenalty >= 999 ? 55 : portfolioPenalty * 0.6)),
+  )
+  const portfolioBalance = Math.max(
+    0,
+    Math.min(100, 100 - (portfolioPenalty >= 999 ? 60 : portfolioPenalty * 1.1)),
+  )
+  const operationalFit = Math.max(
+    0,
+    Math.min(100, 100 - conflictPenalty * 1.2),
+  )
+  const adminIntent = context.pinnedProposalIds.has(proposal.id)
+    ? 100
+    : scoreProgrammingRequestMatch(
+        {
+          dayOfWeek: proposal.dayOfWeek,
+          timeSlot: proposal.timeSlot,
+          startTime: proposal.startTime,
+          format: proposal.format,
+          skillLevel: proposal.skillLevel,
+        },
+        context.request,
+      )
+
+  return {
+    demandFit,
+    utilization,
+    audienceProtection,
+    portfolioBalance,
+    operationalFit,
+    adminIntent,
+  }
+}
+
+function getGreedySelectionScore(
+  proposal: AdvisorProgrammingProposalDraft,
+  selected: AdvisorProgrammingProposalDraft[],
+  context: SelectionScoringContext,
+) {
+  const goalScores = getGoalScores(proposal, selected, context)
+  const weighted =
+    goalScores.demandFit * context.goalWeights.demandFit +
+    goalScores.utilization * context.goalWeights.utilization +
+    goalScores.audienceProtection * context.goalWeights.audienceProtection +
+    goalScores.portfolioBalance * context.goalWeights.portfolioBalance +
+    goalScores.operationalFit * context.goalWeights.operationalFit +
+    goalScores.adminIntent * context.goalWeights.adminIntent
+
+  return weighted / 100
 }
 
 function selectBalancedProposals(
   proposals: AdvisorProgrammingProposalDraft[],
   targetCount: number,
   pinnedProposalIds: string[] = [],
+  context?: SelectionScoringContext,
 ) {
   const remaining = [...proposals]
   const selected: AdvisorProgrammingProposalDraft[] = []
   const MIN_SELECTION_SCORE = 62
+  const scoringContext = context || {
+    goalWeights: computeProgrammingStrategyProfile({
+      selectedPresetIds: [],
+      inferredPresetIds: [],
+      hasRequest: false,
+    }).goalWeights,
+    request: null,
+    pinnedProposalIds: new Set<string>(),
+  }
 
   if (pinnedProposalIds.length > 0) {
     const pinnedSet = new Set(pinnedProposalIds)
@@ -789,7 +896,7 @@ function selectBalancedProposals(
     let bestScore = Number.NEGATIVE_INFINITY
 
     for (let index = 0; index < remaining.length; index += 1) {
-      const score = getGreedySelectionScore(remaining[index], selected)
+      const score = getGreedySelectionScore(remaining[index], selected, scoringContext)
       if (score > bestScore) {
         bestScore = score
         bestIndex = index
@@ -804,8 +911,8 @@ function selectBalancedProposals(
 
   if (selected.length === 0 && proposals.length > 0) {
     const fallback = [...proposals]
-      .sort((left, right) => getGreedySelectionScore(right, []) - getGreedySelectionScore(left, []))[0]
-    if (fallback && getGreedySelectionScore(fallback, []) >= 55) {
+      .sort((left, right) => getGreedySelectionScore(right, [], scoringContext) - getGreedySelectionScore(left, [], scoringContext))[0]
+    if (fallback && getGreedySelectionScore(fallback, [], scoringContext) >= 55) {
       selected.push(fallback)
     }
   }
@@ -833,7 +940,32 @@ function diversifyAgainstPreviousSuggestions(
   })
 
   return diversified.sort(
-    (left, right) => getGreedySelectionScore(right, []) - getGreedySelectionScore(left, []),
+    (left, right) =>
+      getGreedySelectionScore(
+        right,
+        [],
+        {
+          goalWeights: computeProgrammingStrategyProfile({
+            selectedPresetIds: [],
+            inferredPresetIds: [],
+            hasRequest: false,
+          }).goalWeights,
+          request: null,
+          pinnedProposalIds: new Set<string>(),
+        },
+      ) - getGreedySelectionScore(
+        left,
+        [],
+        {
+          goalWeights: computeProgrammingStrategyProfile({
+            selectedPresetIds: [],
+            inferredPresetIds: [],
+            hasRequest: false,
+          }).goalWeights,
+          request: null,
+          pinnedProposalIds: new Set<string>(),
+        },
+      ),
   )
 }
 
@@ -856,6 +988,12 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const regenerateRequest = input.regeneratePrompt?.trim()
     ? parseAdvisorProgrammingRequest(input.regeneratePrompt)
     : null
+  const strategyProfile = computeProgrammingStrategyProfile({
+    selectedPresetIds: input.selectedPresetIds || [],
+    inferredPresetIds: input.inferredPresetIds || input.regenerateHint?.inferredPresets || [],
+    hasRequest: !!regenerateRequest,
+    prioritizeRequest: input.prioritizeRequest,
+  })
 
   // 1. Get a wide proposal set from the existing planner. We pass
   //    `limit` high enough to cover the grid; the planner dedupes.
@@ -869,18 +1007,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     courtCount: activeCourts.length,
   })
 
-  // 1a. Optional LLM re-weighting pass. The heuristic planner above has
-  //     no knowledge of admin intent ("less open play, more weekday
-  //     drills") — we apply that by scaling each proposal's confidence
-  //     up/down based on the hint, then re-sorting. Hint may be null or
-  //     effectively empty, in which case this is a no-op.
   let rankedProposals = plan.proposals
-  if (input.regenerateHint) {
-    // Late import so the scheduler can still be consumed in tests
-    // without pulling the LLM module into their dependency graph.
-    const { applyRegenerateHint } = require('./programming-iq-regenerate')
-    rankedProposals = applyRegenerateHint(plan.proposals, input.regenerateHint)
-  }
   if (!input.regeneratePrompt?.trim() && (input.previousSuggestionSignatures?.length || 0) > 0) {
     rankedProposals = diversifyAgainstPreviousSuggestions(
       rankedProposals,
@@ -893,6 +1020,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       ? [plan.requested]
       : []
   const selectionTargetCount = Math.max(targetCount, requestedProposals.length)
+  const requestedProposalIds = new Set(requestedProposals.map((proposal) => proposal.id))
 
   // 2. Synthesise same-slot variants across multiple courts where demand
   //    exceeds one court's capacity (e.g. Saturday 10am 4.0 league could
@@ -936,6 +1064,11 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     expanded,
     selectionTargetCount,
     regenerateRequest ? requestedProposals.map((proposal) => proposal.id) : [],
+    {
+      goalWeights: strategyProfile.goalWeights,
+      request: regenerateRequest,
+      pinnedProposalIds: requestedProposalIds,
+    },
   )
 
   // 4. Bin-pack onto courts.
@@ -978,6 +1111,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
         confidence: a.proposal.confidence,
         rationale: a.proposal.rationale,
         warnings: [placementWarning, ...(a.proposal.conflict?.warnings || [])],
+        requestedByAdmin: requestedProposalIds.has(a.proposal.id),
       })
       conflictCount += 1
       continue
@@ -1006,6 +1140,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       warnings: a.proposal.conflict && a.proposal.conflict.overallRisk !== 'low'
         ? [a.proposal.conflict.riskSummary, ...a.proposal.conflict.warnings]
         : [],
+      requestedByAdmin: requestedProposalIds.has(a.proposal.id),
     })
     suggestedCount += 1
   }
@@ -1046,6 +1181,33 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     }
   }
 
+  const requestedCells = cells.filter((cell) => cell.requestedByAdmin)
+  const requestEvaluations = requestedCells.map((cell) => {
+    const reasons: string[] = []
+    if (cell.kind === 'suggested') reasons.push('Could be placed directly in the calendar.')
+    if (cell.kind === 'saturation') reasons.push('Can be placed, but competes for an audience already used by other sessions this week.')
+    if (cell.kind === 'conflict') reasons.push('Could not be placed cleanly on an active court in this week view.')
+    if ((cell.warnings?.length || 0) > 0) {
+      reasons.push(...(cell.warnings || []).slice(0, 2))
+    }
+
+    const evaluation = buildProgrammingRequestEvaluation({
+      placed: cell.kind === 'suggested' || cell.kind === 'saturation',
+      confidence: cell.confidence || 0,
+      projectedOccupancy: cell.projectedOccupancy || 0,
+      warningCount: cell.warnings?.length || 0,
+      hasHighConflict: (cell.warnings || []).some((warning) =>
+        /not be placed|saturat|high/i.test(warning),
+      ),
+      hasMediumConflict: (cell.warnings || []).some((warning) =>
+        /risk|conflict|review/i.test(warning),
+      ),
+      reasons: reasons.slice(0, 3),
+    })
+    cell.requestEvaluation = evaluation
+    return evaluation
+  })
+
   // 8. Roll-up stats + insights.
   const occupancyValues = cells
     .filter((c) => c.kind === 'suggested' || c.kind === 'live')
@@ -1064,11 +1226,64 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       `${requestedProposals.length} slot${requestedProposals.length === 1 ? '' : 's'} came directly from the admin request and were scored after generation.`,
     )
   }
+  if (strategyProfile.appliedPresets.length > 0) {
+    insights.unshift(
+      `Applied strategy priorities: ${strategyProfile.appliedPresets.map((preset) => preset.label).join(', ')}.`,
+    )
+  }
+  if (regenerateRequest) {
+    insights.unshift(describeProgrammingRequestPriority(strategyProfile.requestPriority))
+  }
   if (!input.regeneratePrompt?.trim() && (input.previousSuggestionSignatures?.length || 0) > 0) {
     insights.unshift('Regenerate explored a nearby schedule variant instead of replaying the exact same portfolio.')
   }
   if (conflictCount > 0) {
     insights.unshift(`${conflictCount} requested or high-signal idea${conflictCount === 1 ? '' : 's'} could not be placed on an active court this week and were moved to Other ideas.`)
+  }
+
+  const publishReadyCount = cells.filter((cell) => cell.kind === 'suggested').length
+  const backupCount = cells.filter((cell) => cell.kind === 'saturation').length
+  const unplacedCount = cells.filter((cell) => cell.kind === 'conflict').length
+  const requestPlacedCount = requestedCells.filter((cell) => cell.kind === 'suggested').length
+  const requestBackupCount = requestedCells.filter((cell) => cell.kind === 'saturation').length
+  const requestUnplacedCount = requestedCells.filter((cell) => cell.kind === 'conflict').length
+  const strongestRequestEval = requestEvaluations
+    .slice()
+    .sort((left, right) => right.score - left.score)[0] || null
+
+  const improvements: string[] = [
+    `${publishReadyCount} publish-ready suggestion${publishReadyCount === 1 ? '' : 's'} generated across ${activeCourts.length} active court${activeCourts.length === 1 ? '' : 's'}.`,
+    `Average projected occupancy for calendar-ready suggestions is ${avgProjected}%.`,
+  ]
+  if (strategyProfile.appliedPresets.some((preset) => preset.id === 'FILL_IDLE_HOURS')) {
+    const offPeakCount = cells.filter(
+      (cell) =>
+        (cell.kind === 'suggested' || cell.kind === 'saturation')
+        && cell.startTime < '17:00',
+    ).length
+    improvements.push(`${offPeakCount} off-peak idea${offPeakCount === 1 ? '' : 's'} were evaluated to improve idle court coverage.`)
+  }
+  if (strategyProfile.appliedPresets.some((preset) => preset.id === 'PROTECT_AUDIENCE')) {
+    improvements.push(`${backupCount} audience-overlap idea${backupCount === 1 ? '' : 's'} stayed out of the main suggestions.`)
+  }
+  if (regenerateRequest) {
+    improvements.push(`Placed ${requestPlacedCount} of ${requestedProposals.length} requested idea${requestedProposals.length === 1 ? '' : 's'} directly in the calendar.`)
+  }
+
+  const changes = cells
+    .filter((cell) => cell.kind !== 'live')
+    .slice(0, 5)
+    .map((cell) => {
+      const prefix =
+        cell.kind === 'conflict'
+          ? 'Reviewed'
+          : cell.kind === 'saturation'
+            ? 'Added as backup'
+            : 'Added'
+      return `${prefix} ${cell.dayOfWeek} ${cell.startTime} ${cell.title || 'session'}.`
+    })
+  if (unplacedCount > 0) {
+    changes.push(`${unplacedCount} idea${unplacedCount === 1 ? '' : 's'} stayed in Unplaced ideas because they could not be pinned to a court.`)
   }
 
   return {
@@ -1088,6 +1303,24 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       preferencesCount: input.preferences.length,
       unmetInterestRequests,
       activeCourts: activeCourts.length,
+    },
+    summary: {
+      appliedPresets: strategyProfile.appliedPresets,
+      requestPriorityNote: regenerateRequest
+        ? describeProgrammingRequestPriority(strategyProfile.requestPriority)
+        : null,
+      requestSummary: regenerateRequest
+        ? {
+            requestedIdeas: requestedProposals.length,
+            placed: requestPlacedCount,
+            backup: requestBackupCount,
+            unplaced: requestUnplacedCount,
+            overallVerdict: strongestRequestEval?.label || null,
+            overallSummary: strongestRequestEval?.summary || null,
+          }
+        : null,
+      improvements: Array.from(new Set(improvements)).slice(0, 4),
+      changes: Array.from(new Set(changes)).slice(0, 6),
     },
   }
 }

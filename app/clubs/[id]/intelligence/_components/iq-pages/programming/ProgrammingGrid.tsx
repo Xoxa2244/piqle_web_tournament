@@ -65,6 +65,14 @@ export interface GridDraft {
     rationale?: string[]
     warnings?: string[]
     cellKind?: string
+    requestedByAdmin?: boolean
+    requestEvaluation?: {
+      verdict?: string
+      label?: string
+      summary?: string
+      reasons?: string[]
+      score?: number
+    } | null
     [k: string]: unknown
   } | null
 }
