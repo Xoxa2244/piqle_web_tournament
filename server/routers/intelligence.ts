@@ -9309,6 +9309,37 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         },
       })
 
+      // P1.2: eager fan-out — one ai_recommendation_logs row per recipient.
+      // Created with status='pending' and sent_at=null; the per-minute
+      // campaign-sends cron claims them in batches via atomic UPDATE
+      // (see app/api/cron/campaign-sends/route.ts).
+      //
+      // We fan out unconditionally — even if status='scheduled' the rows
+      // exist immediately so progress is visible from the moment the
+      // admin clicks Launch. The cron is gated by status='running' AND
+      // scheduledAt <= now, so scheduled campaigns won't dispatch early.
+      //
+      // Picking a primary channel: if 'email' is in channels we use it,
+      // otherwise 'sms'. Multi-channel sends will fan out one log per
+      // (userId × channel) once SMS sender lands — for P1.2 only the
+      // primary channel ships.
+      const primaryChannel = input.channels.includes('email') ? 'email' : 'sms'
+      await ctx.prisma.aIRecommendationLog.createMany({
+        data: recipientIds.map((userId) => ({
+          clubId: input.clubId,
+          userId,
+          type: 'CAMPAIGN_SEND' as const,
+          channel: primaryChannel,
+          status: 'pending',
+          campaignId: campaign.id,
+          // Reasoning carries enough context for the webhook ingest /
+          // attribution pipeline to look up the campaign without an extra
+          // join (we already correlate via campaignId, this is for logs).
+          reasoning: { campaignName: input.name, goal: input.goal },
+        })),
+        skipDuplicates: true,
+      })
+
       return {
         campaignId: campaign.id,
         recipientCount: recipientIds.length,

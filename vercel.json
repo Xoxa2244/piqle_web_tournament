@@ -82,6 +82,10 @@
     {
       "path": "/api/cron/health-snapshot",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/campaign-sends",
+      "schedule": "* * * * *"
     }
   ]
 }

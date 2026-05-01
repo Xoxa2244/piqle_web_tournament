@@ -1591,6 +1591,7 @@ enum AIRecommendationType {
   CHECK_IN
   RETENTION_BOOST
   NEW_MEMBER_WELCOME
+  CAMPAIGN_SEND
 }
 
 // ── Intelligence Module: Models ──
@@ -1725,6 +1726,16 @@ model AIRecommendationLog {
   parentLog          AIRecommendationLog?    @relation("SequenceChain", fields: [parentLogId], references: [id], onDelete: SetNull)
   childLogs          AIRecommendationLog[]   @relation("SequenceChain")
 
+  // ── Campaign Send Queue (Engage P1.2) ──
+  // Set by launchCampaign for each recipient when type=CAMPAIGN_SEND.
+  // The campaign-sends cron claims pending rows (sent_at IS NULL) and
+  // dispatches mail. retry_count caps at 3 before being moved to
+  // failed_count on the parent Campaign.
+  campaignId         String?                 @map("campaign_id")  @db.Uuid
+  campaign           Campaign?               @relation("CampaignRecipientLogs", fields: [campaignId], references: [id], onDelete: SetNull)
+  sentAt             DateTime?               @map("sent_at")      @db.Timestamptz()
+  retryCount         Int                     @default(0) @map("retry_count")
+
   // ── Attribution Tracking (AI-revenue dashboard) ──
   // Populated by the attribution service when a booking is linked to this
   // recommendation. Value is snapshotted at link time so historical ROI
@@ -1741,6 +1752,7 @@ model AIRecommendationLog {
   @@index([variantId, type])
   @@index([clubId, type, status])
   @@index([parentLogId])
+  @@index([campaignId, createdAt])
   @@map("ai_recommendation_logs")
 }
 
@@ -2088,6 +2100,7 @@ model Campaign {
   sentCount       Int      @default(0) @map("sent_count")
   deliveredCount  Int      @default(0) @map("delivered_count")
   openedCount     Int      @default(0) @map("opened_count")
+  clickedCount    Int      @default(0) @map("clicked_count")
   failedCount     Int      @default(0) @map("failed_count")
 
   // Frozen view of cohort membership at send time:
@@ -2103,6 +2116,7 @@ model Campaign {
   club            Club        @relation("ClubCampaigns", fields: [clubId], references: [id], onDelete: Cascade)
   cohort          ClubCohort? @relation("CohortCampaigns", fields: [cohortId], references: [id], onDelete: SetNull)
   creator         User?       @relation("UserCampaigns", fields: [createdByUser], references: [id], onDelete: SetNull)
+  recipientLogs   AIRecommendationLog[] @relation("CampaignRecipientLogs")
 
   @@index([clubId, status])
   @@index([clubId, createdAt(sort: Desc)])
