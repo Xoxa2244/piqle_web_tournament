@@ -66,15 +66,30 @@ AI-powered revenue optimization platform for racquet sports clubs. Built on exis
 
 ## Active Initiatives
 
-### Engage Redesign (April 2026 — in progress)
+### Engage Redesign (April 2026 — Phases 0–5 shipped, polish phase)
 - **Plan:** `docs/ENGAGE_REDESIGN_PLAN.md` (the why/what)
 - **Spec:** `docs/ENGAGE_REDESIGN_SPEC.md` (35 atomic tasks, file:line, acceptance criteria)
-- **Scope:** Members / Cohorts / Campaigns + new Settings → Automation page. Reactivation page being removed (logic redistributed).
+- **Scope:** Members / Segments (formerly "Cohorts") / Campaigns + Settings → Automation. Reactivation page removed.
 - **Brand:** **IQSport only**. Legacy brand pages (`Legacy*Page` components) remain as-is. All work gated behind `brand.key === 'iqsport'` checks where dual paths exist.
 - **Branch:** `rgdev` (do not push to `deviq` directly)
-- **Phase status:** Phase 0 in progress (prerequisites — Settings skeleton, Live Mode audit, tRPC stubs)
+- **Phase status:**
+  - ✅ Phase 0 — Prerequisites (Settings/Automation skeleton, tRPC stubs, Live Mode audit)
+  - ✅ Phase 1 — Cleanup (Reactivation removed, Agent Campaign moved, AI campaigns lifted)
+  - ✅ Phase 2 — Members rework (KPI strip, list/card toggle, filter drawer, AI Insight, Member detail drawer, churn chart)
+  - ✅ Phase 3 — Cohorts AI (3 generators, Builder drawer, Save+Campaign bridge, polish)
+  - ✅ Phase 4 — Campaign Wizard (4-step, AI message gen, Active Campaigns table, all entry points wired)
+  - ✅ Phase 5 — Closing the loop (cron, schema, attribution, cleanup)
+  - ✅ **Priority 1 (post-Phase-5 polish) — closed 2026-05-01.** All 6 substeps shipped (`7f57d3c4`, `34a6959f`, `73197ee2`, `f3ad821e`, `2d39d67f`). Campaign Wizard Launch now sends real Mandrill emails end-to-end; verified live with 6 real sends + Live Mode/killSwitch toggle test. See `docs/ENGAGE_PRIORITY1_SPEC.md` for full status, evidence table, and known limitations.
 
-When working on Engage section, **always consult SPEC first** for the specific task ID (e.g. `P2-T3`) before writing code. The spec defines acceptance criteria and risk notes per task.
+**Last session (Apr 27 → May 1, 2026)** — full log in `docs/iqsport-session-summary-2026-04-30.md`. Four parallel workstreams:
+1. **Solapp demo rebuild** (`demo.iqsport.ai`) — force-pushed fresh Solapp on Sol2 base, 1500 mock members, new DemoAdvisorIQ with 12 canned scenarios.
+2. **Sol2 production fix** — silent breakage in AI Insights since launch (`::uuid` casts on text columns) found and fixed (`6ec06847`, `6a3c488e`). 4 generators rewritten to read from `users` table. 10/10 generators now work on prod.
+3. **Persona research for AI Insights** — 3 parallel agents (Marketer/Ops/Owner) produced 15-item backlog of new insights. Universal complaint: insights not role-tagged.
+4. **Engage Priority 1** — closed (see above).
+
+**Next on Engage rgdev:** see §6 of `docs/ENGAGE_PRIORITY1_SPEC.md`. Three immediate items: (a) merge gate to main (run migration on prod Supabase first), (b) custom CTA in Campaign emails, (c) AI Insights role-tagging. Then Priority 2 (Campaign History real data + drilldown).
+
+When working on Engage section, **always consult SPEC first** for the specific task ID (e.g. `P2-T3`) before writing code. The spec defines acceptance criteria and risk notes per task. For post-spec polish work, look for "Priority N.N" pattern in recent commits to find current sequence.
 
 ## Git Workflow
 - Branch: `Sol2` (legacy default) / `rgdev` (current Engage redesign work)
