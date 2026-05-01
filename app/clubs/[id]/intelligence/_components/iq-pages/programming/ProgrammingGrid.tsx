@@ -78,6 +78,7 @@ interface ProgrammingGridProps {
   liveSessions: GridLiveSession[]
   drafts: GridDraft[]
   weekStartDate: string
+  timezone?: string
   onSelectCell: (selection: GridSelection) => void
 }
 
@@ -232,6 +233,7 @@ export function ProgrammingGrid({
   liveSessions,
   drafts,
   weekStartDate,
+  timezone = 'America/New_York',
   onSelectCell,
 }: ProgrammingGridProps) {
   const activeCourts = courts.filter((c) => c.isActive)
@@ -384,7 +386,7 @@ export function ProgrammingGrid({
 
           {/* Live sessions — rendered once each, spanning the right rows */}
           {current.live.map((s) => {
-            const day = dayNameFromDate(s.date)
+            const day = dayNameFromDate(s.date, timezone)
             const dayIdx = DAYS.indexOf(day as typeof DAYS[number])
             if (dayIdx < 0) return null
             const span = computeRowSpan(

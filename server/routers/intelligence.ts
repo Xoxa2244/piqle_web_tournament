@@ -92,6 +92,46 @@ function timeSlotFromStart(startTime: string): 'morning' | 'afternoon' | 'evenin
   return 'evening'
 }
 
+function addDaysToIsoDate(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  const dt = new Date(Date.UTC(year || 1970, (month || 1) - 1, day || 1))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  return dt.toISOString().slice(0, 10)
+}
+
+function isoDateInTimezone(date: Date, timezone = 'America/New_York'): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date)
+    const year = parts.find((part) => part.type === 'year')?.value
+    const month = parts.find((part) => part.type === 'month')?.value
+    const day = parts.find((part) => part.type === 'day')?.value
+    if (year && month && day) {
+      return `${year}-${month}-${day}`
+    }
+  } catch {
+    // Fall through to UTC date slice below.
+  }
+  return date.toISOString().slice(0, 10)
+}
+
+function filterSessionsToProgrammingWeek<T extends { date: Date | string }>(
+  sessions: T[],
+  weekStartDate: string,
+  timezone = 'America/New_York',
+): T[] {
+  const weekEndDate = addDaysToIsoDate(weekStartDate, 7)
+  return sessions.filter((session) => {
+    const sessionDate = session.date instanceof Date ? session.date : new Date(session.date)
+    const localIsoDate = isoDateInTimezone(sessionDate, timezone)
+    return localIsoDate >= weekStartDate && localIsoDate < weekEndDate
+  })
+}
+
 // ── Helper: describe agent action for pending queue ──
 function describeAgentAction(type: string, reasoning: any): string {
   const sequenceLabel = reasoning?.sequenceFollowUp && typeof reasoning?.stepNumber === 'number'
@@ -8176,11 +8216,19 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 7)
+      const bufferedWeekStart = new Date(weekStart)
+      bufferedWeekStart.setDate(bufferedWeekStart.getDate() - 1)
+      const bufferedWeekEnd = new Date(weekEnd)
+      bufferedWeekEnd.setDate(bufferedWeekEnd.getDate() + 1)
       const since60d = new Date()
       since60d.setDate(since60d.getDate() - 60)
 
-      const [courts, historicalSessions, weekSessions, lastNDaysSessions, preferences, interestRequests, followers] =
+      const [club, courts, historicalSessions, rawWeekSessions, lastNDaysSessions, preferences, interestRequests, followers] =
         await Promise.all([
+          ctx.prisma.club.findUnique({
+            where: { id: input.clubId },
+            select: { automationSettings: true },
+          }),
           ctx.prisma.clubCourt.findMany({
             where: {
               clubId: input.clubId,
@@ -8196,7 +8244,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           ctx.prisma.playSession.findMany({
             where: {
               clubId: input.clubId,
-              date: { gte: weekStart, lt: weekEnd },
+              date: { gte: bufferedWeekStart, lt: bufferedWeekEnd },
               status: { not: 'CANCELLED' },
             },
             select: {
@@ -8269,6 +8317,15 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           }).catch(() => []),
         ])
 
+      const clubTimezone = (
+        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
+      ) || 'America/New_York'
+      const weekSessions = filterSessionsToProgrammingWeek(
+        rawWeekSessions as Array<{ date: Date | string }>,
+        input.weekStartDate,
+        clubTimezone,
+      )
+
       const explicitUserIds = new Set(
         (preferences as any[]).map((p) => p.userId).filter(Boolean),
       )
@@ -8330,10 +8387,6 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         buildProgrammingAudienceProfileFromMembers,
       } = await import('@/lib/ai/advisor-programming')
       const { buildWeeklyGrid } = await import('@/lib/ai/programming-iq-scheduler')
-      const club = await ctx.prisma.club.findUnique({
-        where: { id: input.clubId },
-        select: { automationSettings: true },
-      })
       const policySettings = (club?.automationSettings as any)?.contactPolicy
       const inviteCapPerMemberPerWeek = Number(
         policySettings?.inviteCapPerMemberPerWeek ?? policySettings?.weeklyCap ?? 3,
@@ -8355,9 +8408,6 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         }
       }
 
-      const clubTimezone = (
-        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
-      ) || 'America/New_York'
       const audienceProfile = buildProgrammingAudienceProfileFromMembers(
         (followers as Array<{ user?: { skillLevel?: string | null; dateOfBirth?: Date | null; gender?: string | null } | null }>)
           .flatMap((follower) => follower.user ? [follower.user] : []),
@@ -8531,8 +8581,16 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 7)
+      const bufferedWeekStart = new Date(weekStart)
+      bufferedWeekStart.setDate(bufferedWeekStart.getDate() - 1)
+      const bufferedWeekEnd = new Date(weekEnd)
+      bufferedWeekEnd.setDate(bufferedWeekEnd.getDate() + 1)
 
-      const [courts, liveSessions, drafts, memberCount] = await Promise.all([
+      const [club, courts, rawLiveSessions, drafts, memberCount] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: input.clubId },
+          select: { automationSettings: true },
+        }),
         ctx.prisma.clubCourt.findMany({
           where: { clubId: input.clubId },
           select: { id: true, name: true, isIndoor: true, isActive: true },
@@ -8541,7 +8599,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         ctx.prisma.playSession.findMany({
           where: {
             clubId: input.clubId,
-            date: { gte: weekStart, lt: weekEnd },
+            date: { gte: bufferedWeekStart, lt: bufferedWeekEnd },
             status: { not: 'CANCELLED' },
           },
           select: {
@@ -8575,6 +8633,15 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         }).catch(() => 0),
       ])
 
+      const timezone = (
+        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
+      ) || 'America/New_York'
+      const liveSessions = filterSessionsToProgrammingWeek(
+        rawLiveSessions as Array<{ date: Date | string }>,
+        input.weekStartDate,
+        timezone,
+      )
+
       const visibleDrafts = (drafts as any[]).filter((draft) => {
         const draftWeekStart = (draft.metadata as any)?.weekStartDate
         return !draftWeekStart || draftWeekStart === input.weekStartDate
@@ -8585,6 +8652,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         liveSessions,
         drafts: visibleDrafts,
         memberCount,
+        timezone,
       }
     }),
 

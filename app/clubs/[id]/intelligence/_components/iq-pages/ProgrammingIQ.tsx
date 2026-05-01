@@ -46,8 +46,16 @@ function mondayOf(date: Date): Date {
   return d
 }
 
-function toISODate(d: Date): string {
-  return d.toISOString().slice(0, 10)
+function toLocalISODate(d: Date): string {
+  const year = d.getFullYear()
+  const month = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function fromISODate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return new Date(year, (month || 1) - 1, day || 1)
 }
 
 function addDays(d: Date, n: number): Date {
@@ -57,7 +65,7 @@ function addDays(d: Date, n: number): Date {
 }
 
 function formatWeekRange(weekStart: string): string {
-  const s = new Date(weekStart)
+  const s = fromISODate(weekStart)
   const e = addDays(s, 6)
   const sMon = s.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const eMon = e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -76,7 +84,7 @@ interface ProgrammingIQProps {
 
 export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const isDemo = useIsDemo()
-  const [weekStart, setWeekStart] = useState<string>(() => toISODate(mondayOf(new Date())))
+  const [weekStart, setWeekStart] = useState<string>(() => toLocalISODate(mondayOf(new Date())))
   const [regeneratePrompt, setRegeneratePrompt] = useState('')
   const [activeCell, setActiveCell] = useState<GridSelection | null>(null)
   const [generating, setGenerating] = useState(false)
@@ -96,6 +104,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const clearDraftsMutation = useClearProgrammingScheduleDrafts()
 
   const gridData = gridQuery.data
+  const clubTimezone = (gridData as any)?.timezone || 'America/New_York'
   // Memoize the derived slices so downstream hooks (stats, grid) don't
   // re-run on every parent render — gridData itself is stable per query
   // fetch but `??` builds fresh empty arrays each time.
@@ -204,9 +213,9 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   }
 
   const handleWeekShift = (days: number) => {
-    const d = new Date(weekStart)
+    const d = fromISODate(weekStart)
     d.setDate(d.getDate() + days)
-    setWeekStart(toISODate(mondayOf(d)))
+    setWeekStart(toLocalISODate(mondayOf(d)))
     setActiveCell(null)
   }
 
@@ -281,7 +290,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
             </div>
 
             <button
-              onClick={() => setWeekStart(toISODate(mondayOf(new Date())))}
+              onClick={() => setWeekStart(toLocalISODate(mondayOf(new Date())))}
               className="px-3 py-2 text-xs rounded-lg hover:bg-black/5"
               style={{ color: 'var(--t4)', border: '1px solid var(--card-border)' }}
             >
@@ -401,10 +410,11 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         <ProgrammingGrid
           courts={courts}
           liveSessions={liveSessions}
-          drafts={calendarDrafts}
-          weekStartDate={weekStart}
-          onSelectCell={setActiveCell}
-        />
+        drafts={calendarDrafts}
+        weekStartDate={weekStart}
+        timezone={clubTimezone}
+        onSelectCell={setActiveCell}
+      />
       )}
 
       {!generating && unplacedIdeas.length > 0 && (
