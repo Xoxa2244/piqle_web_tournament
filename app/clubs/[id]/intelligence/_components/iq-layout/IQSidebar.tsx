@@ -60,7 +60,7 @@ function buildNavSections(isMembership: boolean): NavSection[] {
     icon: Building2,
     items: [
       { icon: Users, label: "Members", path: "/members" },
-      { icon: UsersRound, label: "Cohorts", path: "/cohorts" },
+      { icon: UsersRound, label: "Segments", path: "/cohorts" },
       { icon: UserPlus, label: "Reactivation", path: "/reactivation" },
       { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
     ],

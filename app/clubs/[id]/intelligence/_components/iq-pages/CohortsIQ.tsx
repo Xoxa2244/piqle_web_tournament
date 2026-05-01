@@ -329,7 +329,7 @@ export default function CohortsIQ() {
         <div>
           <h1 className="text-2xl" style={{ fontWeight: 800, color: 'var(--heading)' }}>
             <Users className="w-6 h-6 inline mr-2" />
-            Cohorts
+            Segments
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>
             Create custom member segments for targeted AI campaigns
@@ -342,7 +342,7 @@ export default function CohortsIQ() {
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
           style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
         >
-          <Plus className="w-4 h-4" /> Create Cohort
+          <Plus className="w-4 h-4" /> Create Segment
         </motion.button>
       </div>
 
@@ -1037,7 +1037,7 @@ export default function CohortsIQ() {
           {cohorts?.length === 0 && (
             <div className="col-span-full text-center py-16" style={{ color: 'var(--t4)' }}>
               <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">No cohorts yet. Create your first one!</p>
+              <p className="text-sm">No segments yet. Create your first one!</p>
             </div>
           )}
         </div>
@@ -1281,7 +1281,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
       <div className="flex items-center justify-between">
         <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
           <Filter className="w-5 h-5 inline mr-2" />
-          Create Cohort
+          Create Segment
         </h2>
         <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
       </div>
@@ -1446,7 +1446,7 @@ function CohortBuilder({ clubId, onClose, onSaved }: { clubId: string; onClose: 
             opacity: (!name.trim() || previewFilters.length === 0 || saving) ? 0.5 : 1,
           }}
         >
-          {saving ? 'Creating...' : 'Create Cohort'}
+          {saving ? 'Creating...' : 'Create Segment'}
         </motion.button>
       </div>
     </motion.div>
