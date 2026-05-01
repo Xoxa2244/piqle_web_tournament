@@ -8273,6 +8273,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
               format: true,
               skillLevel: true,
               maxPlayers: true,
+              registeredCount: true,
               status: true,
             },
           }).catch(() => []),
@@ -8561,6 +8562,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
               cellKind: cell.kind,
               requestedByAdmin: !!cell.requestedByAdmin,
               requestEvaluation: cell.requestEvaluation || null,
+              liveOptimization: cell.liveOptimization || null,
               selectedPresetIds: input.selectedPresetIds || [],
               inferredPresetIds: regenerateHint?.inferredPresets || [],
             },
@@ -8681,10 +8683,26 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         const draftWeekStart = (draft.metadata as any)?.weekStartDate
         return !draftWeekStart || draftWeekStart === input.weekStartDate
       })
+      const bestLiveOptimizationBySessionId = new Map<string, any>()
+      for (const draft of visibleDrafts) {
+        const optimization = (draft.metadata as any)?.liveOptimization
+        const liveSessionId = optimization?.liveSessionId || optimization?.before?.id
+        if (!liveSessionId) continue
+        const existing = bestLiveOptimizationBySessionId.get(liveSessionId)
+        if (!existing || Number(optimization?.scoreDelta || 0) > Number(existing?.scoreDelta || 0)) {
+          bestLiveOptimizationBySessionId.set(liveSessionId, optimization)
+        }
+      }
+      const enrichedLiveSessions = (liveSessions as any[]).map((session) => ({
+        ...session,
+        metadata: bestLiveOptimizationBySessionId.has(session.id)
+          ? { liveOptimization: bestLiveOptimizationBySessionId.get(session.id) }
+          : null,
+      }))
 
       return {
         courts,
-        liveSessions,
+        liveSessions: enrichedLiveSessions,
         drafts: visibleDrafts,
         memberCount,
         timezone,

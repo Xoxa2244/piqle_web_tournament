@@ -74,6 +74,7 @@ function LivePanel({
   session,
   onClose,
 }: CellEditPopoverProps & { session: GridLiveSession }) {
+  const optimization = session.metadata?.liveOptimization || null
   return (
     <div>
       <Header title={session.title || 'Session'} onClose={onClose} />
@@ -85,6 +86,66 @@ function LivePanel({
         <KV label="Skill" value={session.skillLevel || '—'} />
         <KV label="Time" value={`${session.startTime}–${session.endTime}`} />
         <KV label="Capacity" value={`${session.registeredCount ?? 0}/${session.maxPlayers ?? 0}`} />
+        {optimization && (
+          <div
+            className="rounded-lg p-3 text-xs space-y-2"
+            style={{ background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.28)' }}
+          >
+            <div className="font-semibold" style={{ color: '#B45309' }}>
+              {optimization.type === 'move' ? 'Suggested move' : 'Suggested replacement'}
+            </div>
+            {optimization.summary && (
+              <div style={{ color: 'var(--t3)' }}>{optimization.summary}</div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <div
+                className="rounded-lg p-2"
+                style={{ background: 'rgba(15,23,42,0.28)', border: '1px solid rgba(148,163,184,0.16)' }}
+              >
+                <div className="text-[10px] uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--t4)' }}>
+                  Before
+                </div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                  {optimization.before?.title || session.title || 'Live session'}
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  {optimization.before?.dayOfWeek} · {optimization.before?.startTime}–{optimization.before?.endTime}
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  {optimization.before?.registeredCount ?? session.registeredCount ?? 0}/{session.maxPlayers ?? 0}
+                  {typeof optimization.before?.occupancy === 'number' ? ` · ${optimization.before.occupancy}% occ` : ''}
+                </div>
+              </div>
+              <div
+                className="rounded-lg p-2"
+                style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.18)' }}
+              >
+                <div className="text-[10px] uppercase tracking-wide font-semibold mb-1" style={{ color: '#A78BFA' }}>
+                  After
+                </div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                  {optimization.after?.title || 'Suggested alternative'}
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  {optimization.after?.dayOfWeek} · {optimization.after?.startTime}–{optimization.after?.endTime}
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  {optimization.after?.projectedOccupancy ?? '—'}% occ · {optimization.after?.confidence ?? '—'}% conf
+                </div>
+              </div>
+            </div>
+            {(optimization.reasons || []).length > 0 && (
+              <div className="space-y-1" style={{ color: 'var(--t4)' }}>
+                {(optimization.reasons || []).slice(0, 3).map((reason, index) => (
+                  <div key={index} className="flex gap-2">
+                    <span style={{ color: '#D97706' }}>•</span>
+                    <span>{reason}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div className="text-xs opacity-70 pt-4" style={{ color: 'var(--t4)' }}>
           Published sessions are read-only here. Open the Schedule tab to edit.
         </div>
@@ -135,6 +196,29 @@ function DraftPanel({
         label?: string
         summary?: string
         reasons?: string[]
+      }
+    | null
+  const liveOptimization = (draft.metadata?.liveOptimization || null) as
+    | {
+        type?: 'move' | 'replace'
+        summary?: string
+        reasons?: string[]
+        before?: {
+          title?: string
+          dayOfWeek?: string
+          startTime?: string
+          endTime?: string
+          registeredCount?: number | null
+          occupancy?: number
+        }
+        after?: {
+          title?: string
+          dayOfWeek?: string
+          startTime?: string
+          endTime?: string
+          projectedOccupancy?: number
+          confidence?: number
+        }
       }
     | null
 
@@ -207,6 +291,59 @@ function DraftPanel({
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {liveOptimization && (
+          <div
+            className="mt-4 rounded-lg p-3 text-xs space-y-2"
+            style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.20)' }}
+          >
+            <div className="font-semibold" style={{ color: '#93C5FD' }}>
+              {liveOptimization.type === 'move' ? 'Live session move' : 'Live session replacement'}
+            </div>
+            {liveOptimization.summary && (
+              <div style={{ color: 'var(--t3)' }}>
+                {liveOptimization.summary}
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              <div
+                className="rounded-lg p-2"
+                style={{ background: 'rgba(15,23,42,0.26)', border: '1px solid rgba(148,163,184,0.16)' }}
+              >
+                <div className="text-[10px] uppercase tracking-wide font-semibold mb-1" style={{ color: 'var(--t4)' }}>
+                  Before
+                </div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                  {liveOptimization.before?.title || 'Current live session'}
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  {liveOptimization.before?.dayOfWeek} · {liveOptimization.before?.startTime}–{liveOptimization.before?.endTime}
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  {liveOptimization.before?.registeredCount ?? 0} booked
+                  {typeof liveOptimization.before?.occupancy === 'number' ? ` · ${liveOptimization.before.occupancy}% occ` : ''}
+                </div>
+              </div>
+              <div
+                className="rounded-lg p-2"
+                style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.18)' }}
+              >
+                <div className="text-[10px] uppercase tracking-wide font-semibold mb-1" style={{ color: '#A78BFA' }}>
+                  After
+                </div>
+                <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>
+                  {liveOptimization.after?.title || draft.title}
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  {liveOptimization.after?.dayOfWeek || draft.dayOfWeek} · {liveOptimization.after?.startTime || draft.startTime}–{liveOptimization.after?.endTime || draft.endTime}
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  {liveOptimization.after?.projectedOccupancy ?? draft.projectedOccupancy}% occ · {liveOptimization.after?.confidence ?? draft.confidence}% conf
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

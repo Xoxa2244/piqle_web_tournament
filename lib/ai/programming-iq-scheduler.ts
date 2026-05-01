@@ -69,6 +69,7 @@ export interface SchedulerExistingSession {
   format: PlaySessionFormat | null
   skillLevel: PlaySessionSkillLevel | null
   maxPlayers: number | null
+  registeredCount?: number | null
   status: string
 }
 
@@ -131,6 +132,43 @@ export interface GridCell {
   warnings?: string[]
   requestedByAdmin?: boolean
   requestEvaluation?: ProgrammingRequestEvaluation | null
+  liveOptimization?: LiveSessionOptimization | null
+}
+
+export type LiveOptimizationType = 'move' | 'replace'
+
+export interface LiveSessionOptimization {
+  type: LiveOptimizationType
+  liveSessionId: string
+  currentScore: number
+  scoreDelta: number
+  summary: string
+  reasons: string[]
+  before: {
+    id: string
+    title: string
+    dayOfWeek: DayOfWeek
+    startTime: string
+    endTime: string
+    format: PlaySessionFormat | null
+    skillLevel: PlaySessionSkillLevel | null
+    maxPlayers: number | null
+    registeredCount: number | null
+    occupancy: number
+  }
+  after: {
+    proposalId: string
+    title: string
+    dayOfWeek: DayOfWeek
+    startTime: string
+    endTime: string
+    format: PlaySessionFormat
+    skillLevel: PlaySessionSkillLevel
+    maxPlayers: number
+    projectedOccupancy: number
+    estimatedInterestedMembers: number
+    confidence: number
+  }
 }
 
 export interface BuildWeeklyGridInput {
@@ -251,6 +289,18 @@ export function minutesToHhmm(minutes: number): string {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function timeSlotFromStart(startTime: string | null | undefined) {
+  const minutes = hhmmToMinutes(startTime)
+  const hour = Number.isFinite(minutes) ? Math.floor(minutes / 60) : 0
+  if (hour < 12) return 'morning' as const
+  if (hour < 17) return 'afternoon' as const
+  return 'evening' as const
 }
 
 /**
@@ -780,6 +830,8 @@ type SelectionScoringContext = {
   pinnedProposalIds: Set<string>
 }
 
+const MIN_SELECTION_SCORE = 62
+
 function getGoalScores(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
@@ -856,6 +908,177 @@ function getGreedySelectionScore(
   return weighted / 100
 }
 
+function getLiveSessionScore(input: {
+  session: SchedulerExistingSession
+  sameSlotBest: AdvisorProgrammingProposalDraft | null
+  sameShapeBest: AdvisorProgrammingProposalDraft | null
+  context: SelectionScoringContext
+}) {
+  const capacity = Math.max(input.session.maxPlayers || 0, 1)
+  const occupancy = clamp(
+    Math.round(((input.session.registeredCount || 0) / capacity) * 100),
+    0,
+    100,
+  )
+  const sameSlotScore = input.sameSlotBest
+    ? getGreedySelectionScore(input.sameSlotBest, [], input.context)
+    : 50
+  const sameShapeScore = input.sameShapeBest
+    ? getGreedySelectionScore(input.sameShapeBest, [], input.context)
+    : sameSlotScore
+
+  return clamp(
+    Math.round(
+      occupancy * 0.55 +
+      sameSlotScore * 0.25 +
+      sameShapeScore * 0.20,
+    ),
+    0,
+    100,
+  )
+}
+
+function buildLiveOptimizations(input: {
+  sessions: SchedulerExistingSession[]
+  proposals: AdvisorProgrammingProposalDraft[]
+  timezone: string
+  context: SelectionScoringContext
+}) {
+  const byProposalId = new Map<string, LiveSessionOptimization>()
+  const byLiveSessionId = new Map<string, LiveSessionOptimization>()
+  const candidates: LiveSessionOptimization[] = []
+
+  for (const session of input.sessions) {
+    if (session.status === 'CANCELLED') continue
+    const dayOfWeek = dayOfWeekFromDate(new Date(session.date), input.timezone)
+    const slot = timeSlotFromStart(session.startTime)
+    const currentFormat = session.format || 'OPEN_PLAY'
+    const currentSkill = session.skillLevel || 'ALL_LEVELS'
+
+    const sameSlotCandidates = input.proposals.filter((proposal) =>
+      proposal.dayOfWeek === dayOfWeek && proposal.timeSlot === slot,
+    )
+    const sameSlotBest = sameSlotCandidates
+      .slice()
+      .sort((left, right) => getGreedySelectionScore(right, [], input.context) - getGreedySelectionScore(left, [], input.context))[0] || null
+    const replacementCandidate = sameSlotCandidates
+      .filter((proposal) =>
+        proposal.format !== currentFormat || proposal.skillLevel !== currentSkill,
+      )
+      .sort((left, right) => getGreedySelectionScore(right, [], input.context) - getGreedySelectionScore(left, [], input.context))[0] || null
+
+    const sameShapeCandidates = input.proposals.filter((proposal) =>
+      proposal.format === currentFormat &&
+      proposal.skillLevel === currentSkill &&
+      !(proposal.dayOfWeek === dayOfWeek && proposal.startTime === session.startTime),
+    )
+    const moveCandidate = sameShapeCandidates
+      .sort((left, right) => getGreedySelectionScore(right, [], input.context) - getGreedySelectionScore(left, [], input.context))[0] || null
+    const sameShapeBest = sameShapeCandidates[0] || null
+
+    const liveScore = getLiveSessionScore({
+      session,
+      sameSlotBest,
+      sameShapeBest,
+      context: input.context,
+    })
+
+    const replacementScore = replacementCandidate
+      ? getGreedySelectionScore(replacementCandidate, [], input.context)
+      : Number.NEGATIVE_INFINITY
+    const moveScore = moveCandidate
+      ? getGreedySelectionScore(moveCandidate, [], input.context)
+      : Number.NEGATIVE_INFINITY
+
+    const replacementDelta = replacementScore - liveScore
+    const moveDelta = moveScore - liveScore
+    let chosenType: LiveOptimizationType | null = null
+    let chosenProposal: AdvisorProgrammingProposalDraft | null = null
+    let chosenScore = Number.NEGATIVE_INFINITY
+
+    if (replacementCandidate && replacementDelta >= 10 && replacementScore >= MIN_SELECTION_SCORE) {
+      chosenType = 'replace'
+      chosenProposal = replacementCandidate
+      chosenScore = replacementScore
+    }
+    if (moveCandidate && moveDelta >= 8 && moveScore >= MIN_SELECTION_SCORE && moveScore > chosenScore) {
+      chosenType = 'move'
+      chosenProposal = moveCandidate
+      chosenScore = moveScore
+    }
+    if (!chosenType || !chosenProposal) continue
+
+    const currentOccupancy = clamp(
+      Math.round(((session.registeredCount || 0) / Math.max(session.maxPlayers || 1, 1)) * 100),
+      0,
+      100,
+    )
+    const summary = chosenType === 'move'
+      ? `Move this live session to ${chosenProposal.dayOfWeek} ${chosenProposal.startTime} for a stronger fit.`
+      : `Replace this live session in-place with a stronger ${chosenProposal.title}.`
+    const reasons = [
+      `Current live session is sitting at ${currentOccupancy}% occupancy with an effectiveness score of ${liveScore}.`,
+      chosenType === 'move'
+        ? `${chosenProposal.title} scores better in ${chosenProposal.dayOfWeek} ${chosenProposal.startTime}-${chosenProposal.endTime}.`
+        : `${chosenProposal.title} scores better for this same weekly window.`,
+      `Estimated uplift is +${Math.round(chosenScore - liveScore)} points based on demand, utilization, and audience fit.`,
+    ]
+    const optimization: LiveSessionOptimization = {
+      type: chosenType,
+      liveSessionId: session.id,
+      currentScore: liveScore,
+      scoreDelta: Math.round(chosenScore - liveScore),
+      summary,
+      reasons,
+      before: {
+        id: session.id,
+        title: session.title || 'Live session',
+        dayOfWeek,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        format: session.format,
+        skillLevel: session.skillLevel,
+        maxPlayers: session.maxPlayers,
+        registeredCount: session.registeredCount || 0,
+        occupancy: currentOccupancy,
+      },
+      after: {
+        proposalId: chosenProposal.id,
+        title: chosenProposal.title,
+        dayOfWeek: chosenProposal.dayOfWeek,
+        startTime: chosenProposal.startTime,
+        endTime: chosenProposal.endTime,
+        format: chosenProposal.format,
+        skillLevel: chosenProposal.skillLevel,
+        maxPlayers: chosenProposal.maxPlayers,
+        projectedOccupancy: chosenProposal.projectedOccupancy,
+        estimatedInterestedMembers: chosenProposal.estimatedInterestedMembers,
+        confidence: chosenProposal.confidence,
+      },
+    }
+    candidates.push(optimization)
+    byLiveSessionId.set(session.id, optimization)
+
+    const existingForProposal = byProposalId.get(chosenProposal.id)
+    if (!existingForProposal || optimization.scoreDelta > existingForProposal.scoreDelta) {
+      byProposalId.set(chosenProposal.id, optimization)
+    }
+  }
+
+  const pinnedProposalIds = candidates
+    .slice()
+    .sort((left, right) => right.scoreDelta - left.scoreDelta)
+    .slice(0, 3)
+    .map((candidate) => candidate.after.proposalId)
+
+  return {
+    byProposalId,
+    byLiveSessionId,
+    pinnedProposalIds,
+    candidates,
+  }
+}
+
 function selectBalancedProposals(
   proposals: AdvisorProgrammingProposalDraft[],
   targetCount: number,
@@ -864,7 +1087,6 @@ function selectBalancedProposals(
 ) {
   const remaining = [...proposals]
   const selected: AdvisorProgrammingProposalDraft[] = []
-  const MIN_SELECTION_SCORE = 62
   const scoringContext = context || {
     goalWeights: computeProgrammingStrategyProfile({
       selectedPresetIds: [],
@@ -1019,8 +1241,26 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     : plan.requested
       ? [plan.requested]
       : []
-  const selectionTargetCount = Math.max(targetCount, requestedProposals.length)
   const requestedProposalIds = new Set(requestedProposals.map((proposal) => proposal.id))
+  const scoringContext: SelectionScoringContext = {
+    goalWeights: strategyProfile.goalWeights,
+    request: regenerateRequest,
+    pinnedProposalIds: requestedProposalIds,
+  }
+
+  const liveOptimizations = buildLiveOptimizations({
+    sessions: input.existingWeekSessions,
+    proposals: rankedProposals,
+    timezone: input.timezone || 'America/New_York',
+    context: scoringContext,
+  })
+  const pinnedProposalIds = Array.from(
+    new Set([
+      ...requestedProposals.map((proposal) => proposal.id),
+      ...liveOptimizations.pinnedProposalIds,
+    ]),
+  )
+  const selectionTargetCount = Math.max(targetCount, pinnedProposalIds.length)
 
   // 2. Synthesise same-slot variants across multiple courts where demand
   //    exceeds one court's capacity (e.g. Saturday 10am 4.0 league could
@@ -1063,11 +1303,10 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const eligible = selectBalancedProposals(
     expanded,
     selectionTargetCount,
-    regenerateRequest ? requestedProposals.map((proposal) => proposal.id) : [],
+    pinnedProposalIds,
     {
-      goalWeights: strategyProfile.goalWeights,
-      request: regenerateRequest,
-      pinnedProposalIds: requestedProposalIds,
+      ...scoringContext,
+      pinnedProposalIds: new Set(pinnedProposalIds),
     },
   )
 
@@ -1112,6 +1351,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
         rationale: a.proposal.rationale,
         warnings: [placementWarning, ...(a.proposal.conflict?.warnings || [])],
         requestedByAdmin: requestedProposalIds.has(a.proposal.id),
+        liveOptimization: liveOptimizations.byProposalId.get(a.proposal.id) || null,
       })
       conflictCount += 1
       continue
@@ -1141,6 +1381,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
         ? [a.proposal.conflict.riskSummary, ...a.proposal.conflict.warnings]
         : [],
       requestedByAdmin: requestedProposalIds.has(a.proposal.id),
+      liveOptimization: liveOptimizations.byProposalId.get(a.proposal.id) || null,
     })
     suggestedCount += 1
   }
@@ -1165,6 +1406,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       skillLevel: session.skillLevel,
       maxPlayers: session.maxPlayers,
       playSessionId: session.id,
+      liveOptimization: liveOptimizations.byLiveSessionId.get(session.id) || null,
     })
     liveKept += 1
   }
@@ -1237,6 +1479,11 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   if (!input.regeneratePrompt?.trim() && (input.previousSuggestionSignatures?.length || 0) > 0) {
     insights.unshift('Regenerate explored a nearby schedule variant instead of replaying the exact same portfolio.')
   }
+  if (liveOptimizations.candidates.length > 0) {
+    insights.unshift(
+      `Reviewed ${input.existingWeekSessions.length} live session${input.existingWeekSessions.length === 1 ? '' : 's'} and found ${liveOptimizations.candidates.length} stronger move-or-replace option${liveOptimizations.candidates.length === 1 ? '' : 's'}.`,
+    )
+  }
   if (conflictCount > 0) {
     insights.unshift(`${conflictCount} requested or high-signal idea${conflictCount === 1 ? '' : 's'} could not be placed on an active court this week and were moved to Other ideas.`)
   }
@@ -1269,6 +1516,9 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   if (regenerateRequest) {
     improvements.push(`Placed ${requestPlacedCount} of ${requestedProposals.length} requested idea${requestedProposals.length === 1 ? '' : 's'} directly in the calendar.`)
   }
+  if (liveOptimizations.candidates.length > 0) {
+    improvements.push(`Reviewed ${input.existingWeekSessions.length} live sessions and found ${liveOptimizations.candidates.length} higher-value move or replace option${liveOptimizations.candidates.length === 1 ? '' : 's'}.`)
+  }
 
   const changes = cells
     .filter((cell) => cell.kind !== 'live')
@@ -1282,6 +1532,14 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
             : 'Added'
       return `${prefix} ${cell.dayOfWeek} ${cell.startTime} ${cell.title || 'session'}.`
     })
+  const liveOptimizationChanges = liveOptimizations.candidates
+    .slice(0, 3)
+    .map((candidate) =>
+      candidate.type === 'move'
+        ? `Move ${candidate.before.title} from ${candidate.before.dayOfWeek} ${candidate.before.startTime} to ${candidate.after.dayOfWeek} ${candidate.after.startTime}.`
+        : `Replace ${candidate.before.title} on ${candidate.before.dayOfWeek} ${candidate.before.startTime} with ${candidate.after.title}.`,
+    )
+  changes.unshift(...liveOptimizationChanges)
   if (unplacedCount > 0) {
     changes.push(`${unplacedCount} idea${unplacedCount === 1 ? '' : 's'} stayed in Unplaced ideas because they could not be pinned to a court.`)
   }

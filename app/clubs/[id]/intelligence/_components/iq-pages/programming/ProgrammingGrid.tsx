@@ -45,6 +45,32 @@ export interface GridLiveSession {
   skillLevel: string | null
   maxPlayers: number | null
   registeredCount?: number | null
+  metadata?: {
+    liveOptimization?: {
+      type?: 'move' | 'replace'
+      currentScore?: number
+      scoreDelta?: number
+      summary?: string
+      reasons?: string[]
+      before?: {
+        id?: string
+        title?: string
+        dayOfWeek?: string
+        startTime?: string
+        endTime?: string
+        registeredCount?: number | null
+        occupancy?: number
+      }
+      after?: {
+        title?: string
+        dayOfWeek?: string
+        startTime?: string
+        endTime?: string
+        projectedOccupancy?: number
+        confidence?: number
+      }
+    } | null
+  } | null
 }
 
 export interface GridDraft {
@@ -73,6 +99,7 @@ export interface GridDraft {
       reasons?: string[]
       score?: number
     } | null
+    liveOptimization?: NonNullable<NonNullable<GridLiveSession['metadata']>['liveOptimization']>
     [k: string]: unknown
   } | null
 }
@@ -485,6 +512,7 @@ function LiveCell({ session, onClick }: { session: GridLiveSession; onClick: () 
     title: session.title,
   })
   const skillBadge = SKILL_BADGE_STYLES[tier]
+  const hasOptimization = Boolean(session.metadata?.liveOptimization)
   return (
     <button
       onClick={onClick}
@@ -507,6 +535,18 @@ function LiveCell({ session, onClick }: { session: GridLiveSession; onClick: () 
         >
           {skillBadge.label}
         </span>
+        {hasOptimization && (
+          <span
+            className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
+            style={{
+              background: 'rgba(245,158,11,0.16)',
+              border: '1px solid rgba(245,158,11,0.28)',
+              color: '#B45309',
+            }}
+          >
+            Review
+          </span>
+        )}
       </div>
       <div className="text-[11px] font-semibold leading-tight line-clamp-2">{session.title || 'Session'}</div>
       <div className="text-[10px] opacity-70 leading-tight">
@@ -533,6 +573,7 @@ function DraftCell({
   const skillBadge = SKILL_BADGE_STYLES[tier]
   const fill = hasWarning ? 'rgba(245,158,11,0.12)' : 'rgba(139,92,246,0.14)'
   const border = hasWarning ? 'rgba(245,158,11,0.55)' : 'rgba(139,92,246,0.52)'
+  const linkedLiveOptimization = draft.metadata?.liveOptimization
   return (
     <div
       className="w-full h-full rounded-md px-2 py-1.5 cursor-pointer transition-all hover:shadow-lg flex items-start gap-1"
@@ -567,6 +608,11 @@ function DraftCell({
         <div className="text-[10px] opacity-70 leading-tight mt-1">
           {draft.startTime}–{draft.endTime} · {draft.confidence}% conf
         </div>
+        {linkedLiveOptimization && (
+          <div className="text-[10px] mt-0.5 font-medium" style={{ color: hasWarning ? '#B45309' : '#8B5CF6' }}>
+            {linkedLiveOptimization.type === 'move' ? 'moves a live session' : 'replaces a live session'}
+          </div>
+        )}
         {hasWarning && (
           <div className="flex items-center gap-0.5 text-[10px] mt-0.5 font-medium" style={{ color: '#B45309' }}>
             <AlertTriangle className="w-2.5 h-2.5" />
