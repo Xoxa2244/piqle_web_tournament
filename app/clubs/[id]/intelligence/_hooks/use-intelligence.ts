@@ -1450,6 +1450,66 @@ export function useClearProgrammingScheduleDrafts() {
   return mutation
 }
 
+export function useAcceptProgrammingLiveReview() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.acceptProgrammingLiveReview.useMutation({
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        utils.intelligence.getProgrammingScheduleGrid.invalidate({
+          clubId: variables.clubId,
+        }).catch(() => undefined),
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listSessions.invalidate().catch(() => undefined),
+        utils.intelligence.getSessionsCalendar.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ ok: true }), 200)
+      },
+      mutateAsync: async (_input: any) => ({ ok: true }),
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
+export function useDeclineProgrammingLiveReview() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.declineProgrammingLiveReview.useMutation({
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        utils.intelligence.getProgrammingScheduleGrid.invalidate({
+          clubId: variables.clubId,
+        }).catch(() => undefined),
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ ok: true }), 200)
+      },
+      mutateAsync: async (_input: any) => ({ ok: true }),
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
 export function usePublishProgrammingGrid() {
   const utils = trpc.useUtils()
   const isDemo = useIsDemo()

@@ -8681,24 +8681,40 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
       const visibleDrafts = (drafts as any[]).filter((draft) => {
         const draftWeekStart = (draft.metadata as any)?.weekStartDate
-        return !draftWeekStart || draftWeekStart === input.weekStartDate
+        if (draftWeekStart && draftWeekStart !== input.weekStartDate) {
+          return false
+        }
+        const reviewDecision = (draft.metadata as any)?.liveOptimizationReviewDecision
+        return reviewDecision !== 'declined'
       })
       const bestLiveOptimizationBySessionId = new Map<string, any>()
+      const acceptedLiveOptimizationSessionIds = new Set<string>()
       for (const draft of visibleDrafts) {
         const optimization = (draft.metadata as any)?.liveOptimization
         const liveSessionId = optimization?.liveSessionId || optimization?.before?.id
         if (!liveSessionId) continue
+        const reviewDecision = (draft.metadata as any)?.liveOptimizationReviewDecision
+        const enrichedOptimization = {
+          ...optimization,
+          draftId: draft.id,
+          reviewDecision: reviewDecision || null,
+        }
+        if (reviewDecision === 'accepted') {
+          acceptedLiveOptimizationSessionIds.add(liveSessionId)
+        }
         const existing = bestLiveOptimizationBySessionId.get(liveSessionId)
         if (!existing || Number(optimization?.scoreDelta || 0) > Number(existing?.scoreDelta || 0)) {
-          bestLiveOptimizationBySessionId.set(liveSessionId, optimization)
+          bestLiveOptimizationBySessionId.set(liveSessionId, enrichedOptimization)
         }
       }
-      const enrichedLiveSessions = (liveSessions as any[]).map((session) => ({
-        ...session,
-        metadata: bestLiveOptimizationBySessionId.has(session.id)
-          ? { liveOptimization: bestLiveOptimizationBySessionId.get(session.id) }
-          : null,
-      }))
+      const enrichedLiveSessions = (liveSessions as any[])
+        .filter((session) => !acceptedLiveOptimizationSessionIds.has(session.id))
+        .map((session) => ({
+          ...session,
+          metadata: bestLiveOptimizationBySessionId.has(session.id)
+            ? { liveOptimization: bestLiveOptimizationBySessionId.get(session.id) }
+            : null,
+        }))
 
       return {
         courts,
@@ -8735,6 +8751,157 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         })
       })
       return { ok: true, draft: updated }
+    }),
+
+  acceptProgrammingLiveReview: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const draft = await (ctx.prisma as any).opsSessionDraft.findFirst({
+        where: {
+          id: input.draftId,
+          clubId: input.clubId,
+          origin: 'programming_iq',
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+        },
+        select: {
+          id: true,
+          status: true,
+          title: true,
+          dayOfWeek: true,
+          startTime: true,
+          endTime: true,
+          sessionDraftedAt: true,
+          metadata: true,
+        },
+      }).catch(() => null)
+
+      if (!draft) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Review suggestion not found.' })
+      }
+
+      const existingMetadata = ((draft.metadata as any) || {}) as Record<string, any>
+      const liveOptimization = existingMetadata.liveOptimization || null
+      const liveSessionId = liveOptimization?.liveSessionId || liveOptimization?.before?.id
+      if (!liveOptimization || !liveSessionId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This suggestion is not linked to a live-session review.' })
+      }
+
+      const nextMetadata = {
+        ...existingMetadata,
+        liveOptimizationReviewDecision: 'accepted',
+        liveOptimizationReviewedAt: new Date().toISOString(),
+        liveOptimizationReviewedByUserId: ctx.session.user.id,
+      }
+
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: {
+          status: 'SESSION_DRAFT',
+          sessionDraftedAt: draft.sessionDraftedAt || new Date(),
+          metadata: nextMetadata,
+        },
+      }).catch((err: any) => {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Could not accept review suggestion: ${err?.message?.slice(0, 120) || 'unknown'}`,
+        })
+      })
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'programmingIqAcceptLiveReview',
+        targetType: 'ops_session_draft',
+        targetId: input.draftId,
+        mode: 'draft',
+        result: 'executed',
+        summary: `Accepted review suggestion for ${draft.title} (${draft.dayOfWeek} ${draft.startTime}–${draft.endTime}) in Programming IQ.`,
+        metadata: {
+          draftId: input.draftId,
+          liveSessionId,
+          reviewDecision: 'accepted',
+        },
+      })
+
+      return { ok: true, draft: updated, liveSessionId }
+    }),
+
+  declineProgrammingLiveReview: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const draft = await (ctx.prisma as any).opsSessionDraft.findFirst({
+        where: {
+          id: input.draftId,
+          clubId: input.clubId,
+          origin: 'programming_iq',
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+        },
+        select: {
+          id: true,
+          title: true,
+          dayOfWeek: true,
+          startTime: true,
+          endTime: true,
+          metadata: true,
+        },
+      }).catch(() => null)
+
+      if (!draft) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Review suggestion not found.' })
+      }
+
+      const existingMetadata = ((draft.metadata as any) || {}) as Record<string, any>
+      const liveOptimization = existingMetadata.liveOptimization || null
+      const liveSessionId = liveOptimization?.liveSessionId || liveOptimization?.before?.id || null
+
+      const nextMetadata = {
+        ...existingMetadata,
+        liveOptimizationReviewDecision: 'declined',
+        liveOptimizationReviewedAt: new Date().toISOString(),
+        liveOptimizationReviewedByUserId: ctx.session.user.id,
+      }
+
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: {
+          status: 'REJECTED',
+          archivedAt: new Date(),
+          metadata: nextMetadata,
+        },
+      }).catch((err: any) => {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Could not decline review suggestion: ${err?.message?.slice(0, 120) || 'unknown'}`,
+        })
+      })
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'programmingIqDeclineLiveReview',
+        targetType: 'ops_session_draft',
+        targetId: input.draftId,
+        mode: 'draft',
+        result: 'executed',
+        summary: `Declined review suggestion for ${draft.title} (${draft.dayOfWeek} ${draft.startTime}–${draft.endTime}) in Programming IQ.`,
+        metadata: {
+          draftId: input.draftId,
+          liveSessionId,
+          reviewDecision: 'declined',
+        },
+      })
+
+      return { ok: true, draft: updated, liveSessionId }
     }),
 
   bulkApproveProgrammingGrid: protectedProcedure

@@ -35,6 +35,9 @@ interface CellEditPopoverProps {
   }) => void
   onReject?: (draftId: string) => void
   saving?: boolean
+  onAcceptLiveReview?: (draftId: string) => void
+  onDeclineLiveReview?: (draftId: string) => void
+  reviewMutating?: boolean
 }
 
 export function CellEditPopover(props: CellEditPopoverProps) {
@@ -73,8 +76,12 @@ export function CellEditPopover(props: CellEditPopoverProps) {
 function LivePanel({
   session,
   onClose,
+  onAcceptLiveReview,
+  onDeclineLiveReview,
+  reviewMutating,
 }: CellEditPopoverProps & { session: GridLiveSession }) {
   const optimization = session.metadata?.liveOptimization || null
+  const canReview = Boolean(optimization?.draftId && onAcceptLiveReview && onDeclineLiveReview)
   return (
     <div>
       <Header title={session.title || 'Session'} onClose={onClose} />
@@ -150,10 +157,37 @@ function LivePanel({
                 ))}
               </div>
             )}
+            {canReview && optimization?.draftId && (
+              <div
+                className="flex items-center gap-2 pt-2"
+                style={{ borderTop: '1px solid rgba(245,158,11,0.18)' }}
+              >
+                <button
+                  type="button"
+                  onClick={() => onAcceptLiveReview?.(optimization.draftId!)}
+                  disabled={reviewMutating}
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: '#8B5CF6', color: 'white' }}
+                >
+                  {reviewMutating ? 'Applying…' : 'Accept'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeclineLiveReview?.(optimization.draftId!)}
+                  disabled={reviewMutating}
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ background: 'transparent', color: '#B45309', border: '1px solid rgba(180,83,9,0.35)' }}
+                >
+                  Decline
+                </button>
+              </div>
+            )}
           </div>
         )}
         <div className="text-xs opacity-70 pt-4" style={{ color: 'var(--t4)' }}>
-          Published sessions are read-only here. Open the Schedule tab to edit.
+          {canReview
+            ? 'Accept keeps this change inside Programming IQ as a suggestion-only edit. Reset will restore the original live schedule.'
+            : 'Published sessions are read-only here. Open the Schedule tab to edit.'}
         </div>
       </div>
     </div>

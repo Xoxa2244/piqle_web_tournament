@@ -29,6 +29,8 @@ import {
   useGenerateProgrammingSchedule,
   useUpdateProgrammingGridCell,
   useClearProgrammingScheduleDrafts,
+  useAcceptProgrammingLiveReview,
+  useDeclineProgrammingLiveReview,
   useIsDemo,
 } from '../../_hooks/use-intelligence'
 import { AILoadingAnimation } from './AILoadingAnimation'
@@ -128,6 +130,8 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const generateMutation = useGenerateProgrammingSchedule()
   const updateCellMutation = useUpdateProgrammingGridCell()
   const clearDraftsMutation = useClearProgrammingScheduleDrafts()
+  const acceptLiveReviewMutation = useAcceptProgrammingLiveReview()
+  const declineLiveReviewMutation = useDeclineProgrammingLiveReview()
 
   const gridData = gridQuery.data
   const clubTimezone = (gridData as any)?.timezone || 'America/New_York'
@@ -296,6 +300,28 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         },
       )
     })
+  }
+
+  const handleAcceptLiveReview = (draftId: string) => {
+    acceptLiveReviewMutation.mutate(
+      { clubId, draftId },
+      {
+        onSuccess: () => {
+          setActiveCell(null)
+        },
+      } as any,
+    )
+  }
+
+  const handleDeclineLiveReview = (draftId: string) => {
+    declineLiveReviewMutation.mutate(
+      { clubId, draftId },
+      {
+        onSuccess: () => {
+          setActiveCell(null)
+        },
+      } as any,
+    )
   }
 
   const togglePreset = (presetId: ProgrammingStrategyPresetId) => {
@@ -749,6 +775,9 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           onClose={() => setActiveCell(null)}
           onSave={handleSaveCell}
           saving={updateCellMutation.isPending}
+          onAcceptLiveReview={handleAcceptLiveReview}
+          onDeclineLiveReview={handleDeclineLiveReview}
+          reviewMutating={acceptLiveReviewMutation.isPending || declineLiveReviewMutation.isPending}
         />
       )}
     </div>
