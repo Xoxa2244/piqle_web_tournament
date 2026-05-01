@@ -42,6 +42,10 @@ export interface MessageDraft {
   perRecipientPersonalisation: boolean
   /** A/B variant — wired in v2; v1 ships single-variant. */
   abVariantBody?: string
+  /** Optional CTA button label override. Empty → email uses "Book a Session". */
+  ctaLabel?: string
+  /** Optional CTA URL override. Empty → email uses club page (bookingUrl). */
+  ctaUrl?: string
 }
 
 export interface ScheduleSettings {
@@ -63,7 +67,7 @@ export interface WizardState {
 export const EMPTY_WIZARD_STATE: WizardState = {
   audience: null,
   goal: null,
-  message: { subject: '', body: '', perRecipientPersonalisation: false },
+  message: { subject: '', body: '', perRecipientPersonalisation: false, ctaLabel: '', ctaUrl: '' },
   schedule: {
     format: 'one_time',
     mode: 'now',

@@ -70,6 +70,8 @@ async function processCampaign(campaign: {
   subject: string | null
   body: string | null
   cohortSnapshot: any
+  ctaLabel: string | null
+  ctaUrl: string | null
 }): Promise<{ sent: number; failed: number; skipped: number }> {
   // Atomically claim up to MAX_BATCH pending logs for this campaign.
   // FOR UPDATE SKIP LOCKED prevents two concurrent ticks from racing
@@ -154,6 +156,8 @@ async function processCampaign(campaign: {
         body,
         clubName,
         bookingUrl,
+        ctaLabel: campaign.ctaLabel,
+        ctaUrl: campaign.ctaUrl,
         metadata: {
           logId: row.id,
           clubId: campaign.clubId,
@@ -249,6 +253,7 @@ async function run(request: Request) {
       select: {
         id: true, clubId: true, name: true, subject: true, body: true,
         cohortSnapshot: true,
+        ctaLabel: true, ctaUrl: true,
         club: { select: { id: true, automationSettings: true } },
       },
     })

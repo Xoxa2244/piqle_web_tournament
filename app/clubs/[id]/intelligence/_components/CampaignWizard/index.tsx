@@ -156,6 +156,8 @@ export function CampaignWizard({
       // hand-picked userIds list.
       const cohortId = state.audience.cohortId
       const userIds = !cohortId ? state.audience.userIds : undefined
+      const ctaLabel = state.message.ctaLabel?.trim()
+      const ctaUrl = state.message.ctaUrl?.trim()
       launchMutation.mutate({
         clubId,
         name: `${state.goal.replace(/_/g, ' ')} · ${new Date().toLocaleDateString()}`,
@@ -173,6 +175,8 @@ export function CampaignWizard({
           ? new Date(state.schedule.scheduledAt).toISOString()
           : undefined,
         format: state.schedule.format,
+        ...(ctaLabel ? { ctaLabel } : {}),
+        ...(ctaUrl ? { ctaUrl } : {}),
       })
     } finally {
       setIsLaunching(false)

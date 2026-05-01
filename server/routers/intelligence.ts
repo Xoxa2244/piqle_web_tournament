@@ -9240,6 +9240,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       audienceLabel: z.string().max(120).optional(), // for cohortName when inline
       scheduledAt: z.string().optional(), // ISO; absent or past → run now
       format: z.enum(['one_time', 'sequence', 'recurring']).default('one_time'),
+      // Optional CTA override. When absent, sendOutreachEmail falls back
+      // to the legacy "Book a Session" button → club page.
+      ctaLabel: z.string().min(1).max(100).optional(),
+      ctaUrl: z.string().url().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
@@ -9296,6 +9300,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           subject: input.subject,
           body: input.body,
           channels: input.channels,
+          ctaLabel: input.ctaLabel,
+          ctaUrl: input.ctaUrl,
           status,
           scheduledAt: scheduledDate,
           launchedAt: status === 'running' ? now : null,
@@ -9375,6 +9381,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       channels: z.array(z.enum(['email', 'sms'])).min(1),
       // Optional override — if absent, we send to the logged-in admin's email.
       to: z.string().email().optional(),
+      // Optional CTA override — same shape as launchCampaign so previews
+      // render exactly the same button as the real send.
+      ctaLabel: z.string().min(1).max(100).optional(),
+      ctaUrl: z.string().url().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
@@ -9414,6 +9424,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           body,
           clubName,
           bookingUrl,
+          ctaLabel: input.ctaLabel,
+          ctaUrl: input.ctaUrl,
           metadata: { clubId: input.clubId, userId: ctx.session.user.id },
           tags: ['campaign-test-send'],
         })

@@ -111,6 +111,14 @@ export function Step4Message({
     [audience?.memberCount],
   )
 
+  // CTA validation — URL must be empty (use default) or a valid http(s) URL.
+  // Label is optional but required if URL is set.
+  const ctaUrlTrimmed = (message.ctaUrl ?? '').trim()
+  const ctaLabelTrimmed = (message.ctaLabel ?? '').trim()
+  const ctaUrlInvalid = ctaUrlTrimmed.length > 0 && !/^https?:\/\/.+/i.test(ctaUrlTrimmed)
+  const ctaLabelMissing = ctaUrlTrimmed.length > 0 && ctaLabelTrimmed.length === 0
+  const ctaInvalid = ctaUrlInvalid || ctaLabelMissing
+
   // P1.6: test send (single-recipient preview). Does not create a
   // Campaign row, does not bypass nor honor Live Mode — it's a QA
   // tool that ships exactly the same template the cron does.
@@ -139,12 +147,18 @@ export function Step4Message({
       setTestSendError('Pick at least one channel in Step 3 to test.')
       return
     }
+    if (ctaInvalid) {
+      setTestSendError(ctaUrlInvalid ? 'CTA URL must start with http:// or https://' : 'CTA label is required when a URL is set.')
+      return
+    }
     testSendMutation.mutate({
       clubId,
       subject: message.subject,
       body: message.body,
       channels,
       ...(testEmail.trim() ? { to: testEmail.trim() } : {}),
+      ...(ctaLabelTrimmed ? { ctaLabel: ctaLabelTrimmed } : {}),
+      ...(ctaUrlTrimmed ? { ctaUrl: ctaUrlTrimmed } : {}),
     })
   }
 
@@ -199,6 +213,7 @@ export function Step4Message({
   const isLive = liveMode === 'live'
   const launchDisabled = isLaunching || !isLive || regenerateMutation.isPending
     || message.subject.trim().length === 0 || message.body.trim().length === 0
+    || ctaInvalid
 
   if (!goal) {
     return (
@@ -294,6 +309,53 @@ export function Step4Message({
       {/* Variables hint */}
       <div className="rounded-xl p-3 text-[11px]" style={{ background: 'var(--subtle)', color: 'var(--t4)' }}>
         Variables available: <code>{`{first_name}`}</code> · <code>{`{last_name}`}</code> · <code>{`{event_name}`}</code> · <code>{`{event_date}`}</code> · <code>{`{expires_in_days}`}</code>
+      </div>
+
+      {/* Call to action — optional override for the email button.
+          When both fields are empty the email shows the default
+          "Book a Session" button linking to the club page. */}
+      <div>
+        <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+          Call to action <span style={{ textTransform: 'none', color: 'var(--t4)', fontWeight: 400 }}>— leave blank for default "Book a Session" button</span>
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-2 mt-1">
+          <input
+            type="text"
+            value={message.ctaLabel ?? ''}
+            onChange={(e) => onChange({ ...message, ctaLabel: e.target.value })}
+            placeholder="Button label (e.g. Renew now)"
+            maxLength={100}
+            className="px-3 py-2 rounded-lg text-sm outline-none"
+            style={{
+              background: 'var(--subtle)',
+              border: `1px solid ${ctaLabelMissing ? 'rgba(239,68,68,0.5)' : 'var(--card-border)'}`,
+              color: 'var(--heading)',
+            }}
+          />
+          <input
+            type="url"
+            value={message.ctaUrl ?? ''}
+            onChange={(e) => onChange({ ...message, ctaUrl: e.target.value })}
+            placeholder="https://yourclub.com/renew"
+            maxLength={500}
+            className="px-3 py-2 rounded-lg text-sm outline-none"
+            style={{
+              background: 'var(--subtle)',
+              border: `1px solid ${ctaUrlInvalid ? 'rgba(239,68,68,0.5)' : 'var(--card-border)'}`,
+              color: 'var(--heading)',
+            }}
+          />
+        </div>
+        {ctaUrlInvalid && (
+          <div className="mt-1 text-[11px]" style={{ color: '#F87171' }}>
+            URL must start with http:// or https://
+          </div>
+        )}
+        {ctaLabelMissing && (
+          <div className="mt-1 text-[11px]" style={{ color: '#F87171' }}>
+            Add a button label or clear the URL.
+          </div>
+        )}
       </div>
 
       {/* Test send (P1.6) — single-recipient preview, no Campaign/log row created */}

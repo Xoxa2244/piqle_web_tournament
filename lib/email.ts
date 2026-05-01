@@ -605,6 +605,8 @@ export async function sendOutreachEmail({
   sessionCard,
   metadata,
   tags,
+  ctaLabel,
+  ctaUrl,
 }: {
   to: string
   subject: string
@@ -616,8 +618,16 @@ export async function sendOutreachEmail({
   metadata?: EmailMetadata
   /** Mandrill tags for dashboard filtering */
   tags?: string[]
+  /** Custom CTA button label. Falls back to "Book a Session" when absent. */
+  ctaLabel?: string | null
+  /** Custom CTA target. Falls back to bookingUrl when absent. */
+  ctaUrl?: string | null
 }): Promise<{ messageId: string }> {
-  const text = `${body}\n\nBook now: ${bookingUrl}`
+  // Effective CTA — either the campaign-level override or the legacy default.
+  const effectiveCtaLabel = (ctaLabel?.trim() || 'Book a Session')
+  const effectiveCtaUrl = (ctaUrl?.trim() || bookingUrl)
+
+  const text = `${body}\n\n${effectiveCtaLabel}: ${effectiveCtaUrl}`
 
   const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
@@ -655,7 +665,7 @@ export async function sendOutreachEmail({
     bodyHtml: `
       ${renderTextParagraphs(body)}
       ${sessionCardHtml ? buildEmailPanel(sessionCardHtml) : ''}
-      ${buildEmailButton('Book a Session', bookingUrl)}
+      ${buildEmailButton(effectiveCtaLabel, effectiveCtaUrl)}
     `,
     footerHtml: `
       <p style="margin:0;font-size:12px;color:#94A3B8;">

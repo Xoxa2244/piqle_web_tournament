@@ -2091,6 +2091,11 @@ model Campaign {
 
   channels        String[] @default([]) // ['email','sms']
 
+  // Optional CTA override. When null, sendOutreachEmail falls back to
+  // the legacy "Book a Session" button linking to the club page.
+  ctaLabel        String?  @map("cta_label")
+  ctaUrl          String?  @map("cta_url")
+
   status          String   @default("draft") // draft|scheduled|running|paused|completed|failed
 
   scheduledAt     DateTime? @map("scheduled_at")
