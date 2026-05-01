@@ -358,10 +358,21 @@ export function parseAdvisorProgrammingRequest(
     ...(current || {}),
   }
 
-  const days = DAYS.filter((candidate) => lower.includes(candidate.toLowerCase()))
-  if (days.length > 0) {
-    next.dayOfWeek = days[0]
-    next.dayOfWeeks = days
+  const explicitDays = DAYS.filter((candidate) => lower.includes(candidate.toLowerCase()))
+  const requestedDays = [...explicitDays]
+  if (/\bweekend(s)?\b/.test(lower)) {
+    for (const day of ['Saturday', 'Sunday'] as DayOfWeek[]) {
+      if (!requestedDays.includes(day)) requestedDays.push(day)
+    }
+  }
+  if (/\bweekday(s)?\b/.test(lower)) {
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as DayOfWeek[]) {
+      if (!requestedDays.includes(day)) requestedDays.push(day)
+    }
+  }
+  if (requestedDays.length > 0) {
+    next.dayOfWeek = requestedDays[0]
+    next.dayOfWeeks = requestedDays
   }
 
   if (/\b(morning|before work|early)\b/.test(lower)) next.timeSlot = 'morning'

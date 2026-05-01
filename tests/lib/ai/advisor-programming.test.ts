@@ -31,6 +31,13 @@ describe('advisor programming request parsing', () => {
     expect(parsed.dayOfWeeks).toEqual(['Tuesday', 'Wednesday'])
     expect(parsed.timeSlot).toBe('morning')
   })
+
+  it('expands weekend language into saturday and sunday requested days', () => {
+    const parsed = parseAdvisorProgrammingRequest('more sessions on weekend')
+
+    expect(parsed.dayOfWeek).toBe('Saturday')
+    expect(parsed.dayOfWeeks).toEqual(['Saturday', 'Sunday'])
+  })
 })
 
 describe('advisor programming planning', () => {
@@ -143,6 +150,24 @@ describe('advisor programming planning', () => {
       'Wednesday',
     ])
     expect(plan.proposals.slice(0, 2).every((proposal) => proposal.timeSlot === 'morning')).toBe(true)
+  })
+
+  it('keeps weekend request ideas at the front of the plan when weekend is requested broadly', () => {
+    const plan = buildAdvisorProgrammingPlan({
+      sessions,
+      preferences,
+      request: parseAdvisorProgrammingRequest('more sessions on weekend'),
+      limit: 4,
+    })
+
+    expect(plan.requestedAlternates.map((proposal) => proposal.dayOfWeek)).toEqual([
+      'Saturday',
+      'Sunday',
+    ])
+    expect(plan.proposals.slice(0, 2).map((proposal) => proposal.dayOfWeek)).toEqual([
+      'Saturday',
+      'Sunday',
+    ])
   })
 
   it('marks windows that could cannibalize existing sessions', () => {
