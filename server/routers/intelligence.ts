@@ -9346,4 +9346,86 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         status: campaign.status,
       }
     }),
+
+  /**
+   * Engage P1.6 — Test send (single-recipient preview).
+   *
+   * Sends one preview email to the admin (or an explicit override
+   * address) using the same `sendOutreachEmail` template as the cron,
+   * so what the admin sees in their inbox matches what real recipients
+   * would see when the campaign launches.
+   *
+   * Critically does NOT:
+   *   - Create a Campaign row
+   *   - Create an AIRecommendationLog row
+   *   - Bump any counters
+   *   - Care about Live Mode (this is an internal QA tool, not member outreach)
+   *
+   * Live Mode is bypassed because the test send doesn't ship to the
+   * cohort — it goes only to the admin who clicked the button. If they
+   * type a member's email in the override field, we trust them; the
+   * isBlockedEmail guard inside lib/email still prevents sends to
+   * placeholder/demo/test domains.
+   */
+  testSendCampaign: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      subject: z.string().min(1).max(200),
+      body: z.string().min(1).max(5000),
+      channels: z.array(z.enum(['email', 'sms'])).min(1),
+      // Optional override — if absent, we send to the logged-in admin's email.
+      to: z.string().email().optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Resolve recipient: explicit override → caller's session email
+      // → error. We don't fall back to anything DB-side.
+      const recipientEmail = input.to ?? ctx.session.user.email
+      if (!recipientEmail) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'No recipient — either pass `to` or sign in with an email.',
+        })
+      }
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true },
+      })
+      const clubName = club?.name ?? 'Your Club'
+
+      // Match the cron's bookingUrl pattern so the preview reads exactly
+      // like a real send.
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+      const bookingUrl = `${baseUrl}/clubs/${input.clubId}`
+
+      // {{name}} substitution: for previews we plug in the recipient's
+      // display name from session, falling back to "there".
+      const firstName = (ctx.session.user.name ?? '').trim().split(/\s+/)[0] || 'there'
+      const subject = input.subject.replace(/\{\{\s*name\s*\}\}/gi, firstName)
+      const body = input.body.replace(/\{\{\s*name\s*\}\}/gi, firstName)
+
+      try {
+        const { sendOutreachEmail } = await import('@/lib/email')
+        const { messageId } = await sendOutreachEmail({
+          to: recipientEmail,
+          subject: `[TEST] ${subject}`,
+          body,
+          clubName,
+          bookingUrl,
+          metadata: { clubId: input.clubId, userId: ctx.session.user.id },
+          tags: ['campaign-test-send'],
+        })
+        return { sentTo: recipientEmail, messageId }
+      } catch (err: any) {
+        // sendOutreachEmail throws on blocked domains and SMTP failures.
+        // Surface a concise message — the wizard renders this inline.
+        const message = String(err?.message ?? err).slice(0, 200)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Test send failed: ${message}`,
+        })
+      }
+    }),
 })
