@@ -36,8 +36,11 @@ function mapFormat(reservationType?: string): string {
 function parseTime(timeStr: string): string {
   // Handle "2024-03-15T18:00:00" format
   if (timeStr.includes('T')) {
-    const d = new Date(timeStr)
-    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+    const timePart = timeStr.split('T')[1] || ''
+    const match = timePart.match(/(\d{2}):(\d{2})/)
+    if (match) {
+      return `${match[1]}:${match[2]}`
+    }
   }
   // Handle "6:00 PM" format
   const match = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i)
@@ -53,7 +56,11 @@ function parseTime(timeStr: string): string {
 
 /** Parse date from CR format */
 function parseDate(dateStr: string): Date {
-  return new Date(dateStr)
+  if (dateStr.includes('T')) {
+    const datePart = dateStr.split('T')[0]
+    return new Date(`${datePart}T12:00:00Z`)
+  }
+  return new Date(`${dateStr}T12:00:00Z`)
 }
 
 // ── External ID Mapping (simplified, no dependency on partner utils) ──
@@ -510,9 +517,9 @@ async function syncEventRegistrations(
         await Promise.all(entries.slice(i, i + BATCH).map(async ([eventKey, regs]) => {
           try {
             const first = regs[0]
-            const startTime = first.StartTime?.includes('T') ? first.StartTime.split('T')[1]?.slice(0, 5) : '00:00'
-            const endTime = first.EndTime?.includes('T') ? first.EndTime.split('T')[1]?.slice(0, 5) : '01:00'
-            const date = new Date(first.StartTime || window.from)
+            const startTime = parseTime(first.StartTime || '00:00')
+            const endTime = parseTime(first.EndTime || '01:00')
+            const date = parseDate(first.StartTime || window.from)
             const activeRegs = regs.filter((r: any) => !r.CancelledOnUtc)
             const format = mapFormat(first.EventCategoryName || first.EventName || '')
 

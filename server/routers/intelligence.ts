@@ -2963,6 +2963,13 @@ export const intelligenceRouter = createTRPCRouter({
       }
 
       let csvSessions: any[] = []
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      }).catch(() => null)
+      const timezone = (
+        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
+      ) || 'America/New_York'
 
       // Primary: fast Prisma query on play_sessions (indexed, no JSON parsing)
       try {
@@ -2984,7 +2991,10 @@ export const intelligenceRouter = createTRPCRouter({
             : s._count.bookings;
           return {
             id: s.id,
-            date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
+            date: isoDateInTimezone(
+              s.date instanceof Date ? s.date : new Date(s.date),
+              timezone,
+            ),
             startTime: s.startTime,
             endTime: s.endTime,
             court: s.clubCourt?.name || '',
