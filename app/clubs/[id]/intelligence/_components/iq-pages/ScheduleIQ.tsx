@@ -561,7 +561,7 @@ export function ScheduleIQ({
                           const cellSessions = sessionGrid.map[key]
 
                           // Skip cells that are covered by a multi-hour session above
-                          if (isOccupied) return null
+                          if (isOccupied && !cellSessions) return null
 
                           const span = cellSessions?.[0]?.rowSpan || 1
                           const fractional = (cellSessions?.[0] as any)?.fractionalSpan || span
@@ -588,15 +588,24 @@ export function ScheduleIQ({
                                   const colors = SKILL_COLORS[sk.tier]
                                   const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
                                   const timeRange = `${s.startTime} - ${s.endTime}`
+                                  const title = (s.title || '').trim() || sk.label
                                   return (
                                     <button
                                       key={s.id}
                                       onClick={() => setSelectedSession(s)}
                                       className="w-full text-left rounded-md px-1.5 py-1 transition-all hover:brightness-110 cursor-pointer h-full flex flex-col justify-between"
-                                      style={{ background: colors.bg, border: `1px solid ${colors.border}` }}
+                                      style={{
+                                        background: colors.bg,
+                                        border: `1px solid ${colors.border}`,
+                                        position: 'relative',
+                                        zIndex: isOccupied ? 3 : 1,
+                                      }}
                                     >
                                       <div>
-                                        <div className="truncate text-[10px] font-semibold leading-tight" style={{ color: colors.text }}>{sk.label}</div>
+                                        <div className="truncate text-[10px] font-semibold leading-tight" style={{ color: colors.text }}>{title}</div>
+                                        {title !== sk.label && (
+                                          <div className="truncate text-[9px] leading-tight" style={{ color: 'var(--t4)' }}>{sk.label}</div>
+                                        )}
                                         {span > 1 && <div className="text-[8px] leading-tight" style={{ color: 'var(--t4)' }}>{timeRange}</div>}
                                       </div>
                                       <div className="mt-0.5 flex items-center justify-between gap-1">

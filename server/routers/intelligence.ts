@@ -2974,7 +2974,10 @@ export const intelligenceRouter = createTRPCRouter({
       // Primary: fast Prisma query on play_sessions (indexed, no JSON parsing)
       try {
         const dbSessions = await ctx.prisma.playSession.findMany({
-          where: { clubId: input.clubId },
+          where: {
+            clubId: input.clubId,
+            status: { not: 'CANCELLED' },
+          },
           select: {
             id: true, date: true, startTime: true, endTime: true, format: true,
             skillLevel: true, maxPlayers: true, pricePerSlot: true, registeredCount: true,
