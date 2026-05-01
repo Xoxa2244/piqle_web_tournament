@@ -408,57 +408,63 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
         </div>
 
         {regeneratePrompt.trim() && (
-          <button
-            type="button"
-            onClick={() => setPrioritizeRequest((current) => !current)}
-            className="w-full rounded-2xl p-3 text-left transition-all"
+          <div
+            className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5"
             style={{
-              background: prioritizeRequest ? 'rgba(16,185,129,0.10)' : 'rgba(15,23,42,0.32)',
-              border: prioritizeRequest
-                ? '1px solid rgba(16,185,129,0.3)'
-                : '1px solid rgba(148,163,184,0.18)',
+              background: 'rgba(15,23,42,0.22)',
+              border: '1px solid rgba(148,163,184,0.14)',
             }}
           >
-            <div className="flex items-start gap-3">
-              <div
-                className="mt-0.5 h-5 w-5 rounded-full border flex items-center justify-center flex-shrink-0"
-                style={{
-                  borderColor: prioritizeRequest ? 'rgba(16,185,129,0.5)' : 'rgba(148,163,184,0.28)',
-                  background: prioritizeRequest ? 'rgba(16,185,129,0.18)' : 'transparent',
-                }}
-              >
-                {prioritizeRequest && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#10B981' }} />}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="text-sm font-medium" style={{ color: 'var(--heading)' }}>
+                  Treat this request as a priority
+                </div>
+                <div className="group relative">
+                  <div
+                    className="inline-flex h-5 w-5 items-center justify-center rounded-full"
+                    style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--t4)' }}
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" />
+                  </div>
+                  <div
+                    className="pointer-events-none absolute left-1/2 top-[calc(100%+10px)] z-10 w-64 -translate-x-1/2 rounded-xl px-3 py-2 text-xs leading-5 opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100"
+                    style={{
+                      background: 'rgba(15,23,42,0.96)',
+                      border: '1px solid rgba(148,163,184,0.18)',
+                      color: '#CBD5E1',
+                    }}
+                  >
+                    This boosts ideas that match your typed request. It does not change the overall weekly strategy by itself.
+                  </div>
+                </div>
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <div className="text-sm font-medium" style={{ color: 'var(--heading)' }}>
-                    Treat this request as a priority
-                  </div>
-                  <div className="group relative">
-                    <div
-                      className="inline-flex h-5 w-5 items-center justify-center rounded-full"
-                      style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--t4)' }}
-                    >
-                      <HelpCircle className="w-3.5 h-3.5" />
-                    </div>
-                    <div
-                      className="pointer-events-none absolute left-1/2 top-[calc(100%+10px)] z-10 w-64 -translate-x-1/2 rounded-xl px-3 py-2 text-xs leading-5 opacity-0 shadow-xl transition-opacity duration-150 group-hover:opacity-100"
-                      style={{
-                        background: 'rgba(15,23,42,0.96)',
-                        border: '1px solid rgba(148,163,184,0.18)',
-                        color: '#CBD5E1',
-                      }}
-                    >
-                      This boosts ideas that match your typed request. It does not change the overall weekly strategy by itself.
-                    </div>
-                  </div>
-                </div>
-                <div className="text-xs mt-1 leading-5" style={{ color: 'var(--t4)' }}>
-                  Your request is always evaluated. Turn this on when you want the engine to push your request harder before ranking the rest of the week.
-                </div>
+              <div className="text-xs mt-1 leading-5" style={{ color: 'var(--t4)' }}>
+                Push request-matching ideas higher before the rest of the weekly ranking.
               </div>
             </div>
-          </button>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={prioritizeRequest}
+              aria-label="Treat this request as a priority"
+              onClick={() => setPrioritizeRequest((current) => !current)}
+              className="relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors"
+              style={{
+                background: prioritizeRequest ? '#10B981' : 'rgba(148,163,184,0.28)',
+                boxShadow: prioritizeRequest ? '0 0 0 1px rgba(16,185,129,0.22)' : 'inset 0 0 0 1px rgba(148,163,184,0.12)',
+              }}
+            >
+              <span
+                className="inline-block h-5 w-5 transform rounded-full bg-white transition-transform"
+                style={{
+                  transform: prioritizeRequest ? 'translateX(26px)' : 'translateX(3px)',
+                  boxShadow: '0 4px 10px rgba(15,23,42,0.22)',
+                }}
+              />
+            </button>
+          </div>
         )}
 
         <div
