@@ -6,6 +6,7 @@ import type {
   PlaySessionSkillLevel,
   TimeSlot,
 } from '@/types/intelligence'
+import type { ProgrammingStrategyPresetId } from './programming-iq-strategy'
 
 const DAYS: DayOfWeek[] = [
   'Monday',
@@ -1159,6 +1160,7 @@ function buildGapFillProposals(opts: {
   audienceProfile?: ProgrammingAudienceProfile | null
   weightProfile: ProgrammingWeightProfile
   courtCount?: number
+  fillIdleMode?: boolean
 }): AdvisorProgrammingProposalDraft[] {
   const proposals: AdvisorProgrammingProposalDraft[] = []
   const candidateFormats = getTopFormats(opts.formatDemand)
@@ -1175,14 +1177,16 @@ function buildGapFillProposals(opts: {
       const interestBacklog = opts.interestSlotDemand.get(slotKey) || 0
       const supply = opts.slotSupply.get(slotKey)
       const slotAvgOccupancy = supply ? average(supply.occupancyValues) : 0
+      const minDemand = opts.fillIdleMode ? 2 : 3
+      const minExistingOccupancy = opts.fillIdleMode ? 60 : 68
       const primaryCombo = getPrimarySlotCombo({
         comboStats: opts.comboStats,
         dayOfWeek,
         timeSlot,
       })
 
-      if (demand < 3) continue
-      if (supply && supply.sessionCount > 0 && slotAvgOccupancy < 68) continue
+      if (demand < minDemand) continue
+      if (supply && supply.sessionCount > 0 && slotAvgOccupancy < minExistingOccupancy) continue
 
       const weekdayStrength = getRelativeDemandScore(slotKey, opts.slotDemand)
       const momentum = supply
@@ -1238,15 +1242,21 @@ function buildGapFillProposals(opts: {
               slotSimilarityMultiplier >= 1 ? 45 : 34,
               slotSimilarityMultiplier >= 1 ? 92 : slotSimilarityMultiplier >= 0.72 ? 78 : 68,
             )
-            : 50
+            : opts.fillIdleMode
+              ? 54
+              : 50
           const scoreSignals = opts.weightProfile.weights.gap
+          const idleExplorationBonus = opts.fillIdleMode
+            ? (timeSlot === 'morning' || timeSlot === 'afternoon' ? 6 : 0) + (!supply || supply.sessionCount === 0 ? 4 : 0)
+            : 0
           const projectedOccupancy = clamp(
             Math.round(
               historicalScore * 0.38 +
               Math.min(100, demand * 16) * 0.26 +
               Math.min(100, interestBacklog * 18) * 0.18 +
               membershipFit * 0.10 +
-              skillProfileFit * 0.08
+              skillProfileFit * 0.08 +
+              idleExplorationBonus * 0.35
             ),
             52,
             92,
@@ -1261,7 +1271,8 @@ function buildGapFillProposals(opts: {
               ageTimeFit * scoreSignals.ageTimeFit +
               momentum * scoreSignals.momentum +
               courtHeadroom * scoreSignals.courtHeadroom +
-              weekdayStrength * scoreSignals.weekdayStrength
+              weekdayStrength * scoreSignals.weekdayStrength +
+              idleExplorationBonus
             ),
             44,
             94,
@@ -1686,6 +1697,7 @@ export function buildAdvisorProgrammingPlan(opts: {
   request?: AdvisorProgrammingRequestSpec | null
   limit?: number
   courtCount?: number
+  strategyPresetIds?: ProgrammingStrategyPresetId[]
 }) {
   const { comboStats, slotSupply } = buildSessionStats(opts.sessions)
   const {
@@ -1712,6 +1724,7 @@ export function buildAdvisorProgrammingPlan(opts: {
   })
   const topFormat = getTopFormats(formatDemand)[0] || 'OPEN_PLAY'
   const topSkill = getTopSkills(skillDemand, opts.audienceProfile)[0] || 'INTERMEDIATE'
+  const fillIdleMode = (opts.strategyPresetIds || []).includes('FILL_IDLE_HOURS')
 
   const baseProposals = dedupeProposals([
     ...buildExpandPeakProposals({
@@ -1735,6 +1748,7 @@ export function buildAdvisorProgrammingPlan(opts: {
       audienceProfile: opts.audienceProfile,
       weightProfile,
       courtCount: opts.courtCount,
+      fillIdleMode,
     }),
   ])
   const annotatedBaseProposals = withProgrammingConflicts(baseProposals, {

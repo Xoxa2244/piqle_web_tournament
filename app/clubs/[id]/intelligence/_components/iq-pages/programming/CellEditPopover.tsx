@@ -115,6 +115,9 @@ function LivePanel({
                   {optimization.before?.registeredCount ?? session.registeredCount ?? 0}/{session.maxPlayers ?? 0}
                   {typeof optimization.before?.occupancy === 'number' ? ` · ${optimization.before.occupancy}% occ` : ''}
                 </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  Score {optimization.currentScore}
+                </div>
               </div>
               <div
                 className="rounded-lg p-2"
@@ -130,7 +133,10 @@ function LivePanel({
                   {optimization.after?.dayOfWeek} · {optimization.after?.startTime}–{optimization.after?.endTime}
                 </div>
                 <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
-                  {optimization.after?.projectedOccupancy ?? '—'}% occ · {optimization.after?.confidence ?? '—'}% conf
+                  {optimization.after?.projectedOccupancy ?? '—'}% occ · {optimization.after?.estimatedInterestedMembers ?? '—'} interested
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  Score {optimization.after?.selectionScore ?? '—'} · {optimization.after?.confidence ?? '—'}% conf
                 </div>
               </div>
             </div>
@@ -198,9 +204,11 @@ function DraftPanel({
         reasons?: string[]
       }
     | null
-  const liveOptimization = (draft.metadata?.liveOptimization || null) as
+        const liveOptimization = (draft.metadata?.liveOptimization || null) as
     | {
         type?: 'move' | 'replace'
+        currentScore?: number
+        scoreDelta?: number
         summary?: string
         reasons?: string[]
         before?: {
@@ -218,6 +226,8 @@ function DraftPanel({
           endTime?: string
           projectedOccupancy?: number
           confidence?: number
+          estimatedInterestedMembers?: number
+          selectionScore?: number
         }
       }
     | null
@@ -325,6 +335,11 @@ function DraftPanel({
                   {liveOptimization.before?.registeredCount ?? 0} booked
                   {typeof liveOptimization.before?.occupancy === 'number' ? ` · ${liveOptimization.before.occupancy}% occ` : ''}
                 </div>
+                {typeof liveOptimization.currentScore === 'number' && (
+                  <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                    Score {liveOptimization.currentScore}
+                  </div>
+                )}
               </div>
               <div
                 className="rounded-lg p-2"
@@ -340,10 +355,23 @@ function DraftPanel({
                   {liveOptimization.after?.dayOfWeek || draft.dayOfWeek} · {liveOptimization.after?.startTime || draft.startTime}–{liveOptimization.after?.endTime || draft.endTime}
                 </div>
                 <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
-                  {liveOptimization.after?.projectedOccupancy ?? draft.projectedOccupancy}% occ · {liveOptimization.after?.confidence ?? draft.confidence}% conf
+                  {liveOptimization.after?.projectedOccupancy ?? draft.projectedOccupancy}% occ · {liveOptimization.after?.estimatedInterestedMembers ?? draft.estimatedInterestedMembers ?? '—'} interested
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'var(--t4)' }}>
+                  Score {liveOptimization.after?.selectionScore ?? '—'} · {liveOptimization.after?.confidence ?? draft.confidence}% conf
                 </div>
               </div>
             </div>
+            {(liveOptimization.reasons || []).length > 0 && (
+              <div className="space-y-1" style={{ color: 'var(--t4)' }}>
+                {(liveOptimization.reasons || []).slice(0, 3).map((reason, index) => (
+                  <div key={index} className="flex gap-2">
+                    <span className="text-sky-400">•</span>
+                    <span>{reason}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

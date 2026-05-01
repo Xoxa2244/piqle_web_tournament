@@ -67,7 +67,9 @@ export interface GridLiveSession {
         startTime?: string
         endTime?: string
         projectedOccupancy?: number
+        estimatedInterestedMembers?: number
         confidence?: number
+        selectionScore?: number
       }
     } | null
   } | null

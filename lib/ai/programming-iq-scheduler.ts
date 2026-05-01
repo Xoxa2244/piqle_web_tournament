@@ -168,6 +168,7 @@ export interface LiveSessionOptimization {
     projectedOccupancy: number
     estimatedInterestedMembers: number
     confidence: number
+    selectionScore: number
   }
 }
 
@@ -586,6 +587,7 @@ function rankCourtsForProposal(args: {
   //
   //   • indoor match for evening  : +3  (outdoor evening: -3)
   //   • same-skill nearby penalty : -8 per hit (adjacent-hour same-tier)
+  //   • same-day clustering       : -6 per already-assigned slot on that court/day
   //   • spread penalty            : -4 per existing assignment on that court
   //
   // Net effect with 1 indoor + 2 outdoor and 5 evening proposals:
@@ -602,7 +604,9 @@ function rankCourtsForProposal(args: {
       liveByCourtDay.get(key) || [], assignedByCourtDay.get(key) || [],
       proposal,
     )
+    const sameDayLoad = (assignedByCourtDay.get(key) || []).length
     score -= sameSkill * 8
+    score -= sameDayLoad * 6
     score -= (countByCourt.get(c.id) || 0) * 4
     return { court: c, score }
   })
@@ -739,6 +743,24 @@ function prettySkill(key: string): string {
   return map[key] || key.toLowerCase()
 }
 
+function prettyFormat(format: PlaySessionFormat | string | null | undefined) {
+  if (!format) return 'session'
+  return String(format)
+    .toLowerCase()
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function describeSessionShape(
+  format: PlaySessionFormat | null | undefined,
+  skillLevel: PlaySessionSkillLevel | null | undefined,
+) {
+  const formatText = prettyFormat(format)
+  const skillText = prettySkill(normaliseSkillKey(skillLevel || 'ALL_LEVELS'))
+  return `${skillText} ${formatText}`.trim()
+}
+
 function isWeekend(dayOfWeek: DayOfWeek) {
   return dayOfWeek === 'Saturday' || dayOfWeek === 'Sunday'
 }
@@ -870,9 +892,25 @@ type SelectionScoringContext = {
   goalWeights: ReturnType<typeof computeProgrammingStrategyProfile>['goalWeights']
   request: ReturnType<typeof parseAdvisorProgrammingRequest> | null
   pinnedProposalIds: Set<string>
+  fillIdleMode?: boolean
 }
 
 const MIN_SELECTION_SCORE = 62
+const FILL_IDLE_EXPERIMENT_SCORE = 56
+const FILL_IDLE_EXPERIMENT_LIMIT = 3
+
+function isFillIdleExperimentCandidate(
+  proposal: AdvisorProgrammingProposalDraft,
+  context: SelectionScoringContext,
+) {
+  return Boolean(
+    context.fillIdleMode &&
+    proposal.source === 'fill_gap' &&
+    proposal.startTime < '17:00' &&
+    proposal.conflict?.courtPressureRisk !== 'high' &&
+    proposal.conflict?.overlapRisk !== 'high',
+  )
+}
 
 function getGoalScores(
   proposal: AdvisorProgrammingProposalDraft,
@@ -899,6 +937,9 @@ function getGoalScores(
       + (proposal.timeSlot === 'morning' || proposal.timeSlot === 'afternoon' ? 8 : 0),
     ),
   )
+  const utilizationAdjusted = isFillIdleExperimentCandidate(proposal, context)
+    ? Math.min(100, utilization + 8)
+    : utilization
   const audienceProtection = Math.max(
     0,
     Math.min(100, 100 - conflictPenalty * 1.4 - (portfolioPenalty >= 999 ? 55 : portfolioPenalty * 0.6)),
@@ -927,7 +968,7 @@ function getGoalScores(
   return {
     blocked,
     demandFit,
-    utilization,
+    utilization: utilizationAdjusted,
     audienceProtection,
     portfolioBalance,
     operationalFit,
@@ -1058,15 +1099,21 @@ function buildLiveOptimizations(input: {
       0,
       100,
     )
+    const chosenScoreRounded = Math.round(chosenScore)
+    const currentBooked = session.registeredCount || 0
+    const currentCapacity = Math.max(session.maxPlayers || 0, 1)
+    const projectedDemand = chosenProposal.estimatedInterestedMembers
+    const beforeShape = describeSessionShape(session.format, session.skillLevel)
+    const afterShape = describeSessionShape(chosenProposal.format, chosenProposal.skillLevel)
     const summary = chosenType === 'move'
-      ? `Move this live session to ${chosenProposal.dayOfWeek} ${chosenProposal.startTime} for a stronger fit.`
-      : `Replace this live session in-place with a stronger ${chosenProposal.title}.`
+      ? `Keep this ${beforeShape.toLowerCase()} session, but move it to ${chosenProposal.dayOfWeek} ${chosenProposal.startTime} where the same shape is forecast to perform better.`
+      : `This ${dayOfWeek} ${session.startTime} window is underperforming as ${beforeShape.toLowerCase()}; ${afterShape.toLowerCase()} is forecast to fit this slot better.`
     const reasons = [
-      `Current live session is sitting at ${currentOccupancy}% occupancy with an effectiveness score of ${liveScore}.`,
       chosenType === 'move'
-        ? `${chosenProposal.title} scores better in ${chosenProposal.dayOfWeek} ${chosenProposal.startTime}-${chosenProposal.endTime}.`
-        : `${chosenProposal.title} scores better for this same weekly window.`,
-      `Estimated uplift is +${Math.round(chosenScore - liveScore)} points based on demand, utilization, and audience fit.`,
+        ? `Current session has ${currentBooked}/${currentCapacity} booked (${currentOccupancy}% full), while the same ${beforeShape.toLowerCase()} shape scores better on ${chosenProposal.dayOfWeek} ${chosenProposal.startTime}-${chosenProposal.endTime}.`
+        : `Current session has ${currentBooked}/${currentCapacity} booked (${currentOccupancy}% full), while this same weekly window scores better as ${afterShape.toLowerCase()} than ${beforeShape.toLowerCase()}.`,
+      `Projected demand rises from ${currentBooked} current booking${currentBooked === 1 ? '' : 's'} to about ${projectedDemand} interested player${projectedDemand === 1 ? '' : 's'} for ${chosenProposal.maxPlayers} spots.`,
+      `Planner score improves from ${liveScore} to ${chosenScoreRounded} (+${Math.round(chosenScore - liveScore)}), with projected fill at ${chosenProposal.projectedOccupancy}%.`,
     ]
     const optimization: LiveSessionOptimization = {
       type: chosenType,
@@ -1099,6 +1146,7 @@ function buildLiveOptimizations(input: {
         projectedOccupancy: chosenProposal.projectedOccupancy,
         estimatedInterestedMembers: chosenProposal.estimatedInterestedMembers,
         confidence: chosenProposal.confidence,
+        selectionScore: chosenScoreRounded,
       },
     }
     candidates.push(optimization)
@@ -1141,6 +1189,7 @@ export function selectBalancedProposals(
     }).goalWeights,
     request: null,
     pinnedProposalIds: new Set<string>(),
+    fillIdleMode: false,
   }
 
   if (pinnedProposalIds.length > 0) {
@@ -1171,16 +1220,28 @@ export function selectBalancedProposals(
       }
     }
 
-    if (bestIndex < 0 || bestScore < MIN_SELECTION_SCORE) break
+    if (bestIndex < 0) break
 
-    selected.push(remaining[bestIndex])
+    const bestProposal = remaining[bestIndex]
+    const relaxedFillIdleCount = selected.filter((proposal) =>
+      isFillIdleExperimentCandidate(proposal, scoringContext),
+    ).length
+    const bestMinScore = isFillIdleExperimentCandidate(bestProposal, scoringContext)
+      && relaxedFillIdleCount < FILL_IDLE_EXPERIMENT_LIMIT
+      ? FILL_IDLE_EXPERIMENT_SCORE
+      : MIN_SELECTION_SCORE
+
+    if (bestScore < bestMinScore) break
+
+    selected.push(bestProposal)
     remaining.splice(bestIndex, 1)
   }
 
   if (selected.length === 0 && proposals.length > 0) {
     const fallback = [...proposals]
       .sort((left, right) => getGreedySelectionScore(right, [], scoringContext) - getGreedySelectionScore(left, [], scoringContext))[0]
-    if (fallback && getGreedySelectionScore(fallback, [], scoringContext) >= 55) {
+    const fallbackThreshold = fallback && isFillIdleExperimentCandidate(fallback, scoringContext) ? 52 : 55
+    if (fallback && getGreedySelectionScore(fallback, [], scoringContext) >= fallbackThreshold) {
       selected.push(fallback)
     }
   }
@@ -1273,6 +1334,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     request: regenerateRequest,
     limit: Math.max(200, targetCount * 4),
     courtCount: activeCourts.length,
+    strategyPresetIds: strategyProfile.appliedPresets.map((preset) => preset.id),
   })
 
   let rankedProposals = plan.proposals
@@ -1292,6 +1354,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     goalWeights: strategyProfile.goalWeights,
     request: regenerateRequest,
     pinnedProposalIds: requestedProposalIds,
+    fillIdleMode: strategyProfile.appliedPresets.some((preset) => preset.id === 'FILL_IDLE_HOURS'),
   }
 
   const liveOptimizations = buildLiveOptimizations({

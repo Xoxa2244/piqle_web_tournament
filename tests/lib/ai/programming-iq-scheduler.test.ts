@@ -38,6 +38,7 @@ import {
   buildProgrammingAudienceProfileFromMembers,
   type AdvisorProgrammingProposalDraft,
 } from '@/lib/ai/advisor-programming'
+import { computeProgrammingStrategyProfile } from '@/lib/ai/programming-iq-strategy'
 
 describe('time helpers', () => {
   it('hhmmToMinutes parses 24h format', () => {
@@ -217,6 +218,25 @@ describe('assignCourtsToProposals', () => {
     expect(assignments[0].failed).toBeUndefined()
     expect(assignments[1].failed).toBeUndefined()
     expect(assignments[0].courtId).not.toBe(assignments[1].courtId)
+  })
+
+  it('spreads multiple non-overlapping slots from the same day across courts when feasible', () => {
+    const proposals = [
+      proposal({ id: 'thu-1', dayOfWeek: 'Thursday', startTime: '18:00', endTime: '19:30' }),
+      proposal({ id: 'fri-1', dayOfWeek: 'Friday', startTime: '18:00', endTime: '19:30' }),
+      proposal({ id: 'sat-1', dayOfWeek: 'Saturday', startTime: '09:00', endTime: '10:30', timeSlot: 'morning' }),
+      proposal({ id: 'mon-1', dayOfWeek: 'Monday', startTime: '09:00', endTime: '10:30', timeSlot: 'morning', skillLevel: 'ALL_LEVELS' }),
+      proposal({ id: 'mon-2', dayOfWeek: 'Monday', startTime: '13:00', endTime: '14:30', timeSlot: 'afternoon', skillLevel: 'ALL_LEVELS' }),
+      proposal({ id: 'mon-3', dayOfWeek: 'Monday', startTime: '18:00', endTime: '19:30', timeSlot: 'evening', skillLevel: 'BEGINNER' }),
+    ]
+    const assignments = assignCourtsToProposals(
+      proposals, COURTS, [], HIST_PLENTY, new Date('2026-04-27'),
+    )
+    const mondayCourts = assignments
+      .filter((assignment) => assignment.proposal.dayOfWeek === 'Monday')
+      .map((assignment) => assignment.courtId)
+
+    expect(new Set(mondayCourts).size).toBeGreaterThan(1)
   })
 
   it('rejects a proposal outside inferred court hours', () => {
@@ -705,6 +725,64 @@ describe('buildWeeklyGrid — smoke', () => {
     expect(fridayMorningSelections).toHaveLength(1)
     expect(selected.map((item) => item.id)).toEqual(
       expect.arrayContaining(['fri-open', 'thu-open', 'mon-social']),
+    )
+  })
+
+  it('lets Fill idle hours keep a few decent off-peak gap-fill experiments', () => {
+    const fillIdleContext = {
+      goalWeights: computeProgrammingStrategyProfile({
+        selectedPresetIds: ['FILL_IDLE_HOURS'],
+        inferredPresetIds: [],
+        hasRequest: false,
+      }).goalWeights,
+      request: null,
+      pinnedProposalIds: new Set<string>(),
+      fillIdleMode: true,
+    }
+
+    const selected = selectBalancedProposals([
+      proposal({
+        id: 'thu-offpeak-gap',
+        dayOfWeek: 'Thursday',
+        timeSlot: 'afternoon',
+        startTime: '13:00',
+        endTime: '14:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'INTERMEDIATE',
+        source: 'fill_gap',
+        confidence: 61,
+        projectedOccupancy: 56,
+        estimatedInterestedMembers: 6,
+      }),
+      proposal({
+        id: 'fri-offpeak-gap',
+        dayOfWeek: 'Friday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'DRILL',
+        skillLevel: 'BEGINNER',
+        source: 'fill_gap',
+        confidence: 60,
+        projectedOccupancy: 55,
+        estimatedInterestedMembers: 6,
+      }),
+      proposal({
+        id: 'evening-strong',
+        dayOfWeek: 'Monday',
+        timeSlot: 'evening',
+        startTime: '18:00',
+        endTime: '19:30',
+        format: 'SOCIAL',
+        skillLevel: 'BEGINNER',
+        confidence: 74,
+        projectedOccupancy: 68,
+        estimatedInterestedMembers: 8,
+      }),
+    ], 3, [], fillIdleContext)
+
+    expect(selected.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['evening-strong', 'thu-offpeak-gap']),
     )
   })
 })

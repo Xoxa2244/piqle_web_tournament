@@ -797,7 +797,8 @@ function ProgrammingGenerationSummaryPanel({
 
   return (
     <div
-      className="rounded-2xl border border-white/8 bg-[#0D1224]/70 shadow-[0_12px_40px_rgba(3,8,24,0.18)] overflow-hidden"
+      className="overflow-hidden rounded-2xl border bg-[#0D1224]/62 shadow-[0_10px_28px_rgba(3,8,24,0.14)]"
+      style={{ borderColor: 'rgba(148,163,184,0.16)' }}
     >
       <button
         type="button"
@@ -808,7 +809,7 @@ function ProgrammingGenerationSummaryPanel({
           className="flex h-10 w-10 items-center justify-center rounded-2xl flex-shrink-0"
           style={{
             background: 'linear-gradient(135deg, rgba(139,92,246,0.18), rgba(59,130,246,0.12))',
-            border: '1px solid rgba(255,255,255,0.06)',
+            border: '1px solid rgba(255,255,255,0.04)',
           }}
         >
           <Sparkles className="h-5 w-5 text-white" />
@@ -834,7 +835,7 @@ function ProgrammingGenerationSummaryPanel({
               className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-transform"
               style={{
                 background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(148,163,184,0.14)',
+                border: '1px solid rgba(148,163,184,0.10)',
                 transform: open ? 'rotate(180deg)' : 'rotate(0deg)',
               }}
             >
@@ -846,115 +847,133 @@ function ProgrammingGenerationSummaryPanel({
 
       {open && (
         <div className="px-4 pb-4">
-          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-4">
-              <section
-                className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
-              >
-                <div className="text-sm font-semibold text-white">Applied priorities</div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {summary.appliedPresets.length > 0 ? summary.appliedPresets.map((preset) => (
-                    <div
-                      key={`${preset.source}-${preset.id}`}
-                      className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-white">{preset.label}</span>
-                        <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-                          style={{
-                            background: preset.source === 'selected' ? 'rgba(139,92,246,0.18)' : 'rgba(59,130,246,0.16)',
-                            color: preset.source === 'selected' ? '#C4B5FD' : '#BFDBFE',
-                          }}
-                        >
-                          {preset.source === 'selected' ? 'Selected' : 'Inferred'}
-                        </span>
-                      </div>
-                      <div className="mt-1 text-xs leading-5 text-slate-400">
-                        {preset.description}
-                      </div>
+          <div className="space-y-4">
+            <section
+              className="rounded-2xl border bg-white/[0.025] p-4"
+              style={{ borderColor: 'rgba(148,163,184,0.14)' }}
+            >
+              <div className="text-sm font-semibold text-white">Applied priorities</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {summary.appliedPresets.length > 0 ? summary.appliedPresets.map((preset) => (
+                  <div
+                    key={`${preset.source}-${preset.id}`}
+                    className="rounded-2xl border bg-white/[0.03] px-3 py-2"
+                    style={{ borderColor: 'rgba(148,163,184,0.12)' }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-white">{preset.label}</span>
+                      <span
+                        className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                        style={{
+                          background: preset.source === 'selected' ? 'rgba(139,92,246,0.18)' : 'rgba(59,130,246,0.16)',
+                          color: preset.source === 'selected' ? '#C4B5FD' : '#BFDBFE',
+                        }}
+                      >
+                        {preset.source === 'selected' ? 'Selected' : 'Inferred'}
+                      </span>
                     </div>
-                  )) : (
-                    <div className="rounded-2xl border border-white/8 bg-white/[0.03] px-3 py-2 text-sm text-slate-300">
-                      Auto mode balanced the week without any explicit priorities.
+                    <div className="mt-1 text-xs leading-5 text-slate-400">
+                      {preset.description}
                     </div>
-                  )}
-                </div>
-                {summary.requestPriorityNote && (
-                  <div className="mt-3 text-xs leading-5 text-slate-400">
-                    {summary.requestPriorityNote}
+                  </div>
+                )) : (
+                  <div
+                    className="rounded-2xl border bg-white/[0.03] px-3 py-2 text-sm text-slate-300"
+                    style={{ borderColor: 'rgba(148,163,184,0.12)' }}
+                  >
+                    Auto mode balanced the week without any explicit priorities.
                   </div>
                 )}
-              </section>
-
-              <section
-                className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
-              >
-                <div className="text-sm font-semibold text-white">What improved</div>
-                <div className="mt-3 space-y-2">
-                  {summary.improvements.length > 0 ? summary.improvements.map((item, index) => (
-                    <div key={index} className="flex items-start gap-2 text-sm text-slate-300">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
-                      <span>{item}</span>
-                    </div>
-                  )) : (
-                    <div className="text-sm text-slate-400">No improvement summary recorded for this run.</div>
-                  )}
+              </div>
+              {summary.requestPriorityNote && (
+                <div className="mt-3 text-xs leading-5 text-slate-400">
+                  {summary.requestPriorityNote}
                 </div>
-              </section>
+              )}
 
-              <section
-                className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
-              >
-                <div className="text-sm font-semibold text-white">What changed</div>
-                <div className="mt-3 space-y-2">
-                  {summary.changes.length > 0 ? summary.changes.map((item, index) => (
-                    <div key={index} className="flex items-start gap-2 text-sm text-slate-300">
-                      <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-violet-400" />
-                      <span>{item}</span>
-                    </div>
-                  )) : (
-                    <div className="text-sm text-slate-400">No schedule changes were summarized.</div>
-                  )}
-                </div>
-              </section>
-            </div>
-
-            <section
-              className="rounded-2xl border border-white/8 bg-white/[0.03] p-4"
-            >
-              <div className="text-sm font-semibold text-white">Request evaluation</div>
-              {summary.requestSummary ? (
-                <>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <SummaryBadge label="Requested" value={summary.requestSummary.requestedIdeas} tone="neutral" />
-                    <SummaryBadge label="Placed" value={summary.requestSummary.placed} tone="good" />
-                    <SummaryBadge label="Backup" value={summary.requestSummary.backup} tone="warn" />
-                    <SummaryBadge label="Unplaced" value={summary.requestSummary.unplaced} tone="neutral" />
-                  </div>
-
-                  <div
-                    className="mt-4 rounded-2xl border px-4 py-3"
-                    style={getVerdictContainerStyle(summary.requestSummary.overallVerdict)}
-                  >
-                    <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: getVerdictAccent(summary.requestSummary.overallVerdict) }}>
-                      Overall verdict
-                    </div>
-                    <div className="mt-1 text-base font-semibold text-white">
-                      {summary.requestSummary.overallVerdict || 'Request evaluated'}
-                    </div>
-                    {summary.requestSummary.overallSummary && (
-                      <div className="mt-2 text-sm leading-6 text-slate-300">
-                        {summary.requestSummary.overallSummary}
+              {(summary.requestSummary || prompt) && (
+                <div
+                  className="mt-4 rounded-2xl border bg-white/[0.02] p-3"
+                  style={{ borderColor: 'rgba(148,163,184,0.12)' }}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-sm font-semibold text-white">Request evaluation</div>
+                    {prompt && (
+                      <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-violet-500/10 px-2.5 py-1 text-xs text-violet-100">
+                        <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+                        <span className="truncate">Request: {prompt}</span>
                       </div>
                     )}
                   </div>
-                </>
-              ) : (
-                <div className="mt-3 text-sm leading-6 text-slate-400">
-                  No direct admin request was evaluated in this refresh.
+
+                  {summary.requestSummary ? (
+                    <>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <SummaryBadge label="Requested" value={summary.requestSummary.requestedIdeas} tone="neutral" />
+                        <SummaryBadge label="Placed" value={summary.requestSummary.placed} tone="good" />
+                        <SummaryBadge label="Backup" value={summary.requestSummary.backup} tone="warn" />
+                        <SummaryBadge label="Unplaced" value={summary.requestSummary.unplaced} tone="neutral" />
+                      </div>
+                      <div
+                        className="mt-3 rounded-2xl border px-4 py-3"
+                        style={getVerdictContainerStyle(summary.requestSummary.overallVerdict)}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: getVerdictAccent(summary.requestSummary.overallVerdict) }}>
+                            Overall verdict
+                          </div>
+                          <div className="text-sm font-semibold text-white">
+                            {summary.requestSummary.overallVerdict || 'Request evaluated'}
+                          </div>
+                        </div>
+                        {summary.requestSummary.overallSummary && (
+                          <div className="mt-1.5 text-sm leading-6 text-slate-300">
+                            {summary.requestSummary.overallSummary}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="mt-2 text-sm leading-6 text-slate-400">
+                      No direct admin request was evaluated in this refresh.
+                    </div>
+                  )}
                 </div>
               )}
+            </section>
+
+            <section
+              className="rounded-2xl border bg-white/[0.025] p-4"
+              style={{ borderColor: 'rgba(148,163,184,0.14)' }}
+            >
+              <div className="text-sm font-semibold text-white">What improved</div>
+              <div className="mt-3 space-y-2">
+                {summary.improvements.length > 0 ? summary.improvements.map((item, index) => (
+                  <div key={index} className="flex items-start gap-2 text-sm text-slate-300">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-400" />
+                    <span>{item}</span>
+                  </div>
+                )) : (
+                  <div className="text-sm text-slate-400">No improvement summary recorded for this run.</div>
+                )}
+              </div>
+            </section>
+
+            <section
+              className="rounded-2xl border bg-white/[0.025] p-4"
+              style={{ borderColor: 'rgba(148,163,184,0.14)' }}
+            >
+              <div className="text-sm font-semibold text-white">What changed</div>
+              <div className="mt-3 space-y-2">
+                {summary.changes.length > 0 ? summary.changes.map((item, index) => (
+                  <div key={index} className="flex items-start gap-2 text-sm text-slate-300">
+                    <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-violet-400" />
+                    <span>{item}</span>
+                  </div>
+                )) : (
+                  <div className="text-sm text-slate-400">No schedule changes were summarized.</div>
+                )}
+              </div>
             </section>
           </div>
         </div>
