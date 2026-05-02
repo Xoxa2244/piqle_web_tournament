@@ -394,7 +394,25 @@ export function dayOfWeekFromDate(
       return dayName
     }
   } catch {
-    // Bad timezone string → fall back to runtime-local interpretation.
+    // Bad timezone string → fall through to America/New_York. Falling
+    // back to `date.getDay()` (server-local) on a Vercel UTC server
+    // would re-introduce the original UTC bucketing bug — see
+    // advisor-programming.ts:toDayOfWeek bug-fix note. Bug-fix 2026-05-01.
+    try {
+      const dayName = new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        timeZone: 'America/New_York',
+      }).format(date)
+      if (
+        dayName === 'Sunday' || dayName === 'Monday' || dayName === 'Tuesday'
+        || dayName === 'Wednesday' || dayName === 'Thursday'
+        || dayName === 'Friday' || dayName === 'Saturday'
+      ) {
+        return dayName
+      }
+    } catch {
+      // Last-ditch fallback if even Intl is broken.
+    }
   }
   return jsDayToEnum(date.getDay())
 }
@@ -590,10 +608,14 @@ export function assignCourtsToProposals(
     countByCourt.set(picked.id, (countByCourt.get(picked.id) || 0) + 1)
   }
 
-  return assignments
   // weekStartDate is accepted for future (time-zone handling); currently
   // unused because proposals live in "abstract day of week" space.
+  // Bug-fix 2026-05-01: cleaned up the unreachable `void weekStartDate`
+  // marker that lived after the return — modern linters flag it as
+  // dead code. The intent (param reserved for future use) lives in
+  // this comment now.
   void weekStartDate
+  return assignments
 }
 
 function rankCourtsForProposal(args: {
@@ -874,6 +896,20 @@ function canShareWindow(
   return pinnedWindowCount === 0 && sameWindowSelected.length < 2
 }
 
+/**
+ * Sentinel returned by `getPortfolioPenalty` when a proposal would
+ * violate a hard portfolio constraint (cannot share its window with
+ * the already-selected set, or cannot duplicate an existing slot).
+ * Downstream `getGoalScores` checks for this exact value to filter
+ * the proposal out entirely. Picked as a magic number large enough
+ * to ensure goalScores math drops below any practical floor.
+ *
+ * Bug-fix 2026-05-01: was a bare `999` literal scattered in two
+ * places; now named so its semantics are obvious. Documents what
+ * the previous code's comment merely hinted at as "Infinity".
+ */
+const PORTFOLIO_PENALTY_BLOCKED = 999
+
 function getPortfolioPenalty(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
@@ -900,7 +936,7 @@ function getPortfolioPenalty(
     (candidate) => getWindowSignature(candidate) === getWindowSignature(proposal),
   ).length
   if (sameWindowCount > 0) {
-    if (!canShareWindow(proposal, selected, pinnedProposalIds, behaviorProfile)) return 999
+    if (!canShareWindow(proposal, selected, pinnedProposalIds, behaviorProfile)) return PORTFOLIO_PENALTY_BLOCKED
     penalty += proposal.projectedOccupancy >= behaviorProfile.secondCourtDuplicationThreshold
       ? Math.round(behaviorProfile.sameWindowPenalty * 0.55) * sameWindowCount
       : behaviorProfile.sameWindowPenalty * sameWindowCount
@@ -910,7 +946,7 @@ function getPortfolioPenalty(
     (candidate) => getSlotSignature(candidate) === getSlotSignature(proposal),
   ).length
   if (sameSlotCount > 0) {
-    if (!canDuplicateProposal(proposal, selected, behaviorProfile)) return 999
+    if (!canDuplicateProposal(proposal, selected, behaviorProfile)) return PORTFOLIO_PENALTY_BLOCKED
     penalty += 14 * sameSlotCount
   }
 
@@ -962,7 +998,7 @@ function getGoalScores(
     context.pinnedProposalIds,
     context.behaviorProfile,
   )
-  const blocked = portfolioPenalty >= 999
+  const blocked = portfolioPenalty >= PORTFOLIO_PENALTY_BLOCKED
   const isOffPeak = proposal.timeSlot === 'morning' || proposal.timeSlot === 'afternoon'
   const gapBehaviorAdjustment = proposal.source === 'fill_gap'
     ? (
@@ -997,11 +1033,11 @@ function getGoalScores(
     : utilization
   const audienceProtection = Math.max(
     0,
-    Math.min(100, 100 - conflictPenalty * 1.4 - (portfolioPenalty >= 999 ? 55 : portfolioPenalty * 0.6)),
+    Math.min(100, 100 - conflictPenalty * 1.4 - (portfolioPenalty >= PORTFOLIO_PENALTY_BLOCKED ? 55 : portfolioPenalty * 0.6)),
   )
   const portfolioBalance = Math.max(
     0,
-    Math.min(100, 100 - (portfolioPenalty >= 999 ? 60 : portfolioPenalty * 1.1)),
+    Math.min(100, 100 - (portfolioPenalty >= PORTFOLIO_PENALTY_BLOCKED ? 60 : portfolioPenalty * 1.1)),
   )
   const operationalFit = Math.max(
     0,
@@ -1710,9 +1746,31 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const requestPlacedCount = requestedCells.filter((cell) => cell.kind === 'suggested').length
   const requestBackupCount = requestedCells.filter((cell) => cell.kind === 'saturation').length
   const requestUnplacedCount = requestedCells.filter((cell) => cell.kind === 'conflict').length
-  const strongestRequestEval = requestEvaluations
+  let strongestRequestEval: ProgrammingRequestEvaluation | null = requestEvaluations
     .slice()
     .sort((left, right) => right.score - left.score)[0] || null
+
+  // Bug-fix 2026-05-01: when admin types a vague prompt like "make it
+  // better" or "improve please", `parseAdvisorProgrammingRequest`
+  // returns an empty spec, `buildRequestedProposals` returns nothing,
+  // and the verdict slot stays null. The doc explicitly says "even a
+  // bad request must be shown with a verdict — don't silently drop
+  // it". Synthesize a 'not_recommended' verdict so the UI summary
+  // panel doesn't render an empty Request evaluation row.
+  if (
+    input.regeneratePrompt
+    && input.regeneratePrompt.trim().length > 0
+    && requestedProposals.length === 0
+    && !strongestRequestEval
+  ) {
+    strongestRequestEval = {
+      verdict: 'not_recommended',
+      label: 'Not recommended',
+      summary: 'We could not extract a concrete change from your prompt — try naming a day, time, format, or skill level.',
+      reasons: ['Prompt was too vague to anchor onto a specific day / time / format / skill.'],
+      score: 0,
+    }
+  }
 
   const improvements: string[] = [
     `${publishReadyCount} publish-ready suggestion${publishReadyCount === 1 ? '' : 's'} generated across ${activeCourts.length} active court${activeCourts.length === 1 ? '' : 's'}.`,

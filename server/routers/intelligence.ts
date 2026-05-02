@@ -8422,6 +8422,24 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             '[programming-iq] regenerate LLM threw:',
             err?.message?.slice(0, 160),
           )
+          // Bug-fix 2026-05-01: previously the wrap-around try/catch
+          // swallowed every LLM error and left regenerateHint=null,
+          // which broke the heuristic graceful-degradation path that
+          // interpretRegeneratePrompt itself implements (it falls back
+          // to buildHeuristicHintFromPrompt on known LLM failures, but
+          // the outer catch fires first on network/timeout/runtime
+          // throws). Now we explicitly call the heuristic on the catch
+          // path so admins typing "less open play" still get keyword-
+          // matched boost/penalize hints even when OpenAI is down.
+          try {
+            const { buildHeuristicHintFromPrompt } = await import('@/lib/ai/programming-iq-regenerate')
+            regenerateHint = buildHeuristicHintFromPrompt(input.regeneratePrompt)
+          } catch (heuristicErr: any) {
+            log.warn(
+              '[programming-iq] heuristic hint fallback also failed:',
+              heuristicErr?.message?.slice(0, 160),
+            )
+          }
         }
       }
 
@@ -8700,13 +8718,37 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         timezone,
       )
 
+      // Bug-fix 2026-05-01: previously this only filtered by
+      // metadata.weekStartDate. If two tabs hit Generate within ~1s,
+      // tab A's create-loop is interleaved with tab B's delete + create
+      // — both generations' drafts can persist briefly. The user then
+      // sees an unstable mix of "old" and "new" drafts in the grid.
+      // Fix: keep only drafts from the LATEST agentDraftId for this
+      // week (drafts are ordered by createdAt DESC by the query
+      // upstream, so the first draft we encounter for the requested
+      // week names the winning generation).
+      let latestGenerationAgentDraftId: string | null = null
       const visibleDrafts = (drafts as any[]).filter((draft) => {
         const draftWeekStart = (draft.metadata as any)?.weekStartDate
         if (draftWeekStart && draftWeekStart !== input.weekStartDate) {
           return false
         }
         const reviewDecision = (draft.metadata as any)?.liveOptimizationReviewDecision
-        return reviewDecision !== 'declined'
+        if (reviewDecision === 'declined') return false
+        // Lock onto the first (most recent) agentDraftId we see for
+        // this week. Drafts from prior generations are filtered out so
+        // the UI never shows interleaved old/new state.
+        if (!latestGenerationAgentDraftId && draft.agentDraftId) {
+          latestGenerationAgentDraftId = draft.agentDraftId
+        }
+        if (
+          latestGenerationAgentDraftId
+          && draft.agentDraftId
+          && draft.agentDraftId !== latestGenerationAgentDraftId
+        ) {
+          return false
+        }
+        return true
       })
       const bestLiveOptimizationBySessionId = new Map<string, any>()
       const acceptedLiveOptimizationSessionIds = new Set<string>()

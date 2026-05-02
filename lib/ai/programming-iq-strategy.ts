@@ -280,7 +280,18 @@ export function computeProgrammingStrategyProfile(opts: {
     opts.hasRequest && opts.prioritizeRequest ? 'priority' : 'normal'
 
   if (opts.hasRequest) {
+    // adminIntent boost matches the design doc: +8 for a regular
+    // request, +16 when admin explicitly toggled "Treat as priority".
     weights.adminIntent += opts.prioritizeRequest ? 16 : 8
+    // Intentional deviation from the doc (which only describes
+    // adminIntent boosts): when admin marks the request as priority,
+    // we also nudge demandFit by +2. Rationale — a priority request is
+    // by definition something the admin believes responds to demand
+    // (otherwise they wouldn't escalate it). Without this nudge, an
+    // explicit priority request can lose ranking to a generic
+    // expand_peak proposal that scores high on operationalFit alone.
+    // Keep the bump small (+2) so it doesn't override audience
+    // protection. If product wants strict doc-fidelity, drop this line.
     weights.demandFit += opts.prioritizeRequest ? 2 : 0
   }
 
