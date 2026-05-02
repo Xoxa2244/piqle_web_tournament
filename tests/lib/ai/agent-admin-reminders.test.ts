@@ -56,7 +56,7 @@ describe('agent admin reminders', () => {
     const sms = buildAdminReminderSms({
       title: 'Review today’s sandbox preview inbox',
       clubName: 'IPC East',
-      targetUrl: 'https://dev.iqsport.ai/clubs/123/intelligence/agent',
+      targetUrl: 'https://dev.iqsport.ai/clubs/123/intelligence/advisor',
     })
 
     expect(sms).toContain('IPC East')
@@ -102,7 +102,7 @@ describe('agent admin reminders', () => {
 
     expect(candidates).toHaveLength(1)
     expect(candidates[0]?.kind).toBe('morning_brief')
-    expect(candidates[0]?.href).toBe('/clubs/club-1/intelligence/agent')
+    expect(candidates[0]?.href).toBe('/clubs/club-1/intelligence/advisor')
   })
 
   it('builds targeted midday pings for approvals, ops drafts, and underfilled risk', () => {
