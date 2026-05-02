@@ -1922,7 +1922,23 @@ async function buildProgrammingAssistantResponse(opts: {
     }
   }
 
-  const requestedPrimary = draft.requested || draft.proposals[0]
+  const requestedPrimary = draft.requested || draft.proposals[0] || null
+  if (!requestedPrimary) {
+    const assistantState: AdvisorConversationState = {
+      ...(opts.state || {}),
+      latestOutcome: opts.state?.latestOutcome,
+      recentOutcomes: opts.state?.recentOutcomes || [],
+      currentProgramming: undefined,
+      lastActionKind: 'program_schedule',
+      lastActionTitle: 'Draft programming plan',
+      updatedAt: new Date().toISOString(),
+    }
+
+    return {
+      assistantState,
+      assistantMessage: withSuggested(programmingCopy.empty, programmingCopy.suggestions),
+    }
+  }
   const alternatives = draft.proposals
     .filter((proposal) => !sameProgrammingProposal(proposal, requestedPrimary))
     .slice(0, 3)
@@ -2697,12 +2713,12 @@ export async function POST(req: Request) {
           ? `You have 1 action waiting for approval:`
           : `You have ${items.length} action${items.length === 1 ? '' : 's'} waiting for approval${items.length > INLINE_CARD_LIMIT ? ` — showing the top ${INLINE_CARD_LIMIT} below` : ''}:`
         const overflow = items.length > INLINE_CARD_LIMIT
-          ? `\n\n[View all ${items.length} in Agent page](/clubs/${clubId}/intelligence/agent)`
+          ? `\n\n[View all ${items.length} in AI Advisor](/clubs/${clubId}/intelligence/advisor?focus=pending-queue)`
           : ''
 
         assistantMessage = withSuggested(
           `${headline}${buildPendingQueueTag(payload)}${overflow}`,
-          ['Stop all AI sending', 'What did the agent do today?', 'Open the agent page'],
+          ['Stop all AI sending', 'What did the agent do today?', 'Open AI Advisor'],
         )
       }
       assistantState = {
@@ -2734,8 +2750,8 @@ export async function POST(req: Request) {
           .map(([type, count]) => `• ${type}: ${count}`)
           .join('\n')
         assistantMessage = withSuggested(
-          `In the last 24 hours the agent logged ${logs.length} action${logs.length === 1 ? '' : 's'}:\n\n${summary}\n\nOpen the agent page for the full timeline: /clubs/${clubId}/intelligence/agent`,
-          ['What needs my approval?', 'Stop all AI sending', 'Open the agent page'],
+          `In the last 24 hours the agent logged ${logs.length} action${logs.length === 1 ? '' : 's'}:\n\n${summary}\n\nOpen AI Advisor for the full timeline: /clubs/${clubId}/intelligence/advisor`,
+          ['What needs my approval?', 'Stop all AI sending', 'Open AI Advisor'],
         )
       }
       assistantState = {
@@ -2854,7 +2870,7 @@ export async function POST(req: Request) {
             ? toRun[0].title || toRun[0].summary || humanizePendingType(toRun[0].type) || 'pending item'
             : `${successes} of ${toRun.length} pending action${toRun.length === 1 ? '' : 's'}`
           const failNote = failures > 0
-            ? `\n\n⚠️ ${failures} could not be updated — the Agent page will show them unchanged.`
+            ? `\n\n⚠️ ${failures} could not be updated — AI Advisor will show them unchanged.`
             : ''
           const overflowNote = outcome.items.length > BATCH_LIMIT
             ? `\n\n(${outcome.items.length - BATCH_LIMIT} more matched but weren't processed in this batch — run the same command again to continue.)`
@@ -2909,8 +2925,8 @@ export async function POST(req: Request) {
           return `${i + 1}. **${d.result}** on ${humanizePendingType(d.action) || d.action} (${age})${reasonBlurb}`
         }).join('\n')
         assistantMessage = withSuggested(
-          `Recent agent decisions:\n\n${lines}\n\nFor the full audit trail: /clubs/${clubId}/intelligence/agent`,
-          ['What needs my approval?', 'Show me recent activity', 'Open the agent page'],
+          `Recent agent decisions:\n\n${lines}\n\nFor the full audit trail: /clubs/${clubId}/intelligence/advisor`,
+          ['What needs my approval?', 'Show me recent activity', 'Open AI Advisor'],
         )
       }
       assistantState = {

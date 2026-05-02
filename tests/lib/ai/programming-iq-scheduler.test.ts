@@ -27,13 +27,18 @@ import {
   assignCourtsToProposals,
   supplyDemandCheck,
   buildWeeklyGrid,
+  selectBalancedProposals,
   type SchedulerCourt,
   type SchedulerExistingSession,
   type SchedulerHistoricalSession,
   type SchedulerPreferenceRow,
   type GridCell,
 } from '@/lib/ai/programming-iq-scheduler'
-import type { AdvisorProgrammingProposalDraft } from '@/lib/ai/advisor-programming'
+import {
+  buildProgrammingAudienceProfileFromMembers,
+  type AdvisorProgrammingProposalDraft,
+} from '@/lib/ai/advisor-programming'
+import { computeProgrammingStrategyProfile } from '@/lib/ai/programming-iq-strategy'
 
 describe('time helpers', () => {
   it('hhmmToMinutes parses 24h format', () => {
@@ -215,6 +220,25 @@ describe('assignCourtsToProposals', () => {
     expect(assignments[0].courtId).not.toBe(assignments[1].courtId)
   })
 
+  it('spreads multiple non-overlapping slots from the same day across courts when feasible', () => {
+    const proposals = [
+      proposal({ id: 'thu-1', dayOfWeek: 'Thursday', startTime: '18:00', endTime: '19:30' }),
+      proposal({ id: 'fri-1', dayOfWeek: 'Friday', startTime: '18:00', endTime: '19:30' }),
+      proposal({ id: 'sat-1', dayOfWeek: 'Saturday', startTime: '09:00', endTime: '10:30', timeSlot: 'morning' }),
+      proposal({ id: 'mon-1', dayOfWeek: 'Monday', startTime: '09:00', endTime: '10:30', timeSlot: 'morning', skillLevel: 'ALL_LEVELS' }),
+      proposal({ id: 'mon-2', dayOfWeek: 'Monday', startTime: '13:00', endTime: '14:30', timeSlot: 'afternoon', skillLevel: 'ALL_LEVELS' }),
+      proposal({ id: 'mon-3', dayOfWeek: 'Monday', startTime: '18:00', endTime: '19:30', timeSlot: 'evening', skillLevel: 'BEGINNER' }),
+    ]
+    const assignments = assignCourtsToProposals(
+      proposals, COURTS, [], HIST_PLENTY, new Date('2026-04-27'),
+    )
+    const mondayCourts = assignments
+      .filter((assignment) => assignment.proposal.dayOfWeek === 'Monday')
+      .map((assignment) => assignment.courtId)
+
+    expect(new Set(mondayCourts).size).toBeGreaterThan(1)
+  })
+
   it('rejects a proposal outside inferred court hours', () => {
     // Make court-1 history tight 08:00-14:00 only — proposal at 22:00 is outside.
     const tight: SchedulerHistoricalSession[] = [
@@ -223,11 +247,75 @@ describe('assignCourtsToProposals', () => {
       { courtId: 'court-1', startTime: '13:00', endTime: '14:00' },
     ]
     const onlyCourt1: SchedulerCourt[] = [COURTS[0]]
+    const liveConflict: SchedulerExistingSession[] = [{
+      id: 'live-late',
+      courtId: 'court-1',
+      date: new Date('2026-04-28T16:00:00Z'),
+      startTime: '22:00',
+      endTime: '23:30',
+      title: 'Late session',
+      format: 'OPEN_PLAY' as any,
+      skillLevel: 'INTERMEDIATE' as any,
+      maxPlayers: 8,
+      status: 'SCHEDULED',
+    }]
     const assignments = assignCourtsToProposals(
-      [proposal({ startTime: '22:00', endTime: '23:30' })],
-      onlyCourt1, [], tight, new Date('2026-04-27'),
+      [proposal({ dayOfWeek: 'Tuesday', startTime: '22:00', endTime: '23:30' })],
+      onlyCourt1, liveConflict, tight, new Date('2026-04-27'),
     )
     expect(assignments[0].failed).toBe('outside_hours')
+  })
+
+  it('falls back to an active free court when no observed court-hours window covers the slot', () => {
+    const eveningOnly: SchedulerHistoricalSession[] = [
+      { courtId: 'court-1', startTime: '18:00', endTime: '20:00' },
+      { courtId: 'court-1', startTime: '19:00', endTime: '21:00' },
+      { courtId: 'court-1', startTime: '20:00', endTime: '22:00' },
+      { courtId: 'court-2', startTime: '18:00', endTime: '20:00' },
+      { courtId: 'court-2', startTime: '19:00', endTime: '21:00' },
+      { courtId: 'court-2', startTime: '20:00', endTime: '22:00' },
+    ]
+    const assignments = assignCourtsToProposals(
+      [proposal({ dayOfWeek: 'Friday', startTime: '09:00', endTime: '10:30' })],
+      COURTS.slice(0, 2),
+      [],
+      eveningOnly,
+      new Date('2026-04-27'),
+    )
+    expect(assignments[0].failed).toBeUndefined()
+    expect(assignments[0].usedHoursFallback).toBe(true)
+    expect(['court-1', 'court-2']).toContain(assignments[0].courtId)
+  })
+
+  it('reports no_court when at least one court is open but all open courts conflict', () => {
+    const mixedHours: SchedulerHistoricalSession[] = [
+      { courtId: 'court-1', startTime: '08:00', endTime: '10:30' },
+      { courtId: 'court-1', startTime: '09:00', endTime: '11:00' },
+      { courtId: 'court-1', startTime: '10:00', endTime: '12:00' },
+      { courtId: 'court-2', startTime: '18:00', endTime: '20:00' },
+      { courtId: 'court-2', startTime: '19:00', endTime: '21:00' },
+      { courtId: 'court-2', startTime: '20:00', endTime: '22:00' },
+    ]
+    const live: SchedulerExistingSession[] = [{
+      id: 'live-open-court',
+      courtId: 'court-1',
+      date: new Date('2026-05-01T16:00:00Z'),
+      startTime: '09:00',
+      endTime: '10:30',
+      title: 'Busy',
+      format: 'OPEN_PLAY' as any,
+      skillLevel: 'INTERMEDIATE' as any,
+      maxPlayers: 8,
+      status: 'SCHEDULED',
+    }]
+    const assignments = assignCourtsToProposals(
+      [proposal({ dayOfWeek: 'Friday', startTime: '09:00', endTime: '10:30' })],
+      COURTS.slice(0, 2),
+      live,
+      mixedHours,
+      new Date('2026-04-27'),
+    )
+    expect(assignments[0].failed).toBe('no_court')
   })
 
   it('spreads cells across courts when demand is similar', () => {
@@ -332,6 +420,624 @@ describe('buildWeeklyGrid — smoke', () => {
     expect(Array.isArray(out.cells)).toBe(true)
     expect(out.stats.suggested).toBeGreaterThanOrEqual(1)
     expect(out.signalSummary.activeCourts).toBe(3) // 4 courts, 1 inactive
+  })
+
+  it('can draft starter programming from member profile data alone', () => {
+    const audienceProfile = buildProgrammingAudienceProfileFromMembers([
+      ...Array.from({ length: 16 }, () => ({
+        skillLevel: 'INTERMEDIATE',
+        dateOfBirth: new Date('1995-06-10'),
+      })),
+      ...Array.from({ length: 8 }, () => ({
+        skillLevel: 'BEGINNER',
+        dateOfBirth: new Date('1988-04-12'),
+      })),
+    ])
+
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: COURTS,
+      historicalSessions: [],
+      existingWeekSessions: [],
+      lastNDaysSessions: [],
+      preferences: [],
+      interestRequests: [],
+      audienceProfile,
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 6,
+    })
+
+    expect(out.stats.suggested).toBeGreaterThanOrEqual(1)
+    expect(out.insights.join(' ')).toContain('member profile data')
+  })
+
+  it('treats plain regenerate as a nearby variant instead of replaying the exact same mix', () => {
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: COURTS,
+      historicalSessions: HIST_PLENTY,
+      existingWeekSessions: [],
+      lastNDaysSessions: Array.from({ length: 20 }, () => ({
+        title: 'Int Open Play',
+        date: new Date('2026-04-15'),
+        startTime: '19:00',
+        endTime: '20:30',
+        format: 'OPEN_PLAY' as any,
+        skillLevel: 'INTERMEDIATE' as any,
+        maxPlayers: 8,
+        registeredCount: 7,
+      })),
+      preferences: Array.from({ length: 30 }, () => ({
+        preferredDays: ['Monday', 'Tuesday'],
+        preferredTimeMorning: false,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: true,
+        skillLevel: 'INTERMEDIATE' as any,
+        preferredFormats: ['OPEN_PLAY', 'CLINIC'],
+        targetSessionsPerWeek: 2,
+        notificationsOptOut: false,
+      })),
+      interestRequests: [],
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 4,
+      previousSuggestionSignatures: ['Monday__18:00__OPEN_PLAY__INTERMEDIATE'],
+    })
+
+    expect(out.insights.join(' ')).toContain('nearby schedule variant')
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind === 'suggested' &&
+          cell.dayOfWeek === 'Monday' &&
+          cell.startTime === '18:00' &&
+          cell.format === 'OPEN_PLAY' &&
+          cell.skillLevel === 'INTERMEDIATE',
+      ),
+    ).toBe(false)
+  })
+
+  it('lets explicit regenerate prompts shape the requested slot', () => {
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: COURTS,
+      historicalSessions: HIST_PLENTY,
+      existingWeekSessions: [],
+      lastNDaysSessions: [],
+      preferences: Array.from({ length: 14 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: true,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: false,
+        skillLevel: 'BEGINNER' as any,
+        preferredFormats: ['CLINIC'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+      interestRequests: [],
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 2,
+      regeneratePrompt: 'Add a beginner clinic on Tuesday morning',
+    })
+
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind !== 'live' &&
+          cell.dayOfWeek === 'Tuesday' &&
+          cell.format === 'CLINIC' &&
+          cell.skillLevel === 'BEGINNER',
+      ),
+    ).toBe(true)
+  })
+
+  it('pins multi-day morning regenerate requests instead of collapsing them into a fallback day', () => {
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: COURTS,
+      historicalSessions: HIST_PLENTY,
+      existingWeekSessions: [],
+      lastNDaysSessions: [],
+      preferences: [
+        ...Array.from({ length: 10 }, () => ({
+          preferredDays: ['Tuesday'],
+          preferredTimeMorning: true,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: false,
+          skillLevel: 'INTERMEDIATE' as any,
+          preferredFormats: ['OPEN_PLAY'],
+          targetSessionsPerWeek: 1,
+          notificationsOptOut: false,
+        })),
+        ...Array.from({ length: 10 }, () => ({
+          preferredDays: ['Wednesday'],
+          preferredTimeMorning: true,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: false,
+          skillLevel: 'INTERMEDIATE' as any,
+          preferredFormats: ['OPEN_PLAY'],
+          targetSessionsPerWeek: 1,
+          notificationsOptOut: false,
+        })),
+      ],
+      interestRequests: [],
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 2,
+      regeneratePrompt: 'more morning sessions on tuesday and wednesday',
+    })
+
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind !== 'live' &&
+          cell.dayOfWeek === 'Tuesday' &&
+          cell.startTime === '09:00',
+      ),
+    ).toBe(true)
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind !== 'live' &&
+          cell.dayOfWeek === 'Wednesday' &&
+          cell.startTime === '09:00',
+      ),
+    ).toBe(true)
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind !== 'live' &&
+          cell.dayOfWeek === 'Friday' &&
+          cell.startTime === '09:00',
+      ),
+    ).toBe(false)
+  })
+
+  it('keeps unplaceable regenerate ideas visible as off-grid alternatives', () => {
+    const busyTuesday = COURTS.filter((court) => court.isActive).map((court, index) => ({
+      id: `live-${index}`,
+      courtId: court.id,
+      date: new Date('2026-04-28T16:00:00Z'),
+      startTime: '18:00',
+      endTime: '19:30',
+      title: 'Busy court',
+      format: 'OPEN_PLAY' as any,
+      skillLevel: 'INTERMEDIATE' as any,
+      maxPlayers: 8,
+      status: 'SCHEDULED',
+    }))
+
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: COURTS,
+      historicalSessions: HIST_PLENTY,
+      existingWeekSessions: busyTuesday,
+      lastNDaysSessions: Array.from({ length: 8 }, () => ({
+        title: 'Open Play',
+        date: new Date('2026-04-15'),
+        startTime: '18:00',
+        endTime: '19:30',
+        format: 'OPEN_PLAY' as any,
+        skillLevel: 'INTERMEDIATE' as any,
+        maxPlayers: 8,
+        registeredCount: 7,
+      })),
+      preferences: Array.from({ length: 18 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: false,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: true,
+        skillLevel: 'INTERMEDIATE' as any,
+        preferredFormats: ['OPEN_PLAY'],
+        targetSessionsPerWeek: 2,
+        notificationsOptOut: false,
+      })),
+      interestRequests: [],
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 2,
+      regeneratePrompt: 'more open plays on tuesdays',
+    })
+
+    expect(
+      out.cells.some(
+        (cell) =>
+          cell.kind === 'conflict' &&
+          cell.dayOfWeek === 'Tuesday' &&
+          cell.format === 'OPEN_PLAY',
+      ),
+    ).toBe(true)
+    expect(out.insights.join(' ')).toContain('moved to Other ideas')
+  })
+
+  it('avoids piling many sibling ideas into the same hot window', () => {
+    const selected = selectBalancedProposals([
+      proposal({
+        id: 'fri-open',
+        dayOfWeek: 'Friday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'ALL_LEVELS',
+        confidence: 82,
+        projectedOccupancy: 76,
+        estimatedInterestedMembers: 12,
+        source: 'fill_gap',
+      }),
+      proposal({
+        id: 'fri-drill',
+        dayOfWeek: 'Friday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'DRILL',
+        skillLevel: 'BEGINNER',
+        confidence: 80,
+        projectedOccupancy: 74,
+        estimatedInterestedMembers: 11,
+        source: 'fill_gap',
+      }),
+      proposal({
+        id: 'fri-social',
+        dayOfWeek: 'Friday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'SOCIAL',
+        skillLevel: 'INTERMEDIATE',
+        confidence: 79,
+        projectedOccupancy: 73,
+        estimatedInterestedMembers: 11,
+        source: 'fill_gap',
+      }),
+      proposal({
+        id: 'thu-open',
+        dayOfWeek: 'Thursday',
+        timeSlot: 'afternoon',
+        startTime: '13:00',
+        endTime: '14:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'INTERMEDIATE',
+        confidence: 72,
+        projectedOccupancy: 66,
+        estimatedInterestedMembers: 8,
+        source: 'fill_gap',
+      }),
+      proposal({
+        id: 'mon-social',
+        dayOfWeek: 'Monday',
+        timeSlot: 'evening',
+        startTime: '18:00',
+        endTime: '19:30',
+        format: 'SOCIAL',
+        skillLevel: 'BEGINNER',
+        confidence: 74,
+        projectedOccupancy: 68,
+        estimatedInterestedMembers: 8,
+      }),
+    ], 4)
+
+    const fridayMorningSelections = selected.filter(
+      (item) =>
+        item.dayOfWeek === 'Friday' &&
+        item.startTime === '09:00' &&
+        item.endTime === '10:30',
+    )
+
+    expect(fridayMorningSelections).toHaveLength(1)
+    expect(selected.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['fri-open', 'thu-open', 'mon-social']),
+    )
+  })
+
+  it('lets Fill idle hours keep a few decent off-peak gap-fill experiments', () => {
+    const fillIdleProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FILL_IDLE_HOURS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+    const fillIdleContext = {
+      goalWeights: fillIdleProfile.goalWeights,
+      behaviorProfile: fillIdleProfile.behaviorProfile,
+      request: null,
+      pinnedProposalIds: new Set<string>(),
+    }
+
+    const selected = selectBalancedProposals([
+      proposal({
+        id: 'thu-offpeak-gap',
+        dayOfWeek: 'Thursday',
+        timeSlot: 'afternoon',
+        startTime: '13:00',
+        endTime: '14:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'INTERMEDIATE',
+        source: 'fill_gap',
+        confidence: 61,
+        projectedOccupancy: 56,
+        estimatedInterestedMembers: 6,
+      }),
+      proposal({
+        id: 'fri-offpeak-gap',
+        dayOfWeek: 'Friday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'DRILL',
+        skillLevel: 'BEGINNER',
+        source: 'fill_gap',
+        confidence: 60,
+        projectedOccupancy: 55,
+        estimatedInterestedMembers: 6,
+      }),
+      proposal({
+        id: 'evening-strong',
+        dayOfWeek: 'Monday',
+        timeSlot: 'evening',
+        startTime: '18:00',
+        endTime: '19:30',
+        format: 'SOCIAL',
+        skillLevel: 'BEGINNER',
+        confidence: 74,
+        projectedOccupancy: 68,
+        estimatedInterestedMembers: 8,
+      }),
+    ], 3, [], fillIdleContext)
+
+    expect(selected.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['evening-strong', 'thu-offpeak-gap']),
+    )
+  })
+
+  it('lets Test new ideas keep weaker off-peak experiments than Follow member demand', () => {
+    const testIdeasProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['TEST_NEW_IDEAS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+    const demandFirstProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FOLLOW_MEMBER_DEMAND'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+
+    const testIdeasContext = {
+      goalWeights: testIdeasProfile.goalWeights,
+      behaviorProfile: testIdeasProfile.behaviorProfile,
+      request: null,
+      pinnedProposalIds: new Set<string>(),
+    }
+    const demandFirstContext = {
+      goalWeights: demandFirstProfile.goalWeights,
+      behaviorProfile: demandFirstProfile.behaviorProfile,
+      request: null,
+      pinnedProposalIds: new Set<string>(),
+    }
+
+    const proposals = [
+      proposal({
+        id: 'weak-gap',
+        dayOfWeek: 'Wednesday',
+        timeSlot: 'morning',
+        startTime: '09:00',
+        endTime: '10:30',
+        format: 'CLINIC',
+        skillLevel: 'BEGINNER',
+        source: 'fill_gap',
+        confidence: 56,
+        projectedOccupancy: 53,
+        estimatedInterestedMembers: 5,
+      }),
+      proposal({
+        id: 'steady-evening',
+        dayOfWeek: 'Thursday',
+        timeSlot: 'evening',
+        startTime: '18:00',
+        endTime: '19:30',
+        format: 'OPEN_PLAY',
+        skillLevel: 'INTERMEDIATE',
+        confidence: 72,
+        projectedOccupancy: 67,
+        estimatedInterestedMembers: 8,
+      }),
+      proposal({
+        id: 'proven-afternoon',
+        dayOfWeek: 'Saturday',
+        timeSlot: 'afternoon',
+        startTime: '13:00',
+        endTime: '14:30',
+        format: 'SOCIAL',
+        skillLevel: 'BEGINNER',
+        source: 'expand_peak',
+        confidence: 66,
+        projectedOccupancy: 61,
+        estimatedInterestedMembers: 7,
+      }),
+    ]
+
+    const experimentalSelected = selectBalancedProposals(proposals, 2, [], testIdeasContext)
+    const demandSelected = selectBalancedProposals(proposals, 2, [], demandFirstContext)
+
+    expect(experimentalSelected.map((item) => item.id)).toContain('weak-gap')
+    expect(demandSelected.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['steady-evening', 'proven-afternoon']),
+    )
+    expect(demandSelected.map((item) => item.id)).not.toContain('weak-gap')
+  })
+
+  it('tightens saturation tolerance when Protect audience is selected', () => {
+    const protectAudienceProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['PROTECT_AUDIENCE'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+    const fillIdleProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FILL_IDLE_HOURS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+
+    const cells = [
+      cellSuggested('c1', 'BEGINNER', 8),
+      {
+        ...cellSuggested('c2', 'BEGINNER', 8),
+        courtId: 'court-2',
+        courtName: 'Court 2',
+      },
+    ]
+    const preferences: SchedulerPreferenceRow[] = Array.from({ length: 8 }, () => ({
+      preferredDays: ['Tuesday'],
+      preferredTimeMorning: false,
+      preferredTimeAfternoon: false,
+      preferredTimeEvening: true,
+      skillLevel: 'BEGINNER',
+      preferredFormats: ['Clinic'],
+      targetSessionsPerWeek: 1,
+      notificationsOptOut: false,
+    }))
+
+    const protectWarnings = supplyDemandCheck(
+      cells,
+      preferences,
+      { inviteCapPerMemberPerWeek: 3 },
+      protectAudienceProfile.behaviorProfile,
+    )
+    const fillIdleWarnings = supplyDemandCheck(
+      cells,
+      preferences,
+      { inviteCapPerMemberPerWeek: 3 },
+      fillIdleProfile.behaviorProfile,
+    )
+
+    expect(protectWarnings.size).toBeGreaterThan(0)
+    expect(fillIdleWarnings.size).toBe(0)
+  })
+})
+
+// ── Regenerate hint integration (regression test for the bug-fix on
+// 2026-05-01 where applyRegenerateHint was being computed and paid for
+// by the LLM but never actually invoked against the proposal list, so
+// typing "less open play" had zero ranking effect) ─────────────────────
+
+describe('buildWeeklyGrid — regenerate hint actually shifts ranking', () => {
+  const baseInput = {
+    weekStartDate: new Date('2026-04-27'),
+    courts: COURTS,
+    historicalSessions: HIST_PLENTY,
+    existingWeekSessions: [],
+    lastNDaysSessions: [
+      ...Array.from({ length: 12 }, () => ({
+        title: 'Open Play',
+        date: new Date('2026-04-15'),
+        startTime: '19:00',
+        endTime: '20:30',
+        format: 'OPEN_PLAY' as any,
+        skillLevel: 'INTERMEDIATE' as any,
+        maxPlayers: 8,
+        registeredCount: 7,
+      })),
+      ...Array.from({ length: 12 }, () => ({
+        title: 'Drill',
+        date: new Date('2026-04-15'),
+        startTime: '10:00',
+        endTime: '11:30',
+        format: 'DRILL' as any,
+        skillLevel: 'INTERMEDIATE' as any,
+        maxPlayers: 6,
+        registeredCount: 5,
+      })),
+    ],
+    preferences: Array.from({ length: 30 }, () => ({
+      preferredDays: ['Monday', 'Tuesday'] as any,
+      preferredTimeMorning: true,
+      preferredTimeAfternoon: false,
+      preferredTimeEvening: true,
+      skillLevel: 'INTERMEDIATE' as any,
+      preferredFormats: ['OPEN_PLAY', 'DRILL'],
+      targetSessionsPerWeek: 2,
+      notificationsOptOut: false,
+    })),
+    interestRequests: [],
+    contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+    targetSuggestionCount: 12,
+  }
+
+  const EMPTY_HINT = {
+    boostFormats: [],
+    penalizeFormats: [],
+    boostSkills: [],
+    penalizeSkills: [],
+    boostDays: [],
+    penalizeDays: [],
+    boostTimeSlots: [],
+    penalizeTimeSlots: [],
+    inferredPresets: [],
+    reasoning: '',
+  }
+
+  it('penalizes OPEN_PLAY confidence in the suggested cells when hint says so', () => {
+    const baseline = buildWeeklyGrid(baseInput)
+    const baselineOpen = baseline.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'OPEN_PLAY',
+    )
+    const baselineDrill = baseline.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'DRILL',
+    )
+    // Sanity: scenario produces both kinds.
+    expect(baselineOpen.length).toBeGreaterThan(0)
+    expect(baselineDrill.length).toBeGreaterThan(0)
+
+    const penalized = buildWeeklyGrid({
+      ...baseInput,
+      regenerateHint: { ...EMPTY_HINT, penalizeFormats: ['OPEN_PLAY'] },
+    })
+    const penalizedOpen = penalized.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'OPEN_PLAY',
+    )
+
+    // After penalty (multiplier 0.7), the average OPEN_PLAY confidence
+    // must drop. We don't assert exact 0.7×, since downstream balanced
+    // selection / per-court confidence rebasing may polish the number,
+    // but we DO assert direction: penalized < baseline.
+    if (penalizedOpen.length > 0) {
+      const avgBaseline =
+        baselineOpen.reduce((s, c) => s + (c.confidence ?? 0), 0)
+        / baselineOpen.length
+      const avgPenalized =
+        penalizedOpen.reduce((s, c) => s + (c.confidence ?? 0), 0)
+        / penalizedOpen.length
+      expect(avgPenalized).toBeLessThan(avgBaseline)
+    } else {
+      // Penalty was strong enough to push every OPEN_PLAY out of the
+      // suggested bucket. That's an even cleaner pass.
+      expect(penalizedOpen.length).toBe(0)
+    }
+  })
+
+  it('boosts DRILL confidence in the suggested cells when hint boosts it', () => {
+    const baseline = buildWeeklyGrid(baseInput)
+    const baselineDrill = baseline.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'DRILL',
+    )
+    expect(baselineDrill.length).toBeGreaterThan(0)
+    const baselineAvg =
+      baselineDrill.reduce((s, c) => s + (c.confidence ?? 0), 0)
+      / baselineDrill.length
+
+    const boosted = buildWeeklyGrid({
+      ...baseInput,
+      regenerateHint: { ...EMPTY_HINT, boostFormats: ['DRILL'] },
+    })
+    const boostedDrill = boosted.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'DRILL',
+    )
+    // Boosted confidence is clamped to 100 — at least one cell must
+    // have stayed above the baseline average. (We don't assert all
+    // cells went up because some were already saturated at 100.)
+    const boostedAvg = boostedDrill.length > 0
+      ? boostedDrill.reduce((s, c) => s + (c.confidence ?? 0), 0)
+        / boostedDrill.length
+      : 0
+    expect(boostedAvg).toBeGreaterThanOrEqual(baselineAvg)
+    expect(boostedDrill.length).toBeGreaterThanOrEqual(baselineDrill.length)
   })
 })
 

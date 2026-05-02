@@ -23,6 +23,7 @@ interface GenerateOptions {
   delayMs?: number
   forceRegenerate?: boolean // skip if generated within 24h by default
   limit?: number // max members to process in this call (for chunked UI flow)
+  userIds?: string[] // optional: generate only for a specific subset of club members
 }
 
 interface GenerateResult {
@@ -331,7 +332,7 @@ export async function generateMemberProfilesForClub(
   clubId: string,
   options: GenerateOptions = {},
 ): Promise<GenerateResult> {
-  const { batchSize = 10, delayMs = 300, forceRegenerate = false, limit } = options
+  const { batchSize = 10, delayMs = 300, forceRegenerate = false, limit, userIds } = options
   const result: GenerateResult = { generated: 0, skipped: 0, errors: 0 }
 
   // Get club name
@@ -349,6 +350,15 @@ export async function generateMemberProfilesForClub(
 
   if (followers.length === 0) return result
 
+  const targetUserIds = Array.isArray(userIds) && userIds.length > 0
+    ? new Set(userIds)
+    : null
+  const scopedFollowers = targetUserIds
+    ? followers.filter((f: any) => targetUserIds.has(f.userId))
+    : followers
+
+  if (scopedFollowers.length === 0) return result
+
   // Get existing profiles to skip recently generated ones
   const existingProfiles = forceRegenerate ? [] : await prisma.memberAiProfile.findMany({
     where: {
@@ -359,12 +369,12 @@ export async function generateMemberProfilesForClub(
   })
   const recentlyGenerated = new Set(existingProfiles.map((p: any) => p.userId))
 
-  const toGenerate = followers
+  const toGenerate = scopedFollowers
     .filter((f: any) => !recentlyGenerated.has(f.userId))
     .slice(0, limit ?? undefined) // if limit set, process only first N pending members
-  result.skipped = followers.length - toGenerate.length
+  result.skipped = scopedFollowers.length - toGenerate.length
 
-  console.log(`[MemberAiProfile] Club ${clubId}: ${toGenerate.length} to generate, ${result.skipped} skipped (recent)`)
+  console.log(`[MemberAiProfile] Club ${clubId}: ${toGenerate.length} to generate, ${result.skipped} skipped (recent)${targetUserIds ? `, scoped to ${scopedFollowers.length} user(s)` : ''}`)
 
   // Process in batches
   for (let i = 0; i < toGenerate.length; i += batchSize) {

@@ -64,8 +64,20 @@ AI-powered revenue optimization platform for racquet sports clubs. Built on exis
 - ✅ Vercel env vars configured (DATABASE_URL on Vercel since 163 days ago)
 - ✅ Seed script created (scripts/seed-intelligence.ts — 22 members, 15 sessions)
 
+## Active Initiatives
+
+### Engage Redesign (April 2026 — in progress)
+- **Plan:** `docs/ENGAGE_REDESIGN_PLAN.md` (the why/what)
+- **Spec:** `docs/ENGAGE_REDESIGN_SPEC.md` (35 atomic tasks, file:line, acceptance criteria)
+- **Scope:** Members / Cohorts / Campaigns + new Settings → Automation page. Reactivation page being removed (logic redistributed).
+- **Brand:** **IQSport only**. Legacy brand pages (`Legacy*Page` components) remain as-is. All work gated behind `brand.key === 'iqsport'` checks where dual paths exist.
+- **Branch:** `rgdev` (do not push to `deviq` directly)
+- **Phase status:** Phase 0 in progress (prerequisites — Settings skeleton, Live Mode audit, tRPC stubs)
+
+When working on Engage section, **always consult SPEC first** for the specific task ID (e.g. `P2-T3`) before writing code. The spec defines acceptance criteria and risk notes per task.
+
 ## Git Workflow
-- Branch: `Sol2`
+- Branch: `Sol2` (legacy default) / `rgdev` (current Engage redesign work)
 - Push to origin triggers Vercel deploy to stest.piqle.io
 - Commit convention: conventional commits (feat:, fix:, etc.)
 - Co-author: `Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>`

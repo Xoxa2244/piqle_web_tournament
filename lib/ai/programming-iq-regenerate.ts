@@ -21,6 +21,8 @@
  */
 
 import type { AdvisorProgrammingProposalDraft } from './advisor-programming'
+import type { ProgrammingStrategyPresetId } from './programming-iq-strategy'
+import { inferProgrammingStrategyPresetsFromPrompt } from './programming-iq-strategy'
 
 // ── Hint schema ─────────────────────────────────────────────────────
 
@@ -39,6 +41,7 @@ export interface RegenerateHint {
   penalizeDays: string[]
   boostTimeSlots: Array<'morning' | 'afternoon' | 'evening'>
   penalizeTimeSlots: Array<'morning' | 'afternoon' | 'evening'>
+  inferredPresets: ProgrammingStrategyPresetId[]
   /** One-sentence summary of what the LLM understood. Surfaced in insights. */
   reasoning: string
 }
@@ -52,7 +55,182 @@ const EMPTY_HINT: RegenerateHint = {
   penalizeDays: [],
   boostTimeSlots: [],
   penalizeTimeSlots: [],
+  inferredPresets: [],
   reasoning: '',
+}
+
+const FORMAT_TERMS: Record<string, string[]> = {
+  OPEN_PLAY: ['open play', 'openplay'],
+  CLINIC: ['clinic', 'clinics'],
+  DRILL: ['drill', 'drills'],
+  LEAGUE_PLAY: ['league play', 'league', 'league night'],
+  SOCIAL: ['social', 'social play'],
+  TOURNAMENT: ['tournament', 'tournaments'],
+}
+
+const SKILL_TERMS: Record<string, string[]> = {
+  ALL_LEVELS: ['all levels', 'all-levels'],
+  BEGINNER: ['beginner', 'beginners', 'new player', 'new players', 'intro'],
+  CASUAL: ['casual'],
+  INTERMEDIATE: ['intermediate', '3.0', '3.5'],
+  COMPETITIVE: ['competitive'],
+  ADVANCED: ['advanced', '4.0', '4.5', '5.0'],
+}
+
+const POSITIVE_HINT_MARKERS = ['more', 'increase', 'boost', 'prioritize', 'focus on', 'add', 'extra']
+const NEGATIVE_HINT_MARKERS = ['less', 'fewer', 'reduce', 'avoid', 'decrease', 'cut', 'lower']
+
+function escapeRegex(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function hasMarkerNearTerm(
+  prompt: string,
+  markers: string[],
+  terms: string[],
+) {
+  const markerGroup = markers.map(escapeRegex).join('|')
+  const termGroup = terms.map(escapeRegex).join('|')
+  const pattern = new RegExp(
+    `(?:\\b(?:${markerGroup})\\b.{0,40}\\b(?:${termGroup})\\b)|(?:\\b(?:${termGroup})\\b.{0,40}\\b(?:${markerGroup})\\b)`,
+    'i',
+  )
+  return pattern.test(prompt)
+}
+
+function includesAnyTerm(prompt: string, terms: string[]) {
+  return terms.some((term) => prompt.includes(term))
+}
+
+export function buildHeuristicHintFromPrompt(prompt: string): RegenerateHint {
+  const normalized = prompt.trim().toLowerCase()
+  if (!normalized) return EMPTY_HINT
+  const clauses = normalized
+    .split(/[,.;&]/)
+    .map((clause) => clause.trim())
+    .filter(Boolean)
+
+  const boostFormats = new Set<string>()
+  const penalizeFormats = new Set<string>()
+  const boostSkills = new Set<string>()
+  const penalizeSkills = new Set<string>()
+  const boostDays = new Set<string>()
+  const penalizeDays = new Set<string>()
+  const boostTimeSlots = new Set<'morning' | 'afternoon' | 'evening'>()
+  const penalizeTimeSlots = new Set<'morning' | 'afternoon' | 'evening'>()
+
+  const classifyClauses = (terms: string[]) => {
+    let mentioned = false
+    let positive = false
+    let negative = false
+
+    for (const clause of clauses) {
+      if (!includesAnyTerm(clause, terms)) continue
+      mentioned = true
+      const hasPositiveMarker = POSITIVE_HINT_MARKERS.some((marker) => clause.includes(marker))
+      const hasNegativeMarker = NEGATIVE_HINT_MARKERS.some((marker) => clause.includes(marker))
+      if (hasPositiveMarker) positive = true
+      if (hasNegativeMarker) negative = true
+      if (!hasPositiveMarker && !hasNegativeMarker) positive = true
+    }
+
+    return { mentioned, positive, negative }
+  }
+
+  for (const [format, terms] of Object.entries(FORMAT_TERMS)) {
+    const verdict = classifyClauses(terms)
+    if (!verdict.mentioned) continue
+    if (verdict.negative && !verdict.positive) {
+      penalizeFormats.add(format)
+      continue
+    }
+    if (verdict.positive) {
+      boostFormats.add(format)
+    }
+  }
+
+  for (const [skill, terms] of Object.entries(SKILL_TERMS)) {
+    const verdict = classifyClauses(terms)
+    if (!verdict.mentioned) continue
+    if (verdict.negative && !verdict.positive) {
+      penalizeSkills.add(skill)
+      continue
+    }
+    if (verdict.positive) {
+      boostSkills.add(skill)
+    }
+  }
+
+  const days = [
+    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+  ] as const
+  for (const day of days) {
+    const lower = day.toLowerCase()
+    const verdict = classifyClauses([lower])
+    if (!verdict.mentioned) continue
+    if (verdict.negative && !verdict.positive) {
+      penalizeDays.add(day)
+    } else if (verdict.positive) {
+      boostDays.add(day)
+    }
+  }
+
+  if (normalized.includes('weekday')) {
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as const) {
+      boostDays.add(day)
+    }
+  }
+  if (normalized.includes('weekend')) {
+    for (const day of ['Saturday', 'Sunday'] as const) {
+      boostDays.add(day)
+    }
+  }
+
+  const timeTerms: Array<{
+    slot: 'morning' | 'afternoon' | 'evening'
+    terms: string[]
+  }> = [
+    { slot: 'morning', terms: ['morning', 'mornings', 'early', 'before work'] },
+    { slot: 'afternoon', terms: ['afternoon', 'afternoons', 'midday', 'lunch'] },
+    { slot: 'evening', terms: ['evening', 'evenings', 'night', 'after work'] },
+  ]
+
+  for (const { slot, terms } of timeTerms) {
+    const verdict = classifyClauses(terms)
+    if (!verdict.mentioned) continue
+    if (verdict.negative && !verdict.positive) {
+      penalizeTimeSlots.add(slot)
+    } else if (verdict.positive) {
+      boostTimeSlots.add(slot)
+    }
+  }
+
+  const hasDirectionalSignal =
+    boostFormats.size > 0 ||
+    penalizeFormats.size > 0 ||
+    boostSkills.size > 0 ||
+    penalizeSkills.size > 0 ||
+    boostDays.size > 0 ||
+    penalizeDays.size > 0 ||
+    boostTimeSlots.size > 0 ||
+    penalizeTimeSlots.size > 0
+
+  const inferredPresets = inferProgrammingStrategyPresetsFromPrompt(prompt)
+
+  return {
+    boostFormats: Array.from(boostFormats),
+    penalizeFormats: Array.from(penalizeFormats),
+    boostSkills: Array.from(boostSkills),
+    penalizeSkills: Array.from(penalizeSkills),
+    boostDays: Array.from(boostDays),
+    penalizeDays: Array.from(penalizeDays),
+    boostTimeSlots: Array.from(boostTimeSlots),
+    penalizeTimeSlots: Array.from(penalizeTimeSlots),
+    inferredPresets,
+    reasoning: hasDirectionalSignal
+      ? 'Prompt mapped to fixed strategy presets with heuristic fallback.'
+      : '',
+  }
 }
 
 // ── LLM call ─────────────────────────────────────────────────────────
@@ -69,6 +247,7 @@ You MUST respond with valid JSON matching this exact shape:
   "penalizeDays": string[],
   "boostTimeSlots": string[],     // subset of ["morning", "afternoon", "evening"]
   "penalizeTimeSlots": string[],
+  "inferredPresets": string[],    // subset of ["FOLLOW_MEMBER_DEMAND","FILL_IDLE_HOURS","PROTECT_AUDIENCE","BALANCE_THE_WEEK","TEST_NEW_IDEAS"]
   "reasoning": string             // ≤ 120 chars, plain English
 }
 
@@ -77,6 +256,7 @@ Rules:
 - Use UPPER_SNAKE_CASE for skills: ALL_LEVELS, BEGINNER, CASUAL, INTERMEDIATE, COMPETITIVE, ADVANCED.
 - Use full day names: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday.
 - Time slots are always lowercase: morning, afternoon, evening.
+- Only use preset ids from: FOLLOW_MEMBER_DEMAND, FILL_IDLE_HOURS, PROTECT_AUDIENCE, BALANCE_THE_WEEK, TEST_NEW_IDEAS.
 - Leave lists empty if the admin didn't mention that dimension.
 - Don't invent preferences the admin didn't express. Ambiguous → empty.
 - NEVER add commentary outside the JSON block.`
@@ -102,8 +282,8 @@ export async function interpretRegeneratePrompt(
   // Skip when no API key is configured — tests/local dev without creds
   // should silently degrade, not throw.
   if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
-    console.warn('[programming-iq] regenerate: no LLM credentials, skipping re-weight')
-    return EMPTY_HINT
+    console.warn('[programming-iq] regenerate: no LLM credentials, using heuristic fallback')
+    return buildHeuristicHintFromPrompt(prompt)
   }
 
   try {
@@ -123,7 +303,7 @@ export async function interpretRegeneratePrompt(
       '[programming-iq] regenerate LLM failed:',
       (err?.message || 'unknown').slice(0, 160),
     )
-    return EMPTY_HINT
+    return buildHeuristicHintFromPrompt(prompt)
   }
 }
 
@@ -171,6 +351,15 @@ export function parseHint(raw: string): RegenerateHint {
     penalizeDays: arr(parsed.penalizeDays),
     boostTimeSlots: timeSlotArr(parsed.boostTimeSlots),
     penalizeTimeSlots: timeSlotArr(parsed.penalizeTimeSlots),
+    inferredPresets: arr(parsed.inferredPresets)
+      .map((s) => s.toUpperCase())
+      .filter((s): s is ProgrammingStrategyPresetId =>
+        s === 'FOLLOW_MEMBER_DEMAND'
+        || s === 'FILL_IDLE_HOURS'
+        || s === 'PROTECT_AUDIENCE'
+        || s === 'BALANCE_THE_WEEK'
+        || s === 'TEST_NEW_IDEAS',
+      ),
     reasoning: typeof parsed.reasoning === 'string'
       ? parsed.reasoning.slice(0, 200)
       : '',
@@ -184,8 +373,10 @@ export function parseHint(raw: string): RegenerateHint {
  * completely wipe the heuristic output, just nudge the ranking. Admin
  * can always Reject suggestions they don't like.
  */
-const BOOST_MULTIPLIER = 1.25
-const PENALTY_MULTIPLIER = 0.7
+const BOOST_MULTIPLIER = 1.12
+const PENALTY_MULTIPLIER = 0.90
+const MIN_TOTAL_MULTIPLIER = 0.86
+const MAX_TOTAL_MULTIPLIER = 1.18
 
 /**
  * Apply a RegenerateHint to a list of proposals by scaling each
@@ -210,6 +401,7 @@ export function applyRegenerateHint(
     if (hint.penalizeDays.includes(p.dayOfWeek)) multiplier *= PENALTY_MULTIPLIER
     if (hint.boostTimeSlots.includes(p.timeSlot)) multiplier *= BOOST_MULTIPLIER
     if (hint.penalizeTimeSlots.includes(p.timeSlot)) multiplier *= PENALTY_MULTIPLIER
+    multiplier = Math.max(MIN_TOTAL_MULTIPLIER, Math.min(MAX_TOTAL_MULTIPLIER, multiplier))
 
     return {
       ...p,
