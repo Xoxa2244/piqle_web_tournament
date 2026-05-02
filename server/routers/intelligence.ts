@@ -8480,14 +8480,35 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         ]
       }
 
-      await (ctx.prisma as any).opsSessionDraft.deleteMany({
+      // Bug-fix 2026-05-01: previously this deleted ALL programming_iq
+      // drafts for the club regardless of which week they belonged to.
+      // That meant Generate-on-week-B silently nuked week-A's pending
+      // drafts, including any SESSION_DRAFT rows the admin had already
+      // Accepted via Live Review. Now mirrors the per-week filter from
+      // clearProgrammingScheduleDrafts (line ~8959): query first, filter
+      // by metadata.weekStartDate in JS (Prisma can't `where` on JSON
+      // path consistently across Postgres versions), then delete only
+      // the matching ids.
+      const draftsForWeek = await (ctx.prisma as any).opsSessionDraft.findMany({
         where: {
           clubId: input.clubId,
           status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
           origin: 'programming_iq',
           publishedPlaySessionId: null,
         },
-      }).catch(() => ({ count: 0 }))
+        select: { id: true, metadata: true },
+        take: 500,
+      }).catch(() => [])
+
+      const idsToDelete = (draftsForWeek as any[])
+        .filter((draft) => (draft.metadata as any)?.weekStartDate === input.weekStartDate)
+        .map((draft) => draft.id)
+
+      if (idsToDelete.length > 0) {
+        await (ctx.prisma as any).opsSessionDraft.deleteMany({
+          where: { clubId: input.clubId, id: { in: idsToDelete } },
+        }).catch(() => ({ count: 0 }))
+      }
 
       const carrierDraft = await ctx.prisma.agentDraft.create({
         data: {
@@ -8998,7 +9019,29 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const weekStart = new Date(input.weekStartDate)
+      // Bug-fix 2026-05-01: previously this did `new Date(weekStartDate)`
+      // which parses YYYY-MM-DD as UTC midnight, then `setDate(+offset)`
+      // mutated in *server-local* timezone. On a UTC server crossing
+      // DST or past local midnight, the resulting `sessionDate` lands
+      // on the wrong calendar day — e.g. Wednesday's draft published as
+      // Tuesday. The rest of the Programming IQ pipeline carefully
+      // threads club timezone through (`scheduler.ts:333-372`); only
+      // this publish path was using runtime-local math.
+      //
+      // Fix: parse YYYY-MM-DD parts explicitly + use Date.UTC to
+      // construct an unambiguous UTC midnight. setUTCDate then stays in
+      // UTC. PlaySession.date already follows the convention "UTC
+      // midnight representing wall-clock day in club TZ" everywhere
+      // else in this codebase (filterSessionsToProgrammingWeek, etc.).
+      const dateParts = input.weekStartDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+      if (!dateParts) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'weekStartDate must be YYYY-MM-DD' })
+      }
+      const weekStart = new Date(Date.UTC(
+        Number(dateParts[1]),
+        Number(dateParts[2]) - 1,
+        Number(dateParts[3]),
+      ))
       if (Number.isNaN(weekStart.getTime())) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid weekStartDate' })
       }
@@ -9039,7 +9082,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
         const offset = DAY_OFFSET[draft.dayOfWeek] ?? 0
         const sessionDate = new Date(weekStart)
-        sessionDate.setDate(sessionDate.getDate() + offset)
+        sessionDate.setUTCDate(sessionDate.getUTCDate() + offset)
 
         const conflict = await ctx.prisma.playSession.findFirst({
           where: {

@@ -45,6 +45,7 @@ import {
   type ProgrammingRequestEvaluation,
   type ProgrammingStrategyPresetId,
 } from './programming-iq-strategy'
+import { applyRegenerateHint } from './programming-iq-regenerate'
 import type {
   DayOfWeek,
   PlaySessionFormat,
@@ -1377,6 +1378,21 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       rankedProposals,
       input.previousSuggestionSignatures || [],
     )
+  }
+
+  // Bug-fix 2026-05-01: previously the LLM-derived regenerateHint was
+  // built and paid for in the tRPC layer (interpretRegeneratePrompt
+  // burns ~400 output tokens per Generate) and threaded into the
+  // scheduler input, but applyRegenerateHint was NEVER actually
+  // called against the proposal list. The hint's structured
+  // boost/penalize fields (formats / skills / days / timeSlots)
+  // dropped on the floor. Effect: typing "less open play, more drills
+  // on weekdays" had zero impact on ranking — only the prompt was
+  // echoed back via insights. Now applies the multiplier pass so
+  // ranking actually shifts. Tests at
+  // tests/lib/ai/programming-iq-scheduler.test.ts cover this.
+  if (input.regenerateHint) {
+    rankedProposals = applyRegenerateHint(rankedProposals, input.regenerateHint)
   }
   const requestedProposals = plan.requestedAlternates?.length
     ? plan.requestedAlternates
