@@ -150,6 +150,112 @@ export function pickFirstUrl(...candidates: Array<string | null | undefined>): s
   return null
 }
 
+/**
+ * Extract the CR "series anchor" identifier from a raw event row. CR's
+ * `/eventcalendar/eventlist` returns event series (recurring template, has
+ * PublicEventUrl) and event instances (specific occurrences, has
+ * registered_count) as separate rows. Series rows key on EventId; instance
+ * rows key on EventDateId but typically still carry EventId as a back-pointer.
+ *
+ * We use this to link instance→series so the instance row can inherit the
+ * URL from its series. Returns null if neither field is present.
+ *
+ * Exported for unit tests.
+ */
+export function getEventSeriesAnchor(raw: any): string | null {
+  const id = raw?.EventId ?? raw?.eventId ?? raw?.EventScheduleId ?? raw?.eventScheduleId
+  if (id === null || id === undefined) return null
+  const str = String(id).trim()
+  return str.length > 0 ? str : null
+}
+
+/**
+ * Build a two-level URL lookup table from a batch of raw CR events.
+ *
+ * The eventcalendar API returns series rows (have PublicEventUrl, no
+ * registrations) and instance rows (have registrations, no URL) interleaved
+ * in the same response. To get URLs onto the instance rows that slot-filler
+ * actually emails about, we index the URL-bearing rows by:
+ *
+ *   - byAnchor:    EventId / EventScheduleId  (preferred — direct link)
+ *   - byTitleKey:  `${clubId}::${title}`      (fallback — when anchor missing)
+ *
+ * Exported for unit tests.
+ */
+export function buildSeriesUrlIndex(rawEvents: any[], clubId: string): {
+  byAnchor: Map<string, { publicEventUrl: string | null; memberSsoUrl: string | null }>
+  byTitleKey: Map<string, { publicEventUrl: string | null; memberSsoUrl: string | null }>
+} {
+  const byAnchor = new Map<string, { publicEventUrl: string | null; memberSsoUrl: string | null }>()
+  const byTitleKey = new Map<string, { publicEventUrl: string | null; memberSsoUrl: string | null }>()
+
+  for (const raw of rawEvents || []) {
+    const url = pickFirstUrl(raw?.PublicEventUrl, raw?.publicEventUrl)
+    const sso = pickFirstUrl(raw?.SsoUrl, raw?.ssoUrl)
+    if (!url && !sso) continue
+
+    const anchor = getEventSeriesAnchor(raw)
+    if (anchor) {
+      const existing = byAnchor.get(anchor) || { publicEventUrl: null, memberSsoUrl: null }
+      byAnchor.set(anchor, {
+        publicEventUrl: existing.publicEventUrl || url,
+        memberSsoUrl: existing.memberSsoUrl || sso,
+      })
+    }
+
+    const title = String(raw?.EventName || raw?.eventName || raw?.Title || raw?.title || raw?.Name || raw?.name || '').trim()
+    if (title) {
+      const titleKey = `${clubId}::${title}`
+      const existing = byTitleKey.get(titleKey) || { publicEventUrl: null, memberSsoUrl: null }
+      byTitleKey.set(titleKey, {
+        publicEventUrl: existing.publicEventUrl || url,
+        memberSsoUrl: existing.memberSsoUrl || sso,
+      })
+    }
+  }
+
+  return { byAnchor, byTitleKey }
+}
+
+/**
+ * Resolve (publicEventUrl, memberSsoUrl) for one raw event, applying the
+ * Sprint 1.5 fallback: own URL → series-anchor URL → same-title-in-club URL.
+ *
+ * Exported for unit tests.
+ */
+export function resolveEventUrls(
+  raw: any,
+  clubId: string,
+  index: ReturnType<typeof buildSeriesUrlIndex>,
+): { publicEventUrl: string | null; memberSsoUrl: string | null } {
+  let publicEventUrl = pickFirstUrl(raw?.PublicEventUrl, raw?.publicEventUrl)
+  let memberSsoUrl = pickFirstUrl(raw?.SsoUrl, raw?.ssoUrl)
+
+  if (!publicEventUrl || !memberSsoUrl) {
+    const anchor = getEventSeriesAnchor(raw)
+    if (anchor) {
+      const cached = index.byAnchor.get(anchor)
+      if (cached) {
+        if (!publicEventUrl) publicEventUrl = cached.publicEventUrl
+        if (!memberSsoUrl) memberSsoUrl = cached.memberSsoUrl
+      }
+    }
+  }
+
+  if (!publicEventUrl || !memberSsoUrl) {
+    const title = String(raw?.EventName || raw?.eventName || raw?.Title || raw?.title || raw?.Name || raw?.name || '').trim()
+    if (title) {
+      const cached = index.byTitleKey.get(`${clubId}::${title}`)
+      if (cached) {
+        if (!publicEventUrl) publicEventUrl = cached.publicEventUrl
+        if (!memberSsoUrl) memberSsoUrl = cached.memberSsoUrl
+      }
+    }
+  }
+
+  return { publicEventUrl, memberSsoUrl }
+}
+
 function getEventMaxRegistrations(raw: any, fallback: number): number {
   const value =
     raw?.MaxRegistrations ??
@@ -585,6 +691,11 @@ async function syncEventCalendar(
     existingMappings.map((mapping) => [mapping.externalId, mapping.internalId]),
   )
 
+  // Sprint 1.5: pre-index URL-bearing rows so instance rows (which carry
+  // registrations but lack PublicEventUrl) can inherit URL from their series
+  // counterpart in the same response. See buildSeriesUrlIndex docs.
+  const seriesUrlIndex = buildSeriesUrlIndex(rawEvents as any[], clubId)
+
   for (const rawEvent of rawEvents as any[]) {
     try {
       const externalKey = getEventExternalKey(rawEvent)
@@ -634,15 +745,12 @@ async function syncEventCalendar(
       // CR event URLs — extract for direct-link emails + attribution.
       // PublicEventUrl: public CR registration page (works without login)
       // SsoUrl: authenticated link for known members (skips login)
-      // Both nullable in CR; private/internal events leave them empty.
-      const publicEventUrl = pickFirstUrl(
-        rawEvent?.PublicEventUrl,
-        rawEvent?.publicEventUrl,
-      )
-      const memberSsoUrl = pickFirstUrl(
-        rawEvent?.SsoUrl,
-        rawEvent?.ssoUrl,
-      )
+      // CR returns event series and event instances as separate rows in the
+      // same eventlist response. Series rows carry the URL; instance rows
+      // carry registrations. Sprint 1.5 (resolveEventUrls) bridges them via
+      // EventId anchor + clubId+title fallback so instance rows — the ones
+      // slot-filler actually emails about — inherit the URL from their series.
+      const { publicEventUrl, memberSsoUrl } = resolveEventUrls(rawEvent, clubId, seriesUrlIndex)
 
       const sessionData = {
         clubId,
