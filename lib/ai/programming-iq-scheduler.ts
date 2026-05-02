@@ -298,6 +298,33 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
+/**
+ * Derive months of booking data from the actual session date range.
+ * Returns 0 for empty input, otherwise a value rounded to the nearest
+ * 0.5 with a max of 24. Used by signalSummary to give the admin an
+ * honest "this schedule is based on N months of data" line — was
+ * hardcoded to 2 before regardless of how much data the club had.
+ */
+function computeMonthsOfBookingData(
+  sessions: Array<{ date: Date | string }>,
+): number {
+  if (!sessions || sessions.length === 0) return 0
+  let minMs = Number.POSITIVE_INFINITY
+  let maxMs = Number.NEGATIVE_INFINITY
+  for (const s of sessions) {
+    const d = s.date instanceof Date ? s.date : new Date(s.date)
+    const ms = d.getTime()
+    if (!Number.isFinite(ms)) continue
+    if (ms < minMs) minMs = ms
+    if (ms > maxMs) maxMs = ms
+  }
+  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs)) return 0
+  const days = (maxMs - minMs) / 86_400_000
+  // Round to nearest 0.5 month for a clean UI display.
+  const months = Math.max(0, Math.min(24, Math.round((days / 30) * 2) / 2))
+  return months
+}
+
 function timeSlotFromStart(startTime: string | null | undefined) {
   const minutes = hhmmToMinutes(startTime)
   const hour = Number.isFinite(minutes) ? Math.floor(minutes / 60) : 0
@@ -1225,6 +1252,27 @@ export function selectBalancedProposals(
     const pinnedSet = new Set(pinnedProposalIds)
     const pinned = remaining.filter((proposal) => pinnedSet.has(proposal.id))
 
+    // Bug-fix 2026-05-01: previously a pinned id missing from
+    // `remaining` (e.g. live-review pinned a proposal that got dropped
+    // earlier in expansion via seenExpandedIds, or the requested
+    // proposal got filtered out by sameProposal dedupe upstream)
+    // silently disappeared with no signal. Operationally this looks
+    // like "I clicked Accept on the live-review move suggestion but
+    // nothing happened" — quiet failure. Now warn so it surfaces in
+    // server logs and the operator can dig in.
+    const foundPinnedIds = new Set(pinned.map((p) => p.id))
+    const missingPinnedIds = pinnedProposalIds.filter(
+      (id) => !foundPinnedIds.has(id),
+    )
+    if (missingPinnedIds.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[programming-iq] selectBalancedProposals: %d pinned proposal id(s) not in remaining set, dropped silently: %s',
+        missingPinnedIds.length,
+        missingPinnedIds.slice(0, 5).join(', '),
+      )
+    }
+
     for (const proposal of pinned) {
       if (selected.length >= targetCount) break
       selected.push(proposal)
@@ -1360,6 +1408,9 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
 
   // 1. Get a wide proposal set from the existing planner. We pass
   //    `limit` high enough to cover the grid; the planner dedupes.
+  //    `timezone` ensures historical sessions are bucketed by club-local
+  //    day-of-week (was using UTC, mis-bucketing cross-midnight EST
+  //    sessions — see advisor-programming.ts:toDayOfWeek bug-fix note).
   const plan = buildAdvisorProgrammingPlan({
     sessions: input.lastNDaysSessions,
     preferences: input.preferences,
@@ -1370,6 +1421,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     courtCount: activeCourts.length,
     strategyPresetIds: strategyProfile.appliedPresets.map((preset) => preset.id),
     behaviorProfile: strategyProfile.behaviorProfile,
+    timezone: input.timezone || 'America/New_York',
   })
 
   let rankedProposals = plan.proposals
@@ -1708,6 +1760,14 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     changes.push(`${unplacedCount} idea${unplacedCount === 1 ? '' : 's'} stayed in Unplaced ideas because they could not be pinned to a court.`)
   }
 
+  // Bug-fix 2026-05-01: monthsOfBookingData was hardcoded to 2 here
+  // (the router fetches a 60-day window, so the value is "consistent"
+  // but it lies for clubs with <60d of actual data — a brand-new club
+  // with 1 week of CourtReserve sync still showed "2 months"). Now we
+  // derive from the actual session date range so the transparency row
+  // tells the truth.
+  const monthsOfBookingData = computeMonthsOfBookingData(input.lastNDaysSessions)
+
   return {
     generationId,
     cells,
@@ -1721,7 +1781,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     },
     insights,
     signalSummary: {
-      monthsOfBookingData: 2,
+      monthsOfBookingData,
       preferencesCount: input.preferences.length,
       unmetInterestRequests,
       activeCourts: activeCourts.length,
