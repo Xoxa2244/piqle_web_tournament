@@ -260,3 +260,35 @@ describe('resolveEventUrls', () => {
     expect(result.memberSsoUrl).toBe('https://cr.example/instance-sso')
   })
 })
+
+describe('Sprint 1.6 regression: update path must not clobber existing URL with null', () => {
+  // The bug we're guarding against:
+  // syncEventCalendar runs per time-window. CR returns event-series rows
+  // (carry the URL) in a different window than instance rows (carry the
+  // registrations). When a window contains only the instance row,
+  // resolveEventUrls returns null for both URL fields. Before this fix,
+  // sessionData.externalUrl=null was passed straight to prisma.update(),
+  // which clobbered the URL set by an earlier window's series row OR by
+  // the post-sync backfill. The fix: at the update call site, coerce
+  // null→undefined so Prisma leaves the column alone.
+  //
+  // We can't unit-test prisma.update() without spinning up a DB, but the
+  // contract we're enforcing is documented at line ~774 of
+  // courtreserve-sync.ts: `externalUrl: publicEventUrl ?? undefined`.
+  // This test asserts the resolver returns null (not undefined) for a
+  // bare instance row — confirming that the call-site coercion is the
+  // ONLY thing standing between us and the regression.
+  it('resolveEventUrls returns null (not undefined) for instance row with no URL and no matching series in index', () => {
+    const idx = buildSeriesUrlIndex([], 'club-1')
+    const result = resolveEventUrls(
+      { EventDateId: 99, EventName: 'Standalone Event' },
+      'club-1',
+      idx,
+    )
+    expect(result.publicEventUrl).toBeNull()
+    expect(result.memberSsoUrl).toBeNull()
+    // The call site must do `?? undefined` before passing to prisma.update —
+    // this is the regression boundary. If anyone refactors and passes the
+    // raw null through, every sync run will wipe URLs back to null.
+  })
+})
