@@ -166,7 +166,17 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
     description: 'Keep a healthier mix of skill levels, formats, and times.',
     goalDeltas: { portfolioBalance: 12, demandFit: 4 },
     behaviorDeltas: {
+      // Original deltas pushed *duplicates* below floor (good) but
+      // didn't surface non-Open-Play alternatives on Open-Play-dominant
+      // clubs (bad — the preset became "fewer Open Play" instead of
+      // "balanced mix"). Tune (2026-05-01): give DRILL/CLINIC/SOCIAL
+      // candidates a synthetic baseline score and a small experimental
+      // budget so balance can actually surface diverse formats even
+      // when historical demand is moderate.
       selectionScoreFloor: 1,
+      experimentalScoreFloor: -2,
+      maxExperimentalSlots: 2,
+      noSupplyHistoricalScore: 6,
       sameFormatSkillPenalty: 4,
       sameFormatSkillExtraPenalty: 6,
       sameFormatPenalty: 4,
