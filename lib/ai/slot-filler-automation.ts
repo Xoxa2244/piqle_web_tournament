@@ -339,6 +339,17 @@ async function processClub(
       // Send email (only if status is 'sent' and we have a log record for metadata)
       if (deliveryStatus === 'sent' && rec.member.email && logRecord) {
         try {
+          // 2026-05-02: prefer the CR PublicEventUrl when sync captured
+          // it — gets the member to the actual booking page in one click
+          // instead of a generic club-page URL. Falls back to the
+          // platform deep-link for older sessions / private events / any
+          // case where externalUrl wasn't populated. Either way Mandrill
+          // click tracking + our attribution service still correlate the
+          // click back to logRecord.id (Mandrill rewrites links to its
+          // tracking domain regardless of destination).
+          const directBookingUrl = (session as any).externalUrl
+            ? `${(session as any).externalUrl}${(session as any).externalUrl.includes('?') ? '&' : '?'}rec=${logRecord.id}`
+            : buildPlatformUrl(`/clubs/${club.id}/intelligence/sessions?rec=${logRecord.id}`)
           const { messageId } = await sendSlotFillerInviteEmail({
             to: rec.member.email,
             memberName: rec.member.name || rec.member.email.split('@')[0],
@@ -347,11 +358,7 @@ async function processClub(
             sessionDate: session.date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
             sessionTime: `${session.startTime} - ${session.endTime}`,
             spotsLeft,
-            // ?rec= tag so downstream analytics / partner bookings can
-            // attribute back to this recommendation. Mandrill click webhook
-            // will also fire on tracked clicks and set clickedAt — the
-            // attribution service then treats this as a deep_link.
-            bookingUrl: buildPlatformUrl(`/clubs/${club.id}/intelligence/sessions?rec=${logRecord.id}`),
+            bookingUrl: directBookingUrl,
             customSubject: subject,
             customMessage: body,
             // CRITICAL: metadata flows through Mandrill to webhooks for engagement tracking

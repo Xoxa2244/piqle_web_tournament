@@ -7581,7 +7581,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
       const session = await ctx.prisma.playSession.findUnique({
         where: { id: input.sessionId },
-        select: { title: true, date: true, startTime: true, endTime: true, maxPlayers: true, format: true },
+        // externalUrl pulled so the email can link straight to the CR
+        // booking page when sync captured one (2026-05-02).
+        select: { title: true, date: true, startTime: true, endTime: true, maxPlayers: true, format: true, externalUrl: true },
       })
       if (!session) throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
 
@@ -7618,7 +7620,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
               sessionDate,
               sessionTime: `${session.startTime} - ${session.endTime}`,
               spotsLeft,
-              bookingUrl: buildPlatformUrl(`/clubs/${input.clubId}/intelligence/sessions`, requestBaseUrl),
+              // 2026-05-02: prefer CR PublicEventUrl when sync captured
+              // it (one-click direct booking) over generic club page.
+              bookingUrl: (session as any).externalUrl
+                || buildPlatformUrl(`/clubs/${input.clubId}/intelligence/sessions`, requestBaseUrl),
               customSubject: input.subject,
               customMessage: input.body,
             })

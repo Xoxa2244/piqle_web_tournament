@@ -132,6 +132,24 @@ function getEventRegistrationCount(raw: any): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+/**
+ * Take the first non-empty URL-shaped value from a list of candidates.
+ * CR sometimes returns empty strings vs null vs undefined; this lets
+ * `extractPublicEventUrl(rawEvent.PublicEventUrl, rawEvent.publicEventUrl)`
+ * stay readable without an inline ternary chain.
+ *
+ * Exported for unit tests.
+ */
+export function pickFirstUrl(...candidates: Array<string | null | undefined>): string | null {
+  for (const c of candidates) {
+    if (typeof c === 'string') {
+      const trimmed = c.trim()
+      if (trimmed && /^https?:\/\//i.test(trimmed)) return trimmed
+    }
+  }
+  return null
+}
+
 function getEventMaxRegistrations(raw: any, fallback: number): number {
   const value =
     raw?.MaxRegistrations ??
@@ -613,6 +631,19 @@ async function syncEventCalendar(
       today.setHours(0, 0, 0, 0)
       const isCancelled = Boolean(rawEvent?.CancelledOnUtc || rawEvent?.cancelledOnUtc || rawEvent?.IsCancelled || rawEvent?.isCancelled)
 
+      // CR event URLs — extract for direct-link emails + attribution.
+      // PublicEventUrl: public CR registration page (works without login)
+      // SsoUrl: authenticated link for known members (skips login)
+      // Both nullable in CR; private/internal events leave them empty.
+      const publicEventUrl = pickFirstUrl(
+        rawEvent?.PublicEventUrl,
+        rawEvent?.publicEventUrl,
+      )
+      const memberSsoUrl = pickFirstUrl(
+        rawEvent?.SsoUrl,
+        rawEvent?.ssoUrl,
+      )
+
       const sessionData = {
         clubId,
         courtId,
@@ -626,6 +657,8 @@ async function syncEventCalendar(
         registeredCount: isCancelled ? 0 : registeredCount,
         status: isCancelled ? 'CANCELLED' as any : (sessionDay >= today ? 'SCHEDULED' as any : 'COMPLETED' as any),
         pricePerSlot: rawEvent?.PriceToPay ?? rawEvent?.priceToPay ?? rawEvent?.Price ?? rawEvent?.price ?? null,
+        externalUrl:  publicEventUrl,
+        memberSsoUrl: memberSsoUrl,
       }
 
       const existingSessionId = sessionIdByExternalId.get(externalKey)

@@ -1088,7 +1088,11 @@ export async function sendInvites(
   const bookingUrl = `${appUrl}/clubs/${club.id}/play`
 
   // Load session data (handle CSV vs real)
-  let sessionData: { title: string; date: string; time: string; spotsLeft: number }
+  // 2026-05-02: also capture externalUrl when present so emails link
+  // straight into the CourtReserve booking page instead of generic
+  // /play. Falls back to bookingUrl when null (older sessions / CSV /
+  // private events).
+  let sessionData: { title: string; date: string; time: string; spotsLeft: number; externalUrl?: string | null }
   if (sessionId.startsWith('csv-')) {
     // CSV fallback: read session metadata from document_embeddings
     try {
@@ -1122,6 +1126,7 @@ export async function sendInvites(
       date: session.date instanceof Date ? session.date.toLocaleDateString() : String(session.date),
       time: session.startTime ? `${session.startTime}–${session.endTime || ''}` : '',
       spotsLeft: Math.max(0, (session.maxPlayers || 8) - session._count.bookings),
+      externalUrl: (session as any).externalUrl ?? null,
     }
   }
 
@@ -1205,7 +1210,8 @@ export async function sendInvites(
           sessionDate: sessionData.date,
           sessionTime: sessionData.time,
           spotsLeft: sessionData.spotsLeft,
-          bookingUrl,
+          // Prefer CR direct booking URL; fall back to club page.
+          bookingUrl: sessionData.externalUrl || bookingUrl,
           customMessage: candidate.customMessage || personalizedBody,
           customSubject: personalizedSubject,
         })
