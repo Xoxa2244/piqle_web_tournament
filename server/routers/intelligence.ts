@@ -9576,6 +9576,90 @@ Generate 3 campaign strategies with different goals and timings based on the dat
   // `truncated` fields, and may add an alternative `conditions+logic` input
   // shape if the new Cohort Builder needs richer expressions.
 
+  /**
+   * ENGAGE Phase 2 — aggregated micro-survey results for a single survey type.
+   *
+   * Currently consumed by the dashboard widget on Settings → Automation that
+   * shows the Newcomer Day-12 survey breakdown ("what's holding new members
+   * back?"). Returns counts per option + total responses + total emails sent
+   * (so the UI can render a response rate). Bounded by date range.
+   *
+   * Default range: last 90 days. Caller can override via `windowDays`.
+   *
+   * Why a single procedure shape across survey types: per ENGAGE_MVP doc,
+   * 6 of 10 segments will produce a survey response. Each will use the same
+   * MicroSurveyResponse table with a different surveyType. The dashboard
+   * pattern (counts per option + response rate) is identical for all of them
+   * — we just parameterise on surveyType + the parent log type.
+   */
+  getMicroSurveyResults: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        surveyType: z.enum(['onboarding_day12']).default('onboarding_day12'),
+        windowDays: z.number().int().min(1).max(365).default(90),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const since = new Date(Date.now() - input.windowDays * 86400000)
+
+      // 1. Counts per option (the dashboard breakdown chart). Use raw SQL —
+      //    Prisma groupBy's generated types here demand orderBy and don't
+      //    surface a `_count._all` shape cleanly. Raw is simpler + explicit.
+      const responsesByOption = await ctx.prisma.$queryRaw<Array<{ option: string; count: bigint }>>`
+        SELECT option, COUNT(*)::bigint AS count
+        FROM micro_survey_responses
+        WHERE club_id = ${input.clubId}
+          AND survey_type = ${input.surveyType}
+          AND responded_at >= ${since}
+        GROUP BY option
+        ORDER BY count DESC
+      `
+
+      const breakdown = responsesByOption.map((r) => ({
+        option: r.option,
+        count: Number(r.count),
+      }))
+
+      const totalResponses = breakdown.reduce((sum, r) => sum + r.count, 0)
+
+      // 2. Total survey emails sent in the same window — denominator for
+      //    response rate. For onboarding_day12 the emails are AIRecommendationLog
+      //    rows of type NEW_MEMBER_WELCOME at sequenceStep 2 with reasoning
+      //    flagged as the survey variant (vs the congrats variant).
+      const surveyEmailWhere: any = {
+        clubId: input.clubId,
+        status: { in: ['sent', 'delivered', 'opened', 'clicked'] },
+        createdAt: { gte: since },
+      }
+      if (input.surveyType === 'onboarding_day12') {
+        surveyEmailWhere.type = 'NEW_MEMBER_WELCOME'
+        surveyEmailWhere.sequenceStep = 2
+        // Prisma JSON path filter — only logs whose reasoning records the
+        // survey branch (not the congrats branch, which doesn't have a survey).
+        surveyEmailWhere.reasoning = { path: ['day12Variant'], equals: 'survey' }
+      }
+
+      const totalSurveyEmailsSent = await ctx.prisma.aIRecommendationLog.count({
+        where: surveyEmailWhere,
+      })
+
+      const responseRate = totalSurveyEmailsSent > 0
+        ? Math.round((totalResponses / totalSurveyEmailsSent) * 1000) / 10 // 1 decimal place
+        : 0
+
+      return {
+        surveyType: input.surveyType,
+        windowDays: input.windowDays,
+        totalSurveyEmailsSent,
+        totalResponses,
+        responseRatePct: responseRate,
+        breakdown,
+      }
+    }),
+
   // P2-T5 — Members AI Insight ribbon (rules-based v1).
   //
   // Returns at most one insight ranked by confidence/$-impact.
