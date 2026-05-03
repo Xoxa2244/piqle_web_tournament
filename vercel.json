@@ -20,10 +20,6 @@
       "schedule": "0 14 * * *"
     },
     {
-      "path": "/api/connectors/courtreserve/sync",
-      "schedule": "*/15 * * * *"
-    },
-    {
       "path": "/api/ai/generate-member-profiles",
       "schedule": "0 3 * * *"
     },
