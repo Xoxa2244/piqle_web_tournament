@@ -1746,6 +1746,12 @@ model AIRecommendationLog {
   linkedAt           DateTime?               @map("linked_at")            @db.Timestamptz()
   attributionMethod  String?                 @map("attribution_method")   // deep_link | direct_session_match | time_window
 
+  // ── Micro-survey response (ENGAGE Phase 2) ──
+  // Set when the recipient clicks one of the option links in a survey-style
+  // email (e.g. NEW_MEMBER_WELCOME Day 12 stalled-newcomer survey).
+  // One-to-zero-or-one — most logs have no survey response.
+  microSurveyResponse MicroSurveyResponse?
+
   @@index([userId, clubId, createdAt])
   @@index([userId, sessionId, type])
   @@index([externalMessageId])
@@ -1754,6 +1760,30 @@ model AIRecommendationLog {
   @@index([parentLogId])
   @@index([campaignId, createdAt])
   @@map("ai_recommendation_logs")
+}
+
+// ── Micro-Survey Responses (ENGAGE Phase 2) ──
+// One row per click on a survey-style email link. The link looks like
+// /api/surveys/respond?logId=<AIRecommendationLog.id>&option=<choice>.
+// Currently produced by the Newcomer Day-12 stalled survey — surveyType is
+// generic so the same table will hold "Снижение активности", "Спящий",
+// "Trial не конвертировался" etc. without another migration.
+//
+// Idempotency: log_id is UNIQUE so a second click on the same email overwrites
+// the prior choice (handled by upsert in the endpoint).
+model MicroSurveyResponse {
+  id          String              @id @default(uuid())
+  logId       String              @unique @map("log_id")
+  log         AIRecommendationLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+  userId      String              @map("user_id")
+  clubId      String              @map("club_id")
+  surveyType  String              @map("survey_type")  // "onboarding_day12" | future: "winback" | "sleeping" | etc
+  option      String                                    // "schedule" | "level" | "partners" | "price" | "other"
+  freeText    String?             @map("free_text")     // populated by future "other → tell us more" follow-up
+  respondedAt DateTime            @default(now()) @map("responded_at")
+
+  @@index([clubId, surveyType, respondedAt])
+  @@map("micro_survey_responses")
 }
 
 // ── Club Launch Audits ──

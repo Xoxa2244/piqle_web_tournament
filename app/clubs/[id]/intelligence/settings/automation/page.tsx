@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ShieldAlert, Bot } from 'lucide-react'
 import { useIntelligenceSettings } from '../../_hooks/use-intelligence'
 import { AgentCampaignLayer } from '../../_components/iq-pages/AgentCampaignLayer'
+import { MicroSurveyResultsCard } from '../../_components/MicroSurveyResultsCard'
 
 /**
  * Settings → Automation page
@@ -63,6 +64,8 @@ export default function SettingsAutomationPage() {
       </div>
 
       <AgentCampaignLayer clubId={clubId} />
+
+      <MicroSurveyResultsCard clubId={clubId} />
 
       <Card>
         <CardHeader>
