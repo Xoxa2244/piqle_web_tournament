@@ -27,7 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendOutreachEmail } from '@/lib/email'
 import { buildPlatformUrl } from '@/lib/platform-base-url'
-import { DECLINING_STEPS } from '@/lib/ai/declining-sequence'
+import { DECLINING_STEPS, renderDecliningStepHtml } from '@/lib/ai/declining-sequence'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -69,13 +69,14 @@ export async function POST(request: NextRequest) {
 
   const ctx = { bookingUrl, surveyBaseUrl, logId: fakeLogId, recommendedSessions }
 
-  const stepsToSend: Array<{ stepLabel: string; subject: string; body: string }> = []
+  const stepsToSend: Array<{ stepLabel: string; stepIndex: number; subject: string; body: string }> = []
 
   for (const step of DECLINING_STEPS) {
     const stepKey = step.delayDays === 0 ? '1' : String(step.delayDays)
     if (stepParam !== 'all' && stepKey !== stepParam) continue
     stepsToSend.push({
       stepLabel: `Day ${step.delayDays === 0 ? '1' : step.delayDays}`,
+      stepIndex: step.step,
       subject: `[TEST] ${step.subject(firstName, clubName)}`,
       body: step.body(firstName, clubName, ctx),
     })
@@ -94,6 +95,11 @@ export async function POST(request: NextRequest) {
         body: s.body,
         clubName,
         bookingUrl,
+        // Use the same rich-HTML renderer the production sequence uses,
+        // so what Sol visually reviews here is byte-for-byte what real
+        // recipients will see (modulo subject [TEST] prefix).
+        bodyHtmlOverride: renderDecliningStepHtml(s.stepIndex, firstName, ctx),
+        suppressDefaultCta: true,
       })
       results.push({ stepLabel: s.stepLabel, messageId: info?.messageId })
     } catch (err: any) {

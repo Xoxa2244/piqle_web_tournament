@@ -33,6 +33,7 @@
 
 import { campaignLogger as log } from '@/lib/logger'
 import { buildPlatformUrl } from '@/lib/platform-base-url'
+import { buildEmailButton, buildEmailPanel, renderTextParagraphs } from '@/lib/email-brand'
 import { checkAntiSpam } from './anti-spam'
 import { generateSlotFillerRecommendations } from './slot-filler'
 import type { DecliningCandidate } from './declining-detector'
@@ -136,6 +137,143 @@ That's it. No catch, no follow-up sales pitch. Use it or don't — but we wanted
 
 export const DECLINING_STEPS: DecliningStep[] = [DAY_1, DAY_5, DAY_12]
 
+// ── Rich HTML renderers for each step ──
+//
+// The plain-text `body` on each DecliningStep above is what shows up in
+// non-HTML mail clients and as the email "preview text". The renderers
+// below build the equivalent rich HTML that real (HTML) mail clients see —
+// proper buttons for survey options, panels for session lists, prominent
+// CTA. They piggy-back on the existing email-brand helpers so styling
+// stays in lock-step with the rest of the IQSport email family.
+//
+// Convention: each renderer returns just the inner `bodyHtml` (no DOCTYPE,
+// no <html>, no eyebrow chrome). sendOutreachEmail wraps it with
+// buildIqSportEmail. We also pass `suppressDefaultCta: true` because each
+// renderer ships its own CTAs and we don't want a duplicate "Book a
+// Session" button at the bottom.
+
+function renderDay1Html(firstName: string, ctx: DecliningStepContext): string {
+  // Day 1: 4 secondary buttons (one per survey option) + primary "book a
+  // session" fallback. No incentive yet — first contact is for diagnosis,
+  // not pressure.
+  const intro = `Hey ${firstName}! We noticed you haven't been around as much in the last few weeks. No pressure — but if there's something getting in the way we'd genuinely like to know.`
+
+  const surveyButtons = [
+    { label: 'Injury or health', option: 'injury' },
+    { label: 'Slammed at work / life', option: 'busy' },
+    { label: 'Schedule does not work', option: 'schedule' },
+    { label: 'Just taking a pause', option: 'pause' },
+  ]
+    .map((opt) =>
+      buildEmailButton(opt.label, `${ctx.surveyBaseUrl}?logId=${ctx.logId}&option=${opt.option}`, 'secondary'),
+    )
+    .join('')
+
+  return `
+    ${renderTextParagraphs(intro)}
+    <p style="margin:18px 0 6px;font-size:14px;color:#94A3B8;text-align:center;letter-spacing:0.04em;text-transform:uppercase;font-weight:600;">
+      Quick one — what's going on?
+    </p>
+    ${surveyButtons}
+    <p style="margin:24px 0 0;font-size:13px;color:#94A3B8;text-align:center;">
+      Or skip the survey and just book a session whenever you're ready.
+    </p>
+    ${buildEmailButton('Browse Sessions', ctx.bookingUrl, 'primary')}
+  `
+}
+
+function renderDay5Html(firstName: string, ctx: DecliningStepContext): string {
+  // Day 5: top-3 recommended sessions in a panel, each linkable, plus a
+  // fallback "open the full schedule" button.
+  const intro = `Hey ${firstName}! No worries on the radio silence. We pulled a few sessions for you based on what you've enjoyed before — your level, your usual times, the formats you tend to book.`
+
+  const sessions = ctx.recommendedSessions ?? []
+  const sessionsHtml =
+    sessions.length === 0
+      ? ''
+      : buildEmailPanel(
+          sessions
+            .slice(0, 3)
+            .map(
+              (s, i) => `
+                <div style="${i > 0 ? 'border-top:1px solid rgba(148,163,184,0.18);padding-top:14px;margin-top:14px;' : ''}">
+                  <div style="font-size:15px;font-weight:600;color:#F8FAFC;margin-bottom:4px;">${escapeHtml(s.title)}</div>
+                  <div style="font-size:13px;color:#CBD5E1;margin-bottom:10px;">
+                    ${escapeHtml(s.date)} &middot; ${escapeHtml(s.startTime)}
+                  </div>
+                  <a href="${s.bookingUrl}" style="display:inline-block;background:#0891B2;color:#ffffff;text-decoration:none;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;">
+                    Reserve this session →
+                  </a>
+                </div>
+              `,
+            )
+            .join(''),
+        )
+
+  const fallbackText =
+    sessions.length === 0
+      ? `Here's the full schedule — pick what fits.`
+      : `If none of these fit, the full schedule is just a click away — no pressure either way. 🎾`
+
+  return `
+    ${renderTextParagraphs(intro)}
+    ${sessionsHtml}
+    <p style="margin:18px 0 0;font-size:14px;color:#CBD5E1;text-align:center;">
+      ${escapeHtml(fallbackText)}
+    </p>
+    ${buildEmailButton('Open Full Schedule', ctx.bookingUrl, 'primary')}
+  `
+}
+
+function renderDay12Html(firstName: string, ctx: DecliningStepContext): string {
+  // Day 12: emphasized incentive panel + single prominent CTA. Last try.
+  const intro = `Hey ${firstName}! We'd really like to see you back. So here's our offer — and that's it: no follow-up sales pitch, no strings attached.`
+
+  const incentivePanel = buildEmailPanel(`
+    <div style="text-align:center;padding:8px 0;">
+      <div style="display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.35);font-size:11px;font-weight:700;letter-spacing:0.18em;color:#C4B5FD;text-transform:uppercase;margin-bottom:14px;">
+        On the house
+      </div>
+      <div style="font-size:24px;font-weight:800;color:#F8FAFC;line-height:1.25;margin-bottom:8px;">
+        Free guest pass for your next session
+      </div>
+      <div style="font-size:14px;color:#CBD5E1;line-height:1.6;">
+        Your pick: any format, any time. The pass is automatically applied when you book.
+      </div>
+    </div>
+  `)
+
+  return `
+    ${renderTextParagraphs(intro)}
+    ${incentivePanel}
+    ${buildEmailButton('Claim Free Session', ctx.bookingUrl, 'primary')}
+    <p style="margin:18px 0 0;font-size:13px;color:#94A3B8;text-align:center;">
+      Use it or don't — but we wanted to make the first step easier. 🎾
+    </p>
+  `
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+/**
+ * Pick the right rich-HTML renderer for a given step. Plain-text `body`
+ * still ships as the multipart text alternative — see step.body() in the
+ * DECLINING_STEPS array above.
+ */
+export function renderDecliningStepHtml(step: number, firstName: string, ctx: DecliningStepContext): string {
+  if (step === 0) return renderDay1Html(firstName, ctx)
+  if (step === 1) return renderDay5Html(firstName, ctx)
+  if (step === 2) return renderDay12Html(firstName, ctx)
+  return ''
+}
+
 /**
  * Create the Day 1 email + AIRecommendationLog row for a declining candidate.
  * Caller is the daily detector cron loop. Returns the new log row's id (used
@@ -204,7 +342,15 @@ export async function createDecliningStep0(
 
   try {
     const { sendOutreachEmail } = await import('@/lib/email')
-    await sendOutreachEmail({ to: email, subject, body, clubName, bookingUrl })
+    await sendOutreachEmail({
+      to: email,
+      subject,
+      body,
+      clubName,
+      bookingUrl,
+      bodyHtmlOverride: renderDecliningStepHtml(0, firstName, ctx),
+      suppressDefaultCta: true,
+    })
     return { status: 'sent', logId }
   } catch (err: any) {
     log.error({ userId, clubId, error: err?.message?.slice(0, 200) }, '[declining-sequence] step 0 send failed')
@@ -345,7 +491,15 @@ export async function processDecliningFollowUps(
 
     try {
       const { sendOutreachEmail } = await import('@/lib/email')
-      await sendOutreachEmail({ to: email, subject, body, clubName, bookingUrl })
+      await sendOutreachEmail({
+        to: email,
+        subject,
+        body,
+        clubName,
+        bookingUrl,
+        bodyHtmlOverride: renderDecliningStepHtml(nextStepDef.step, firstName, ctx),
+        suppressDefaultCta: true,
+      })
 
       await prisma.aIRecommendationLog.create({
         data: {
