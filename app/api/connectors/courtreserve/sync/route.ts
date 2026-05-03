@@ -63,7 +63,14 @@ async function handleOrchestrate(request: Request) {
     // Find eligible connectors. Order by lastSyncAt ASC NULLS FIRST so the
     // most overdue connector is at the head — used to be unordered, which
     // caused the same connector to win every cron and others to starve.
-    const hourAgo = new Date(Date.now() - 60 * 60 * 1000)
+    //
+    // Cooldown window 10 min: skip connectors synced very recently. Cron
+    // fires every 15 min via QStash, so 10 min lets the orchestrator pick
+    // them up next cycle while still preventing back-to-back duplicate work
+    // if QStash retries or someone hits the endpoint manually. The worker
+    // also has its own concurrent-sync guard (status='syncing' < 5min →
+    // 409) as a second line of defense.
+    const cooldownAgo = new Date(Date.now() - 10 * 60 * 1000)
     const eligible = await prisma.clubConnector.findMany({
       where: {
         provider: 'courtreserve',
@@ -74,7 +81,7 @@ async function handleOrchestrate(request: Request) {
             status: { in: ['connected', 'error'] },
             OR: [
               { lastSyncAt: null },
-              { lastSyncAt: { lt: hourAgo } },
+              { lastSyncAt: { lt: cooldownAgo } },
             ],
           },
         ],
