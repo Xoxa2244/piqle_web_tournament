@@ -86,6 +86,10 @@
     {
       "path": "/api/cron/campaign-sends",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/lifecycle-segments",
+      "schedule": "0 13 * * *"
     }
   ]
 }

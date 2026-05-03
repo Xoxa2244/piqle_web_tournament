@@ -1592,6 +1592,12 @@ enum AIRecommendationType {
   RETENTION_BOOST
   NEW_MEMBER_WELCOME
   CAMPAIGN_SEND
+  // ENGAGE Segment #4 "Снижение активности": member who was booking ≥3/mo for 3+
+  // months, then dropped to 0–1 booking in last 30 days but last booking is
+  // still <30d ago (i.e. fresh decline — distinct from REACTIVATION which
+  // covers long-term inactive 90+ days). Triggers a 3-step recovery
+  // sequence (Day 1 survey, Day 5 schedule snapshot, Day 12 incentive).
+  DECLINING_REACTIVATION
 }
 
 // ── Intelligence Module: Models ──

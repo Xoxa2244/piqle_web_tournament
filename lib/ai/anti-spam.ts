@@ -16,6 +16,7 @@ type InviteType =
   | 'CHECK_IN'
   | 'RETENTION_BOOST'
   | 'NEW_MEMBER_WELCOME'
+  | 'DECLINING_REACTIVATION'  // ENGAGE Segment #4 — fresh activity drop sequence
 type PlayerPersona = 'COMPETITIVE' | 'SOCIAL' | 'IMPROVER' | 'CASUAL' | 'TEAM_PLAYER'
 
 interface SpamCheckInput {
