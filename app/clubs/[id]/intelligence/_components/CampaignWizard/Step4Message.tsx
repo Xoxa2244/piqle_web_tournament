@@ -316,7 +316,7 @@ export function Step4Message({
           "Book a Session" button linking to the club page. */}
       <div>
         <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
-          Call to action <span style={{ textTransform: 'none', color: 'var(--t4)', fontWeight: 400 }}>— leave blank for default "Book a Session" button</span>
+          Call to action <span style={{ textTransform: 'none', color: 'var(--t4)', fontWeight: 400 }}>— leave blank for default &ldquo;Book a Session&rdquo; button</span>
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-2 mt-1">
           <input

@@ -93,27 +93,34 @@ export async function detectDecliningMembers(
 
   const candidates: DecliningCandidate[] = await prisma.$queryRawUnsafe(
     `
+    -- Schema notes (validated against prod 2026-05-03):
+    --   users.membership_status — snake_case, value 'Active' (capitalized)
+    --   club_followers.user_id / .club_id — snake_case
+    --   play_sessions.clubId — camelCase (no @map in Prisma)
+    --   play_session_bookings.userId / .sessionId / .bookedAt — camelCase
+    --     (NOT createdAt — bookedAt is the timestamp on this table)
+    --   ai_recommendation_logs.userId / .clubId / .createdAt — camelCase
     WITH active_subs AS (
       SELECT u.id AS user_id
       FROM users u
-      WHERE u."membershipStatus" = 'active'
+      WHERE u.membership_status = 'Active'
     ),
     recent_window AS (
       SELECT
         b."userId" AS user_id,
         COUNT(*)::int AS booking_count,
-        MAX(b."createdAt") AS last_booking_at
+        MAX(b."bookedAt") AS last_booking_at
       FROM play_session_bookings b
       JOIN play_sessions s ON s.id = b."sessionId"
       WHERE s."clubId" = $1
         AND b.status = 'CONFIRMED'
-        AND b."createdAt" >= NOW() - INTERVAL '30 days'
+        AND b."bookedAt" >= NOW() - INTERVAL '30 days'
       GROUP BY b."userId"
     ),
     last_booking_any AS (
       SELECT
         b."userId" AS user_id,
-        MAX(b."createdAt") AS last_booking_at
+        MAX(b."bookedAt") AS last_booking_at
       FROM play_session_bookings b
       JOIN play_sessions s ON s.id = b."sessionId"
       WHERE s."clubId" = $1
@@ -128,8 +135,8 @@ export async function detectDecliningMembers(
       JOIN play_sessions s ON s.id = b."sessionId"
       WHERE s."clubId" = $1
         AND b.status = 'CONFIRMED'
-        AND b."createdAt" >= NOW() - INTERVAL '90 days'
-        AND b."createdAt" <  NOW() - INTERVAL '30 days'
+        AND b."bookedAt" >= NOW() - INTERVAL '90 days'
+        AND b."bookedAt" <  NOW() - INTERVAL '30 days'
       GROUP BY b."userId"
     ),
     recent_outreach AS (
@@ -149,7 +156,7 @@ export async function detectDecliningMembers(
       EXTRACT(DAY FROM (NOW() - lba.last_booking_at))::int AS "daysSinceLastBooking"
     FROM active_subs a
     JOIN users u ON u.id = a.user_id
-    JOIN club_followers cf ON cf."userId" = u.id AND cf."clubId" = $1
+    JOIN club_followers cf ON cf.user_id = u.id AND cf.club_id = $1
     JOIN prior_window p ON p.user_id = u.id
     JOIN last_booking_any lba ON lba.user_id = u.id
     LEFT JOIN recent_window r ON r.user_id = u.id
