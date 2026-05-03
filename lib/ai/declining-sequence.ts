@@ -184,7 +184,9 @@ function renderDay1Html(firstName: string, ctx: DecliningStepContext): string {
 
 function renderDay5Html(firstName: string, ctx: DecliningStepContext): string {
   // Day 5: top-3 recommended sessions in a panel, each linkable, plus a
-  // fallback "open the full schedule" button.
+  // fallback "open the full schedule" button. Uses table-based bulletproof
+  // layout per session row so Apple Mail iOS / Outlook render them as
+  // proper button-style links rather than bare blue text.
   const intro = `Hey ${firstName}! No worries on the radio silence. We pulled a few sessions for you based on what you've enjoyed before — your level, your usual times, the formats you tend to book.`
 
   const sessions = ctx.recommendedSessions ?? []
@@ -196,15 +198,25 @@ function renderDay5Html(firstName: string, ctx: DecliningStepContext): string {
             .slice(0, 3)
             .map(
               (s, i) => `
-                <div style="${i > 0 ? 'border-top:1px solid rgba(148,163,184,0.18);padding-top:14px;margin-top:14px;' : ''}">
-                  <div style="font-size:15px;font-weight:600;color:#F8FAFC;margin-bottom:4px;">${escapeHtml(s.title)}</div>
-                  <div style="font-size:13px;color:#CBD5E1;margin-bottom:10px;">
-                    ${escapeHtml(s.date)} &middot; ${escapeHtml(s.startTime)}
-                  </div>
-                  <a href="${s.bookingUrl}" style="display:inline-block;background:#0891B2;color:#ffffff;text-decoration:none;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;">
-                    Reserve this session →
-                  </a>
-                </div>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="${i > 0 ? 'border-top:1px solid rgba(148,163,184,0.18);' : ''}">
+                  <tr>
+                    <td style="padding:${i > 0 ? '14px 0 0' : '0'};">
+                      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;font-weight:600;color:#F8FAFC;margin-bottom:4px;">${escapeHtml(s.title)}</div>
+                      <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#CBD5E1;margin-bottom:10px;">
+                        ${escapeHtml(s.date)} &middot; ${escapeHtml(s.startTime)}
+                      </div>
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                        <tr>
+                          <td bgcolor="#0891B2" align="center" style="background-color:#0891B2;border-radius:8px;mso-padding-alt:8px 16px;">
+                            <a href="${s.bookingUrl}" target="_blank" style="display:inline-block;background-color:#0891B2;color:#ffffff;text-decoration:none;padding:8px 16px;border-radius:8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;font-weight:600;line-height:1;">
+                              Reserve this session →
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
               `,
             )
             .join(''),

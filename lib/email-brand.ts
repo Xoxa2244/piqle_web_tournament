@@ -4,6 +4,19 @@ export function getEmailBaseUrl(preferredUrl?: string | null) {
   return getPlatformOriginFromUrl(preferredUrl) || getPlatformBaseUrl()
 }
 
+/**
+ * Bulletproof email button using nested <table> + Microsoft Outlook VML
+ * fallback. Compatible with: Apple Mail iOS/macOS, Gmail web/Android,
+ * Outlook 2007–365 (Windows desktop, web, mobile).
+ *
+ * Why table-based: `<a style="display:inline-block;…">` looks fine in
+ * Gmail and most Android clients but iOS Mail aggressively strips
+ * `display`/`background-color` on anchor tags, leaving a bare blue link
+ * with no button affordance. Wrapping the anchor in a styled `<td>` and
+ * using `mso-padding-alt` for Outlook gives the same visual everywhere.
+ *
+ * Reference: https://buttons.cm — the standard "bulletproof" pattern.
+ */
 export function buildEmailButton(label: string, href: string, tone: 'primary' | 'secondary' | 'danger' = 'primary') {
   const background = tone === 'danger'
     ? '#EF4444'
@@ -11,12 +24,30 @@ export function buildEmailButton(label: string, href: string, tone: 'primary' | 
       ? '#0891B2'
       : '#8B5CF6'
 
+  // VML fallback for Outlook on Windows (desktop versions ignore CSS
+  // padding on <a>, so without this the button collapses).
+  const vmlFallback = `
+    <!--[if mso]>
+    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:46px;v-text-anchor:middle;width:240px;" arcsize="26%" stroke="f" fillcolor="${background}">
+      <w:anchorlock/>
+      <center style="color:#ffffff;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;font-weight:700;">${label}</center>
+    </v:roundrect>
+    <![endif]-->
+  `
+
   return `
-    <div style="text-align:center;margin:24px 0 0;">
-      <a href="${href}" style="display:inline-block;background:${background};color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:12px;font-size:15px;font-weight:700;">
-        ${label}
-      </a>
-    </div>
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:24px auto 0;">
+      <tr>
+        <td align="center" bgcolor="${background}" style="background-color:${background};border-radius:12px;mso-padding-alt:14px 28px;">
+          ${vmlFallback}
+          <!--[if !mso]><!-- -->
+          <a href="${href}" target="_blank" style="display:inline-block;background-color:${background};color:#ffffff;text-decoration:none;padding:14px 28px;border-radius:12px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;font-weight:700;line-height:1;mso-hide:all;">
+            ${label}
+          </a>
+          <!--<![endif]-->
+        </td>
+      </tr>
+    </table>
   `
 }
 
