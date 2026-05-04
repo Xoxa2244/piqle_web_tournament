@@ -246,8 +246,37 @@ function toDateKey(value: Date | string) {
     : date.toISOString().slice(0, 10)
 }
 
-function toDayOfWeek(value: Date | string): DayOfWeek {
+/**
+ * Bug-fix 2026-05-01: previously used `date.getUTCDay()` for ALL
+ * historical-session bucketing inside `buildSessionStats`, which silently
+ * mis-buckets cross-midnight EST sessions (e.g. a 6pm Sunday EST session
+ * stored as Mon 23:00 UTC was bucketed under "Monday"). The scheduler
+ * threads `timezone` everywhere else (`scheduler.ts:333-372`); this was
+ * the last code path still ignoring it. Falls back to UTC math when
+ * timezone is omitted (so existing test fixtures that don't pass tz
+ * stay green).
+ */
+function toDayOfWeek(value: Date | string, timezone?: string): DayOfWeek {
   const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) return DAYS[0]
+  if (timezone) {
+    try {
+      const dayName = new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        timeZone: timezone,
+      }).format(date)
+      // Intl returns Sunday..Saturday in en-US — exact enum match.
+      if (
+        dayName === 'Monday' || dayName === 'Tuesday' || dayName === 'Wednesday'
+        || dayName === 'Thursday' || dayName === 'Friday' || dayName === 'Saturday'
+        || dayName === 'Sunday'
+      ) {
+        return dayName
+      }
+    } catch {
+      // Bad timezone string → fall through to UTC.
+    }
+  }
   return DAYS[(date.getUTCDay() + 6) % 7]
 }
 
@@ -358,10 +387,21 @@ export function parseAdvisorProgrammingRequest(
     ...(current || {}),
   }
 
-  const days = DAYS.filter((candidate) => lower.includes(candidate.toLowerCase()))
-  if (days.length > 0) {
-    next.dayOfWeek = days[0]
-    next.dayOfWeeks = days
+  const explicitDays = DAYS.filter((candidate) => lower.includes(candidate.toLowerCase()))
+  const requestedDays = [...explicitDays]
+  if (/\bweekend(s)?\b/.test(lower)) {
+    for (const day of ['Saturday', 'Sunday'] as DayOfWeek[]) {
+      if (!requestedDays.includes(day)) requestedDays.push(day)
+    }
+  }
+  if (/\bweekday(s)?\b/.test(lower)) {
+    for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] as DayOfWeek[]) {
+      if (!requestedDays.includes(day)) requestedDays.push(day)
+    }
+  }
+  if (requestedDays.length > 0) {
+    next.dayOfWeek = requestedDays[0]
+    next.dayOfWeeks = requestedDays
   }
 
   if (/\b(morning|before work|early)\b/.test(lower)) next.timeSlot = 'morning'
@@ -597,13 +637,13 @@ function buildDemandSignals(
   }
 }
 
-function buildSessionStats(sessions: ProgrammingSessionRow[]) {
+function buildSessionStats(sessions: ProgrammingSessionRow[], timezone?: string) {
   const comboStats = new Map<string, ComboStat>()
   const slotSupply = new Map<string, SlotSupplyStat>()
   const recentThreshold = Date.now() - RECENT_WINDOW_DAYS * 24 * 60 * 60 * 1000
 
   for (const session of sessions) {
-    const dayOfWeek = toDayOfWeek(session.date)
+    const dayOfWeek = toDayOfWeek(session.date, timezone)
     const dateKey = toDateKey(session.date)
     const sessionDate = session.date instanceof Date ? session.date : new Date(session.date)
     const sessionDateMs = Number.isNaN(sessionDate.getTime()) ? Date.now() : sessionDate.getTime()
@@ -1706,8 +1746,12 @@ export function buildAdvisorProgrammingPlan(opts: {
   courtCount?: number
   strategyPresetIds?: ProgrammingStrategyPresetId[]
   behaviorProfile?: ProgrammingBehaviorProfile | null
+  /** Club IANA timezone — used to bucket historical sessions by the
+   *  correct local day-of-week. Without it, evening sessions in
+   *  America/New_York stored as UTC-next-day misbucket. */
+  timezone?: string
 }) {
-  const { comboStats, slotSupply } = buildSessionStats(opts.sessions)
+  const { comboStats, slotSupply } = buildSessionStats(opts.sessions, opts.timezone)
   const {
     slotDemand,
     formatDemand,

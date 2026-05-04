@@ -107,6 +107,73 @@ type ChatWidgetProps = {
   clubId: string
 }
 
+type AnchorPosition = { x: number; y: number }
+type ViewportSize = { width: number; height: number }
+
+const VIEWPORT_MARGIN = 24
+const LAUNCHER_SIZE = 56
+const PANEL_DEFAULT_WIDTH = 400
+const PANEL_DEFAULT_HEIGHT = 520
+const CHAT_WIDGET_STORAGE_KEY = 'iqsport-chat-widget-anchor-v1'
+
+function clampValue(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max)
+}
+
+function sameAnchorPosition(a: AnchorPosition | null, b: AnchorPosition | null) {
+  return !!a && !!b && a.x === b.x && a.y === b.y
+}
+
+function getDefaultAnchor(viewport: ViewportSize): AnchorPosition {
+  return {
+    x: Math.max(LAUNCHER_SIZE + VIEWPORT_MARGIN, viewport.width - VIEWPORT_MARGIN),
+    y: Math.max(LAUNCHER_SIZE + VIEWPORT_MARGIN, viewport.height - VIEWPORT_MARGIN),
+  }
+}
+
+function getWidgetSize(viewport: ViewportSize, isOpen: boolean) {
+  if (!isOpen) {
+    return { width: LAUNCHER_SIZE, height: LAUNCHER_SIZE }
+  }
+
+  const width = viewport.width > VIEWPORT_MARGIN * 2
+    ? Math.min(PANEL_DEFAULT_WIDTH, viewport.width - VIEWPORT_MARGIN * 2)
+    : PANEL_DEFAULT_WIDTH
+  const height = viewport.height > VIEWPORT_MARGIN * 2
+    ? Math.min(PANEL_DEFAULT_HEIGHT, viewport.height - VIEWPORT_MARGIN * 2)
+    : PANEL_DEFAULT_HEIGHT
+
+  return { width, height }
+}
+
+function clampAnchorPosition(anchor: AnchorPosition, viewport: ViewportSize, isOpen: boolean) {
+  const size = getWidgetSize(viewport, isOpen)
+  return {
+    x: clampValue(
+      anchor.x,
+      size.width + VIEWPORT_MARGIN,
+      Math.max(size.width + VIEWPORT_MARGIN, viewport.width - VIEWPORT_MARGIN),
+    ),
+    y: clampValue(
+      anchor.y,
+      size.height + VIEWPORT_MARGIN,
+      Math.max(size.height + VIEWPORT_MARGIN, viewport.height - VIEWPORT_MARGIN),
+    ),
+  }
+}
+
+function getWidgetPosition(anchor: AnchorPosition, viewport: ViewportSize, isOpen: boolean) {
+  const clampedAnchor = clampAnchorPosition(anchor, viewport, isOpen)
+  const size = getWidgetSize(viewport, isOpen)
+  return {
+    width: size.width,
+    height: size.height,
+    left: clampedAnchor.x - size.width,
+    top: clampedAnchor.y - size.height,
+    anchor: clampedAnchor,
+  }
+}
+
 export function ChatWidget({ clubId }: ChatWidgetProps) {
   const [isOpen, setIsOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -122,6 +189,20 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
   const [useMock, setUseMock] = useState(false)
   const [mockMessages, setMockMessages] = useState<MockMessage[]>([])
   const [mockLoading, setMockLoading] = useState(false)
+  const [viewportSize, setViewportSize] = useState<ViewportSize>({ width: 0, height: 0 })
+  const [anchorPosition, setAnchorPosition] = useState<AnchorPosition | null>(null)
+  const viewportRef = useRef<ViewportSize>({ width: 0, height: 0 })
+  const isOpenRef = useRef(isOpen)
+  const suppressLauncherClickRef = useRef(false)
+  const dragStateRef = useRef<{
+    offsetX: number
+    offsetY: number
+    width: number
+    height: number
+    startClientX: number
+    startClientY: number
+    moved: boolean
+  } | null>(null)
 
   const mockSendMessage = useCallback(async (text: string) => {
     const userMsg: MockMessage = { id: `u-${Date.now()}`, role: 'user', parts: [{ type: 'text', text }] }
@@ -192,6 +273,19 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
   const error = useMock ? null : realError
 
   const isBusy = status === 'submitted' || status === 'streaming'
+  const effectiveViewport = useMemo(
+    () => viewportSize.width > 0 && viewportSize.height > 0
+      ? viewportSize
+      : {
+          width: PANEL_DEFAULT_WIDTH + VIEWPORT_MARGIN * 2,
+          height: PANEL_DEFAULT_HEIGHT + VIEWPORT_MARGIN * 2,
+        },
+    [viewportSize],
+  )
+  const widgetPosition = useMemo(() => {
+    const fallbackAnchor = getDefaultAnchor(effectiveViewport)
+    return getWidgetPosition(anchorPosition ?? fallbackAnchor, effectiveViewport, isOpen)
+  }, [anchorPosition, effectiveViewport, isOpen])
 
   const handleSend = useCallback((text?: string) => {
     const msg = text || inputValue.trim()
@@ -237,6 +331,147 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
     }
   }, [isOpen])
 
+  useEffect(() => {
+    isOpenRef.current = isOpen
+  }, [isOpen])
+
+  useEffect(() => {
+    viewportRef.current = effectiveViewport
+  }, [effectiveViewport])
+
+  useEffect(() => {
+    const syncViewport = () => {
+      const nextViewport = { width: window.innerWidth, height: window.innerHeight }
+      viewportRef.current = nextViewport
+      setViewportSize(nextViewport)
+      setAnchorPosition((current) => {
+        const base = current ?? getDefaultAnchor(nextViewport)
+        const clamped = clampAnchorPosition(base, nextViewport, isOpenRef.current)
+        return sameAnchorPosition(current, clamped) ? current : clamped
+      })
+    }
+
+    syncViewport()
+
+    try {
+      const raw = window.localStorage.getItem(CHAT_WIDGET_STORAGE_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<AnchorPosition>
+        if (typeof parsed?.x === 'number' && typeof parsed?.y === 'number') {
+          const nextViewport = { width: window.innerWidth, height: window.innerHeight }
+          const clamped = clampAnchorPosition(
+            { x: parsed.x, y: parsed.y },
+            nextViewport,
+            isOpenRef.current,
+          )
+          setAnchorPosition(clamped)
+        }
+      }
+    } catch {
+      // Ignore invalid localStorage payloads.
+    }
+
+    window.addEventListener('resize', syncViewport)
+    return () => window.removeEventListener('resize', syncViewport)
+  }, [])
+
+  useEffect(() => {
+    if (!anchorPosition) return
+    try {
+      window.localStorage.setItem(CHAT_WIDGET_STORAGE_KEY, JSON.stringify(anchorPosition))
+    } catch {
+      // Ignore storage write issues.
+    }
+  }, [anchorPosition])
+
+  useEffect(() => {
+    if (viewportSize.width === 0 || viewportSize.height === 0) return
+    setAnchorPosition((current) => {
+      const base = current ?? getDefaultAnchor(viewportSize)
+      const clamped = clampAnchorPosition(base, viewportSize, isOpen)
+      return sameAnchorPosition(current, clamped) ? current : clamped
+    })
+  }, [isOpen, viewportSize])
+
+  const stopDragging = useCallback(() => {
+    dragStateRef.current = null
+    window.removeEventListener('pointermove', handleGlobalPointerMove)
+    window.removeEventListener('pointerup', handleGlobalPointerUp)
+    window.removeEventListener('pointercancel', handleGlobalPointerUp)
+    document.body.style.userSelect = ''
+    document.body.style.cursor = ''
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function handleGlobalPointerMove(event: PointerEvent) {
+    const dragState = dragStateRef.current
+    if (!dragState) return
+
+    const viewport = viewportRef.current
+    if (viewport.width === 0 || viewport.height === 0) return
+
+    const nextLeft = clampValue(
+      event.clientX - dragState.offsetX,
+      VIEWPORT_MARGIN,
+      Math.max(VIEWPORT_MARGIN, viewport.width - VIEWPORT_MARGIN - dragState.width),
+    )
+    const nextTop = clampValue(
+      event.clientY - dragState.offsetY,
+      VIEWPORT_MARGIN,
+      Math.max(VIEWPORT_MARGIN, viewport.height - VIEWPORT_MARGIN - dragState.height),
+    )
+
+    if (!dragState.moved && Math.hypot(event.clientX - dragState.startClientX, event.clientY - dragState.startClientY) > 4) {
+      dragState.moved = true
+    }
+
+    setAnchorPosition({
+      x: nextLeft + dragState.width,
+      y: nextTop + dragState.height,
+    })
+  }
+
+  function handleGlobalPointerUp() {
+    if (dragStateRef.current?.moved) {
+      suppressLauncherClickRef.current = true
+    }
+    stopDragging()
+  }
+
+  useEffect(() => stopDragging, [stopDragging])
+
+  const handleDragStart = useCallback((event: React.PointerEvent) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+
+    const viewport = viewportRef.current
+    const baseAnchor = anchorPosition ?? getDefaultAnchor(viewport)
+    const currentPosition = getWidgetPosition(baseAnchor, viewport, isOpenRef.current)
+
+    dragStateRef.current = {
+      offsetX: event.clientX - currentPosition.left,
+      offsetY: event.clientY - currentPosition.top,
+      width: currentPosition.width,
+      height: currentPosition.height,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      moved: false,
+    }
+
+    document.body.style.userSelect = 'none'
+    document.body.style.cursor = 'grabbing'
+    window.addEventListener('pointermove', handleGlobalPointerMove)
+    window.addEventListener('pointerup', handleGlobalPointerUp)
+    window.addEventListener('pointercancel', handleGlobalPointerUp)
+  }, [anchorPosition])
+
+  const handleLauncherOpen = useCallback(() => {
+    if (suppressLauncherClickRef.current) {
+      suppressLauncherClickRef.current = false
+      return
+    }
+    setIsOpen(true)
+  }, [])
+
   // Close on Escape
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -258,9 +493,18 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
       {/* Floating button */}
       {!isOpen && (
         <button
-          onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center group"
-          style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", boxShadow: "0 8px 24px rgba(139,92,246,0.35)" }}
+          onClick={handleLauncherOpen}
+          onPointerDown={handleDragStart}
+          className="fixed z-50 rounded-2xl shadow-lg hover:shadow-xl hover:scale-105 transition-all flex items-center justify-center group touch-none"
+          style={{
+            left: widgetPosition.left,
+            top: widgetPosition.top,
+            width: `${widgetPosition.width}px`,
+            height: `${widgetPosition.height}px`,
+            background: "linear-gradient(135deg, #8B5CF6, #06B6D4)",
+            boxShadow: "0 8px 24px rgba(139,92,246,0.35)",
+            cursor: dragStateRef.current ? 'grabbing' : 'grab',
+          }}
         >
           <MessageSquare className="w-6 h-6 text-white group-hover:scale-110 transition-transform" />
           <span
@@ -275,8 +519,12 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
       {/* Chat panel */}
       {isOpen && (
         <div
-          className="fixed bottom-6 right-6 z-50 w-[400px] h-[520px] rounded-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200"
+          className="fixed z-50 rounded-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-200"
           style={{
+            left: widgetPosition.left,
+            top: widgetPosition.top,
+            width: `${widgetPosition.width}px`,
+            height: `${widgetPosition.height}px`,
             background: "var(--chat-bg, #1a1a2e)", backdropFilter: "blur(20px)",
             border: "1px solid var(--card-border, rgba(139,92,246,0.15))",
             boxShadow: "0 20px 60px rgba(0,0,0,0.5), 0 0 30px rgba(139,92,246,0.1)",
@@ -287,7 +535,11 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
             className="flex items-center justify-between px-4 py-3 shrink-0"
             style={{ borderBottom: "1px solid var(--card-border, rgba(255,255,255,0.06))" }}
           >
-            <div className="flex items-center gap-2.5">
+            <div
+              className="flex items-center gap-2.5 min-w-0 select-none touch-none"
+              onPointerDown={handleDragStart}
+              style={{ cursor: dragStateRef.current ? 'grabbing' : 'grab' }}
+            >
               <div
                 className="w-8 h-8 rounded-xl flex items-center justify-center"
                 style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}

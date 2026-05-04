@@ -1650,6 +1650,13 @@ model PlaySession {
   pricePerSlot    Float?
   registeredCount Int?              @map("registered_count")
   status          PlaySessionStatus @default(SCHEDULED)
+  // CR event URLs (extracted by courtreserve-sync.ts when available).
+  // external_url   = PublicEventUrl   — public CR registration page
+  // member_sso_url = SsoUrl           — authenticated link, skips login
+  // Both nullable; older sessions / private events leave them null and
+  // email templates fall back to the generic club page bookingUrl.
+  externalUrl   String?              @map("external_url")
+  memberSsoUrl  String?              @map("member_sso_url")
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
 

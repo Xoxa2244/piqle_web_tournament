@@ -166,7 +166,17 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
     description: 'Keep a healthier mix of skill levels, formats, and times.',
     goalDeltas: { portfolioBalance: 12, demandFit: 4 },
     behaviorDeltas: {
+      // Original deltas pushed *duplicates* below floor (good) but
+      // didn't surface non-Open-Play alternatives on Open-Play-dominant
+      // clubs (bad — the preset became "fewer Open Play" instead of
+      // "balanced mix"). Tune (2026-05-01): give DRILL/CLINIC/SOCIAL
+      // candidates a synthetic baseline score and a small experimental
+      // budget so balance can actually surface diverse formats even
+      // when historical demand is moderate.
       selectionScoreFloor: 1,
+      experimentalScoreFloor: -2,
+      maxExperimentalSlots: 2,
+      noSupplyHistoricalScore: 6,
       sameFormatSkillPenalty: 4,
       sameFormatSkillExtraPenalty: 6,
       sameFormatPenalty: 4,
@@ -280,7 +290,18 @@ export function computeProgrammingStrategyProfile(opts: {
     opts.hasRequest && opts.prioritizeRequest ? 'priority' : 'normal'
 
   if (opts.hasRequest) {
+    // adminIntent boost matches the design doc: +8 for a regular
+    // request, +16 when admin explicitly toggled "Treat as priority".
     weights.adminIntent += opts.prioritizeRequest ? 16 : 8
+    // Intentional deviation from the doc (which only describes
+    // adminIntent boosts): when admin marks the request as priority,
+    // we also nudge demandFit by +2. Rationale — a priority request is
+    // by definition something the admin believes responds to demand
+    // (otherwise they wouldn't escalate it). Without this nudge, an
+    // explicit priority request can lose ranking to a generic
+    // expand_peak proposal that scores high on operationalFit alone.
+    // Keep the bump small (+2) so it doesn't override audience
+    // protection. If product wants strict doc-fidelity, drop this line.
     weights.demandFit += opts.prioritizeRequest ? 2 : 0
   }
 

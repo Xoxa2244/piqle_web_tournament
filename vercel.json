@@ -20,10 +20,6 @@
       "schedule": "0 14 * * *"
     },
     {
-      "path": "/api/connectors/courtreserve/sync",
-      "schedule": "17 * * * *"
-    },
-    {
       "path": "/api/ai/generate-member-profiles",
       "schedule": "0 3 * * *"
     },
@@ -54,6 +50,10 @@
     {
       "path": "/api/campaigns/advisor-scheduled",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/campaigns/campaign-sends",
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/ai/sync-embeddings",

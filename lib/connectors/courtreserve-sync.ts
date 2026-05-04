@@ -132,6 +132,170 @@ function getEventRegistrationCount(raw: any): number {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+/**
+ * Take the first non-empty URL-shaped value from a list of candidates.
+ * CR sometimes returns empty strings vs null vs undefined; this lets
+ * `extractPublicEventUrl(rawEvent.PublicEventUrl, rawEvent.publicEventUrl)`
+ * stay readable without an inline ternary chain.
+ *
+ * Exported for unit tests.
+ */
+export function pickFirstUrl(...candidates: Array<string | null | undefined>): string | null {
+  for (const c of candidates) {
+    if (typeof c === 'string') {
+      const trimmed = c.trim()
+      if (trimmed && /^https?:\/\//i.test(trimmed)) return trimmed
+    }
+  }
+  return null
+}
+
+/**
+ * Extract the CR "series anchor" identifier from a raw event row. CR's
+ * `/eventcalendar/eventlist` returns event series (recurring template, has
+ * PublicEventUrl) and event instances (specific occurrences, has
+ * registered_count) as separate rows. Series rows key on EventId; instance
+ * rows key on EventDateId but typically still carry EventId as a back-pointer.
+ *
+ * We use this to link instance→series so the instance row can inherit the
+ * URL from its series. Returns null if neither field is present.
+ *
+ * Exported for unit tests.
+ */
+export function getEventSeriesAnchor(raw: any): string | null {
+  const id = raw?.EventId ?? raw?.eventId ?? raw?.EventScheduleId ?? raw?.eventScheduleId
+  if (id === null || id === undefined) return null
+  const str = String(id).trim()
+  return str.length > 0 ? str : null
+}
+
+/**
+ * Build a two-level URL lookup table from a batch of raw CR events.
+ *
+ * The eventcalendar API returns series rows (have PublicEventUrl, no
+ * registrations) and instance rows (have registrations, no URL) interleaved
+ * in the same response. To get URLs onto the instance rows that slot-filler
+ * actually emails about, we index the URL-bearing rows by:
+ *
+ *   - byAnchor:    EventId / EventScheduleId  (preferred — direct link)
+ *   - byTitleKey:  `${clubId}::${title}`      (fallback — when anchor missing)
+ *
+ * Exported for unit tests.
+ */
+export function buildSeriesUrlIndex(rawEvents: any[], clubId: string): {
+  byAnchor: Map<string, { publicEventUrl: string | null; memberSsoUrl: string | null }>
+  byTitleKey: Map<string, { publicEventUrl: string | null; memberSsoUrl: string | null }>
+} {
+  const byAnchor = new Map<string, { publicEventUrl: string | null; memberSsoUrl: string | null }>()
+  const byTitleKey = new Map<string, { publicEventUrl: string | null; memberSsoUrl: string | null }>()
+
+  for (const raw of rawEvents || []) {
+    const url = pickFirstUrl(raw?.PublicEventUrl, raw?.publicEventUrl)
+    const sso = pickFirstUrl(raw?.SsoUrl, raw?.ssoUrl)
+    if (!url && !sso) continue
+
+    const anchor = getEventSeriesAnchor(raw)
+    if (anchor) {
+      const existing = byAnchor.get(anchor) || { publicEventUrl: null, memberSsoUrl: null }
+      byAnchor.set(anchor, {
+        publicEventUrl: existing.publicEventUrl || url,
+        memberSsoUrl: existing.memberSsoUrl || sso,
+      })
+    }
+
+    const title = String(raw?.EventName || raw?.eventName || raw?.Title || raw?.title || raw?.Name || raw?.name || '').trim()
+    if (title) {
+      const titleKey = `${clubId}::${title}`
+      const existing = byTitleKey.get(titleKey) || { publicEventUrl: null, memberSsoUrl: null }
+      byTitleKey.set(titleKey, {
+        publicEventUrl: existing.publicEventUrl || url,
+        memberSsoUrl: existing.memberSsoUrl || sso,
+      })
+    }
+  }
+
+  return { byAnchor, byTitleKey }
+}
+
+/**
+ * Sprint 1.6: Sweep all sessions in a club, propagating PublicEventUrl and
+ * SsoUrl from URL-bearing rows to same-title siblings that lack them.
+ *
+ * Why this exists on top of Sprint 1.5's runtime resolveEventUrls:
+ * runCourtReserveSync calls syncEventCalendar once per time-window. CR's
+ * /eventcalendar/eventlist returns event-series rows (carry the URL) in a
+ * different window than instance rows (carry the registrations). The
+ * per-window seriesUrlIndex inside one syncEventCalendar invocation can't
+ * see series rows from a different window — so instances frequently end up
+ * with no URL at write time. This SQL pass runs once after all windows
+ * complete and bridges them by clubId+title.
+ *
+ * Idempotent. Scoped to one clubId. Only writes URL columns + updatedAt.
+ * No-op when nothing matches (no thrown error on empty source).
+ */
+export async function backfillSessionUrlsFromSiblings(clubId: string): Promise<void> {
+  await prisma.$executeRawUnsafe(`
+    UPDATE play_sessions ps
+    SET
+      external_url   = COALESCE(ps.external_url,   src.external_url),
+      member_sso_url = COALESCE(ps.member_sso_url, src.member_sso_url),
+      "updatedAt"    = NOW()
+    FROM (
+      SELECT DISTINCT ON ("clubId", title)
+        "clubId", title, external_url, member_sso_url
+      FROM play_sessions
+      WHERE "clubId" = $1 AND (external_url IS NOT NULL OR member_sso_url IS NOT NULL)
+      ORDER BY "clubId", title, "updatedAt" DESC
+    ) src
+    WHERE ps."clubId" = src."clubId"
+      AND ps.title    = src.title
+      AND (
+        (ps.external_url   IS NULL AND src.external_url   IS NOT NULL)
+        OR
+        (ps.member_sso_url IS NULL AND src.member_sso_url IS NOT NULL)
+      );
+  `, clubId)
+}
+
+/**
+ * Resolve (publicEventUrl, memberSsoUrl) for one raw event, applying the
+ * Sprint 1.5 fallback: own URL → series-anchor URL → same-title-in-club URL.
+ *
+ * Exported for unit tests.
+ */
+export function resolveEventUrls(
+  raw: any,
+  clubId: string,
+  index: ReturnType<typeof buildSeriesUrlIndex>,
+): { publicEventUrl: string | null; memberSsoUrl: string | null } {
+  let publicEventUrl = pickFirstUrl(raw?.PublicEventUrl, raw?.publicEventUrl)
+  let memberSsoUrl = pickFirstUrl(raw?.SsoUrl, raw?.ssoUrl)
+
+  if (!publicEventUrl || !memberSsoUrl) {
+    const anchor = getEventSeriesAnchor(raw)
+    if (anchor) {
+      const cached = index.byAnchor.get(anchor)
+      if (cached) {
+        if (!publicEventUrl) publicEventUrl = cached.publicEventUrl
+        if (!memberSsoUrl) memberSsoUrl = cached.memberSsoUrl
+      }
+    }
+  }
+
+  if (!publicEventUrl || !memberSsoUrl) {
+    const title = String(raw?.EventName || raw?.eventName || raw?.Title || raw?.title || raw?.Name || raw?.name || '').trim()
+    if (title) {
+      const cached = index.byTitleKey.get(`${clubId}::${title}`)
+      if (cached) {
+        if (!publicEventUrl) publicEventUrl = cached.publicEventUrl
+        if (!memberSsoUrl) memberSsoUrl = cached.memberSsoUrl
+      }
+    }
+  }
+
+  return { publicEventUrl, memberSsoUrl }
+}
+
 function getEventMaxRegistrations(raw: any, fallback: number): number {
   const value =
     raw?.MaxRegistrations ??
@@ -567,6 +731,11 @@ async function syncEventCalendar(
     existingMappings.map((mapping) => [mapping.externalId, mapping.internalId]),
   )
 
+  // Sprint 1.5: pre-index URL-bearing rows so instance rows (which carry
+  // registrations but lack PublicEventUrl) can inherit URL from their series
+  // counterpart in the same response. See buildSeriesUrlIndex docs.
+  const seriesUrlIndex = buildSeriesUrlIndex(rawEvents as any[], clubId)
+
   for (const rawEvent of rawEvents as any[]) {
     try {
       const externalKey = getEventExternalKey(rawEvent)
@@ -613,7 +782,24 @@ async function syncEventCalendar(
       today.setHours(0, 0, 0, 0)
       const isCancelled = Boolean(rawEvent?.CancelledOnUtc || rawEvent?.cancelledOnUtc || rawEvent?.IsCancelled || rawEvent?.isCancelled)
 
-      const sessionData = {
+      // CR event URLs — extract for direct-link emails + attribution.
+      // PublicEventUrl: public CR registration page (works without login)
+      // SsoUrl: authenticated link for known members (skips login)
+      // CR returns event series and event instances as separate rows in the
+      // same eventlist response. Series rows carry the URL; instance rows
+      // carry registrations. Sprint 1.5 (resolveEventUrls) bridges them via
+      // EventId anchor + clubId+title fallback so instance rows — the ones
+      // slot-filler actually emails about — inherit the URL from their series.
+      const { publicEventUrl, memberSsoUrl } = resolveEventUrls(rawEvent, clubId, seriesUrlIndex)
+
+      // Sprint 1.6: split URL fields out so update() can skip them when
+      // missing. CR's eventcalendar response splits each event across multiple
+      // rows (series row carries URL, instance row carries registrations) and
+      // syncEventCalendar runs per time-window — so a single window often
+      // sees only the instance row with no URL. Without this split, every
+      // sync would overwrite a previously-resolved URL with null. Keep null
+      // for create() because create needs an explicit value.
+      const sessionDataBase = {
         clubId,
         courtId,
         title,
@@ -630,13 +816,27 @@ async function syncEventCalendar(
 
       const existingSessionId = sessionIdByExternalId.get(externalKey)
       if (existingSessionId) {
+        // Update: only set URL fields when we actually have a value; passing
+        // `undefined` tells Prisma to leave the column alone. The post-sync
+        // backfill (runCourtReserveSync → backfillSessionUrlsFromSiblings)
+        // is what propagates URLs across rows that didn't carry them.
         await prisma.playSession.update({
           where: { id: existingSessionId },
-          data: sessionData,
+          data: {
+            ...sessionDataBase,
+            externalUrl:  publicEventUrl  ?? undefined,
+            memberSsoUrl: memberSsoUrl ?? undefined,
+          },
         })
         result.updated++
       } else {
-        const session = await prisma.playSession.create({ data: sessionData })
+        const session = await prisma.playSession.create({
+          data: {
+            ...sessionDataBase,
+            externalUrl:  publicEventUrl,
+            memberSsoUrl: memberSsoUrl,
+          },
+        })
         await setMapping(partnerId, ExternalEntityType.PLAY_SESSION, externalKey, session.id)
         sessionIdByExternalId.set(externalKey, session.id)
         result.created++
@@ -1066,6 +1266,17 @@ export async function runCourtReserveSync(
           AND ps.title ILIKE '%' || cc.name || '%'
       `, clubId)
     } catch {}
+
+    // Sprint 1.6: post-sync URL backfill — propagate PublicEventUrl/SsoUrl
+    // from series rows to same-title instance rows. This bridges the gap
+    // left by per-window syncEventCalendar (series and instances of the
+    // same event often arrive in different windows). See
+    // backfillSessionUrlsFromSiblings docs for full reasoning.
+    try {
+      await backfillSessionUrlsFromSiblings(clubId)
+    } catch (err: any) {
+      console.error(`[CR Sync] ${clubId}: post-sync URL backfill error:`, err?.message || err)
+    }
 
     // Check if more phases needed (initial sync only)
     const nextPhaseIdx = currentPhaseIdx + 1

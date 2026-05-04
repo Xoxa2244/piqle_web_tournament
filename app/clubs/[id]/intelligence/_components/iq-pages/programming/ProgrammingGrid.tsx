@@ -47,6 +47,8 @@ export interface GridLiveSession {
   registeredCount?: number | null
   metadata?: {
     liveOptimization?: {
+      draftId?: string
+      reviewDecision?: 'accepted' | 'declined' | null
       type?: 'move' | 'replace'
       currentScore?: number
       scoreDelta?: number
@@ -62,6 +64,7 @@ export interface GridLiveSession {
         occupancy?: number
       }
       after?: {
+        proposalId?: string
         title?: string
         dayOfWeek?: string
         startTime?: string

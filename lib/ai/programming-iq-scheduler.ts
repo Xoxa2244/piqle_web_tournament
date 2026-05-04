@@ -45,6 +45,7 @@ import {
   type ProgrammingRequestEvaluation,
   type ProgrammingStrategyPresetId,
 } from './programming-iq-strategy'
+import { applyRegenerateHint } from './programming-iq-regenerate'
 import type {
   DayOfWeek,
   PlaySessionFormat,
@@ -297,6 +298,33 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
+/**
+ * Derive months of booking data from the actual session date range.
+ * Returns 0 for empty input, otherwise a value rounded to the nearest
+ * 0.5 with a max of 24. Used by signalSummary to give the admin an
+ * honest "this schedule is based on N months of data" line — was
+ * hardcoded to 2 before regardless of how much data the club had.
+ */
+function computeMonthsOfBookingData(
+  sessions: Array<{ date: Date | string }>,
+): number {
+  if (!sessions || sessions.length === 0) return 0
+  let minMs = Number.POSITIVE_INFINITY
+  let maxMs = Number.NEGATIVE_INFINITY
+  for (const s of sessions) {
+    const d = s.date instanceof Date ? s.date : new Date(s.date)
+    const ms = d.getTime()
+    if (!Number.isFinite(ms)) continue
+    if (ms < minMs) minMs = ms
+    if (ms > maxMs) maxMs = ms
+  }
+  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs)) return 0
+  const days = (maxMs - minMs) / 86_400_000
+  // Round to nearest 0.5 month for a clean UI display.
+  const months = Math.max(0, Math.min(24, Math.round((days / 30) * 2) / 2))
+  return months
+}
+
 function timeSlotFromStart(startTime: string | null | undefined) {
   const minutes = hhmmToMinutes(startTime)
   const hour = Number.isFinite(minutes) ? Math.floor(minutes / 60) : 0
@@ -366,7 +394,25 @@ export function dayOfWeekFromDate(
       return dayName
     }
   } catch {
-    // Bad timezone string → fall back to runtime-local interpretation.
+    // Bad timezone string → fall through to America/New_York. Falling
+    // back to `date.getDay()` (server-local) on a Vercel UTC server
+    // would re-introduce the original UTC bucketing bug — see
+    // advisor-programming.ts:toDayOfWeek bug-fix note. Bug-fix 2026-05-01.
+    try {
+      const dayName = new Intl.DateTimeFormat('en-US', {
+        weekday: 'long',
+        timeZone: 'America/New_York',
+      }).format(date)
+      if (
+        dayName === 'Sunday' || dayName === 'Monday' || dayName === 'Tuesday'
+        || dayName === 'Wednesday' || dayName === 'Thursday'
+        || dayName === 'Friday' || dayName === 'Saturday'
+      ) {
+        return dayName
+      }
+    } catch {
+      // Last-ditch fallback if even Intl is broken.
+    }
   }
   return jsDayToEnum(date.getDay())
 }
@@ -562,10 +608,14 @@ export function assignCourtsToProposals(
     countByCourt.set(picked.id, (countByCourt.get(picked.id) || 0) + 1)
   }
 
-  return assignments
   // weekStartDate is accepted for future (time-zone handling); currently
   // unused because proposals live in "abstract day of week" space.
+  // Bug-fix 2026-05-01: cleaned up the unreachable `void weekStartDate`
+  // marker that lived after the return — modern linters flag it as
+  // dead code. The intent (param reserved for future use) lives in
+  // this comment now.
   void weekStartDate
+  return assignments
 }
 
 function rankCourtsForProposal(args: {
@@ -846,6 +896,20 @@ function canShareWindow(
   return pinnedWindowCount === 0 && sameWindowSelected.length < 2
 }
 
+/**
+ * Sentinel returned by `getPortfolioPenalty` when a proposal would
+ * violate a hard portfolio constraint (cannot share its window with
+ * the already-selected set, or cannot duplicate an existing slot).
+ * Downstream `getGoalScores` checks for this exact value to filter
+ * the proposal out entirely. Picked as a magic number large enough
+ * to ensure goalScores math drops below any practical floor.
+ *
+ * Bug-fix 2026-05-01: was a bare `999` literal scattered in two
+ * places; now named so its semantics are obvious. Documents what
+ * the previous code's comment merely hinted at as "Infinity".
+ */
+const PORTFOLIO_PENALTY_BLOCKED = 999
+
 function getPortfolioPenalty(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
@@ -872,7 +936,7 @@ function getPortfolioPenalty(
     (candidate) => getWindowSignature(candidate) === getWindowSignature(proposal),
   ).length
   if (sameWindowCount > 0) {
-    if (!canShareWindow(proposal, selected, pinnedProposalIds, behaviorProfile)) return 999
+    if (!canShareWindow(proposal, selected, pinnedProposalIds, behaviorProfile)) return PORTFOLIO_PENALTY_BLOCKED
     penalty += proposal.projectedOccupancy >= behaviorProfile.secondCourtDuplicationThreshold
       ? Math.round(behaviorProfile.sameWindowPenalty * 0.55) * sameWindowCount
       : behaviorProfile.sameWindowPenalty * sameWindowCount
@@ -882,7 +946,7 @@ function getPortfolioPenalty(
     (candidate) => getSlotSignature(candidate) === getSlotSignature(proposal),
   ).length
   if (sameSlotCount > 0) {
-    if (!canDuplicateProposal(proposal, selected, behaviorProfile)) return 999
+    if (!canDuplicateProposal(proposal, selected, behaviorProfile)) return PORTFOLIO_PENALTY_BLOCKED
     penalty += 14 * sameSlotCount
   }
 
@@ -934,7 +998,7 @@ function getGoalScores(
     context.pinnedProposalIds,
     context.behaviorProfile,
   )
-  const blocked = portfolioPenalty >= 999
+  const blocked = portfolioPenalty >= PORTFOLIO_PENALTY_BLOCKED
   const isOffPeak = proposal.timeSlot === 'morning' || proposal.timeSlot === 'afternoon'
   const gapBehaviorAdjustment = proposal.source === 'fill_gap'
     ? (
@@ -969,11 +1033,11 @@ function getGoalScores(
     : utilization
   const audienceProtection = Math.max(
     0,
-    Math.min(100, 100 - conflictPenalty * 1.4 - (portfolioPenalty >= 999 ? 55 : portfolioPenalty * 0.6)),
+    Math.min(100, 100 - conflictPenalty * 1.4 - (portfolioPenalty >= PORTFOLIO_PENALTY_BLOCKED ? 55 : portfolioPenalty * 0.6)),
   )
   const portfolioBalance = Math.max(
     0,
-    Math.min(100, 100 - (portfolioPenalty >= 999 ? 60 : portfolioPenalty * 1.1)),
+    Math.min(100, 100 - (portfolioPenalty >= PORTFOLIO_PENALTY_BLOCKED ? 60 : portfolioPenalty * 1.1)),
   )
   const operationalFit = Math.max(
     0,
@@ -1224,6 +1288,27 @@ export function selectBalancedProposals(
     const pinnedSet = new Set(pinnedProposalIds)
     const pinned = remaining.filter((proposal) => pinnedSet.has(proposal.id))
 
+    // Bug-fix 2026-05-01: previously a pinned id missing from
+    // `remaining` (e.g. live-review pinned a proposal that got dropped
+    // earlier in expansion via seenExpandedIds, or the requested
+    // proposal got filtered out by sameProposal dedupe upstream)
+    // silently disappeared with no signal. Operationally this looks
+    // like "I clicked Accept on the live-review move suggestion but
+    // nothing happened" — quiet failure. Now warn so it surfaces in
+    // server logs and the operator can dig in.
+    const foundPinnedIds = new Set(pinned.map((p) => p.id))
+    const missingPinnedIds = pinnedProposalIds.filter(
+      (id) => !foundPinnedIds.has(id),
+    )
+    if (missingPinnedIds.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[programming-iq] selectBalancedProposals: %d pinned proposal id(s) not in remaining set, dropped silently: %s',
+        missingPinnedIds.length,
+        missingPinnedIds.slice(0, 5).join(', '),
+      )
+    }
+
     for (const proposal of pinned) {
       if (selected.length >= targetCount) break
       selected.push(proposal)
@@ -1359,6 +1444,9 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
 
   // 1. Get a wide proposal set from the existing planner. We pass
   //    `limit` high enough to cover the grid; the planner dedupes.
+  //    `timezone` ensures historical sessions are bucketed by club-local
+  //    day-of-week (was using UTC, mis-bucketing cross-midnight EST
+  //    sessions — see advisor-programming.ts:toDayOfWeek bug-fix note).
   const plan = buildAdvisorProgrammingPlan({
     sessions: input.lastNDaysSessions,
     preferences: input.preferences,
@@ -1369,6 +1457,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     courtCount: activeCourts.length,
     strategyPresetIds: strategyProfile.appliedPresets.map((preset) => preset.id),
     behaviorProfile: strategyProfile.behaviorProfile,
+    timezone: input.timezone || 'America/New_York',
   })
 
   let rankedProposals = plan.proposals
@@ -1377,6 +1466,21 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       rankedProposals,
       input.previousSuggestionSignatures || [],
     )
+  }
+
+  // Bug-fix 2026-05-01: previously the LLM-derived regenerateHint was
+  // built and paid for in the tRPC layer (interpretRegeneratePrompt
+  // burns ~400 output tokens per Generate) and threaded into the
+  // scheduler input, but applyRegenerateHint was NEVER actually
+  // called against the proposal list. The hint's structured
+  // boost/penalize fields (formats / skills / days / timeSlots)
+  // dropped on the floor. Effect: typing "less open play, more drills
+  // on weekdays" had zero impact on ranking — only the prompt was
+  // echoed back via insights. Now applies the multiplier pass so
+  // ranking actually shifts. Tests at
+  // tests/lib/ai/programming-iq-scheduler.test.ts cover this.
+  if (input.regenerateHint) {
+    rankedProposals = applyRegenerateHint(rankedProposals, input.regenerateHint)
   }
   const requestedProposals = plan.requestedAlternates?.length
     ? plan.requestedAlternates
@@ -1642,9 +1746,31 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const requestPlacedCount = requestedCells.filter((cell) => cell.kind === 'suggested').length
   const requestBackupCount = requestedCells.filter((cell) => cell.kind === 'saturation').length
   const requestUnplacedCount = requestedCells.filter((cell) => cell.kind === 'conflict').length
-  const strongestRequestEval = requestEvaluations
+  let strongestRequestEval: ProgrammingRequestEvaluation | null = requestEvaluations
     .slice()
     .sort((left, right) => right.score - left.score)[0] || null
+
+  // Bug-fix 2026-05-01: when admin types a vague prompt like "make it
+  // better" or "improve please", `parseAdvisorProgrammingRequest`
+  // returns an empty spec, `buildRequestedProposals` returns nothing,
+  // and the verdict slot stays null. The doc explicitly says "even a
+  // bad request must be shown with a verdict — don't silently drop
+  // it". Synthesize a 'not_recommended' verdict so the UI summary
+  // panel doesn't render an empty Request evaluation row.
+  if (
+    input.regeneratePrompt
+    && input.regeneratePrompt.trim().length > 0
+    && requestedProposals.length === 0
+    && !strongestRequestEval
+  ) {
+    strongestRequestEval = {
+      verdict: 'not_recommended',
+      label: 'Not recommended',
+      summary: 'We could not extract a concrete change from your prompt — try naming a day, time, format, or skill level.',
+      reasons: ['Prompt was too vague to anchor onto a specific day / time / format / skill.'],
+      score: 0,
+    }
+  }
 
   const improvements: string[] = [
     `${publishReadyCount} publish-ready suggestion${publishReadyCount === 1 ? '' : 's'} generated across ${activeCourts.length} active court${activeCourts.length === 1 ? '' : 's'}.`,
@@ -1692,6 +1818,14 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     changes.push(`${unplacedCount} idea${unplacedCount === 1 ? '' : 's'} stayed in Unplaced ideas because they could not be pinned to a court.`)
   }
 
+  // Bug-fix 2026-05-01: monthsOfBookingData was hardcoded to 2 here
+  // (the router fetches a 60-day window, so the value is "consistent"
+  // but it lies for clubs with <60d of actual data — a brand-new club
+  // with 1 week of CourtReserve sync still showed "2 months"). Now we
+  // derive from the actual session date range so the transparency row
+  // tells the truth.
+  const monthsOfBookingData = computeMonthsOfBookingData(input.lastNDaysSessions)
+
   return {
     generationId,
     cells,
@@ -1705,7 +1839,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     },
     insights,
     signalSummary: {
-      monthsOfBookingData: 2,
+      monthsOfBookingData,
       preferencesCount: input.preferences.length,
       unmetInterestRequests,
       activeCourts: activeCourts.length,

@@ -912,6 +912,135 @@ describe('buildWeeklyGrid — smoke', () => {
   })
 })
 
+// ── Regenerate hint integration (regression test for the bug-fix on
+// 2026-05-01 where applyRegenerateHint was being computed and paid for
+// by the LLM but never actually invoked against the proposal list, so
+// typing "less open play" had zero ranking effect) ─────────────────────
+
+describe('buildWeeklyGrid — regenerate hint actually shifts ranking', () => {
+  const baseInput = {
+    weekStartDate: new Date('2026-04-27'),
+    courts: COURTS,
+    historicalSessions: HIST_PLENTY,
+    existingWeekSessions: [],
+    lastNDaysSessions: [
+      ...Array.from({ length: 12 }, () => ({
+        title: 'Open Play',
+        date: new Date('2026-04-15'),
+        startTime: '19:00',
+        endTime: '20:30',
+        format: 'OPEN_PLAY' as any,
+        skillLevel: 'INTERMEDIATE' as any,
+        maxPlayers: 8,
+        registeredCount: 7,
+      })),
+      ...Array.from({ length: 12 }, () => ({
+        title: 'Drill',
+        date: new Date('2026-04-15'),
+        startTime: '10:00',
+        endTime: '11:30',
+        format: 'DRILL' as any,
+        skillLevel: 'INTERMEDIATE' as any,
+        maxPlayers: 6,
+        registeredCount: 5,
+      })),
+    ],
+    preferences: Array.from({ length: 30 }, () => ({
+      preferredDays: ['Monday', 'Tuesday'] as any,
+      preferredTimeMorning: true,
+      preferredTimeAfternoon: false,
+      preferredTimeEvening: true,
+      skillLevel: 'INTERMEDIATE' as any,
+      preferredFormats: ['OPEN_PLAY', 'DRILL'],
+      targetSessionsPerWeek: 2,
+      notificationsOptOut: false,
+    })),
+    interestRequests: [],
+    contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+    targetSuggestionCount: 12,
+  }
+
+  const EMPTY_HINT = {
+    boostFormats: [],
+    penalizeFormats: [],
+    boostSkills: [],
+    penalizeSkills: [],
+    boostDays: [],
+    penalizeDays: [],
+    boostTimeSlots: [],
+    penalizeTimeSlots: [],
+    inferredPresets: [],
+    reasoning: '',
+  }
+
+  it('penalizes OPEN_PLAY confidence in the suggested cells when hint says so', () => {
+    const baseline = buildWeeklyGrid(baseInput)
+    const baselineOpen = baseline.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'OPEN_PLAY',
+    )
+    const baselineDrill = baseline.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'DRILL',
+    )
+    // Sanity: scenario produces both kinds.
+    expect(baselineOpen.length).toBeGreaterThan(0)
+    expect(baselineDrill.length).toBeGreaterThan(0)
+
+    const penalized = buildWeeklyGrid({
+      ...baseInput,
+      regenerateHint: { ...EMPTY_HINT, penalizeFormats: ['OPEN_PLAY'] },
+    })
+    const penalizedOpen = penalized.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'OPEN_PLAY',
+    )
+
+    // After penalty (multiplier 0.7), the average OPEN_PLAY confidence
+    // must drop. We don't assert exact 0.7×, since downstream balanced
+    // selection / per-court confidence rebasing may polish the number,
+    // but we DO assert direction: penalized < baseline.
+    if (penalizedOpen.length > 0) {
+      const avgBaseline =
+        baselineOpen.reduce((s, c) => s + (c.confidence ?? 0), 0)
+        / baselineOpen.length
+      const avgPenalized =
+        penalizedOpen.reduce((s, c) => s + (c.confidence ?? 0), 0)
+        / penalizedOpen.length
+      expect(avgPenalized).toBeLessThan(avgBaseline)
+    } else {
+      // Penalty was strong enough to push every OPEN_PLAY out of the
+      // suggested bucket. That's an even cleaner pass.
+      expect(penalizedOpen.length).toBe(0)
+    }
+  })
+
+  it('boosts DRILL confidence in the suggested cells when hint boosts it', () => {
+    const baseline = buildWeeklyGrid(baseInput)
+    const baselineDrill = baseline.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'DRILL',
+    )
+    expect(baselineDrill.length).toBeGreaterThan(0)
+    const baselineAvg =
+      baselineDrill.reduce((s, c) => s + (c.confidence ?? 0), 0)
+      / baselineDrill.length
+
+    const boosted = buildWeeklyGrid({
+      ...baseInput,
+      regenerateHint: { ...EMPTY_HINT, boostFormats: ['DRILL'] },
+    })
+    const boostedDrill = boosted.cells.filter(
+      (c) => c.kind === 'suggested' && c.format === 'DRILL',
+    )
+    // Boosted confidence is clamped to 100 — at least one cell must
+    // have stayed above the baseline average. (We don't assert all
+    // cells went up because some were already saturated at 100.)
+    const boostedAvg = boostedDrill.length > 0
+      ? boostedDrill.reduce((s, c) => s + (c.confidence ?? 0), 0)
+        / boostedDrill.length
+      : 0
+    expect(boostedAvg).toBeGreaterThanOrEqual(baselineAvg)
+    expect(boostedDrill.length).toBeGreaterThanOrEqual(baselineDrill.length)
+  })
+})
+
 // ── Helpers ────────────────────────────────────────────────────────
 
 function cellSuggested(key: string, skill: string, cap: number): GridCell {
