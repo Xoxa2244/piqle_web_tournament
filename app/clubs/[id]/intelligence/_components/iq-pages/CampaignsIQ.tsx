@@ -310,7 +310,7 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
   const [showWizard, setShowWizard] = useState(false)
   // P2-T9: pre-fill the wizard's Goal step when launched from an
   // AI-Recommended card. Mapped from the legacy CHECK_IN/etc enum.
-  const [wizardInitialGoal, setWizardInitialGoal] = useState<'reactivate_dormant' | 'onboard_new' | 'promote_event' | 'upsell_tier' | 'renewal_reminder' | 'custom' | null>(null)
+  const [wizardInitialGoal, setWizardInitialGoal] = useState<'reactivate_dormant' | 'check_in' | 'retention_boost' | 'onboard_new' | 'promote_event' | 'upsell_tier' | 'renewal_reminder' | 'custom' | null>(null)
   // P2-T9: Insights drawer hosts Send Volume + legacy by-type event log,
   // moved off the main page.
   const [showInsights, setShowInsights] = useState(false)
@@ -800,8 +800,8 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
           // Map the legacy AI-suggestion enum (CHECK_IN/RETENTION_BOOST/...)
           // to the wizard's CampaignGoal vocabulary.
           const map: Record<string, typeof wizardInitialGoal> = {
-            CHECK_IN: 'reactivate_dormant',
-            RETENTION_BOOST: 'reactivate_dormant',
+            CHECK_IN: 'check_in',
+            RETENTION_BOOST: 'retention_boost',
             REACTIVATION: 'reactivate_dormant',
             SLOT_FILLER: 'promote_event',
             EVENT_INVITE: 'promote_event',

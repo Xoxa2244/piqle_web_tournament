@@ -15,7 +15,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { X, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
-import { useListCohorts, useSuggestedCohorts, useIntelligenceSettings, useReactivationCandidates, useNewMembers } from '../../_hooks/use-intelligence'
+import { useListCohorts, useSuggestedCohorts, useIntelligenceSettings, useReactivationCandidates, useNewMembers, useMemberHealth } from '../../_hooks/use-intelligence'
 import { Step1Audience } from './Step1Audience'
 import { Step2Goal } from './Step2Goal'
 import { Step3Schedule } from './Step3Schedule'
@@ -68,6 +68,10 @@ export function CampaignWizard({
     clubId,
     21,
     { enabled: currentGoal === 'reactivate_dormant' },
+  )
+  const { data: memberHealthData, isLoading: memberHealthLoading } = useMemberHealth(
+    clubId,
+    { enabled: currentGoal === 'check_in' || currentGoal === 'retention_boost' },
   )
   const { data: newMembersAudienceData, isLoading: newMembersAudienceLoading } = useNewMembers(
     clubId,
@@ -123,6 +127,34 @@ export function CampaignWizard({
         : []
     }
 
+    if (currentGoal === 'check_in' || currentGoal === 'retention_boost') {
+      const healthMembers = Array.isArray((memberHealthData as any)?.members)
+        ? (memberHealthData as any).members
+        : []
+      const matchingMembers = healthMembers.filter((member: any) =>
+        currentGoal === 'check_in'
+          ? member?.riskLevel === 'watch'
+          : ['at_risk', 'critical'].includes(member?.riskLevel),
+      )
+      const userIds = matchingMembers
+        .map((member: any) => member?.member?.id ?? member?.userId ?? member?.id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+
+      if (userIds.length === 0) return []
+
+      return [{
+        id: `${currentGoal}:${clubId}:member_health`,
+        cohortId: null,
+        name: currentGoal === 'check_in' ? 'Reduced activity members' : 'At-risk members',
+        memberCount: userIds.length,
+        userIds,
+        emoji: currentGoal === 'check_in' ? '💜' : '🛡️',
+        description: currentGoal === 'check_in'
+          ? `${userIds.length} member${userIds.length === 1 ? '' : 's'} are showing reduced activity. This matches the check-in campaign audience.`
+          : `${userIds.length} member${userIds.length === 1 ? '' : 's'} are at risk of churning. This matches the retention campaign audience.`,
+      }]
+    }
+
     if (currentGoal === 'onboard_new') {
       const members = Array.isArray((newMembersAudienceData as any)?.members)
         ? (newMembersAudienceData as any).members
@@ -157,9 +189,11 @@ export function CampaignWizard({
         emoji: cohort.emoji,
         description: cohort.description,
       }))
-  }, [clubId, currentGoal, newMembersAudienceData, reactivationAudienceData, suggestedCohorts])
+  }, [clubId, currentGoal, memberHealthData, newMembersAudienceData, reactivationAudienceData, suggestedCohorts])
   const suggestedAudiencesLoading = currentGoal === 'reactivate_dormant'
     ? reactivationAudienceLoading
+    : (currentGoal === 'check_in' || currentGoal === 'retention_boost')
+      ? memberHealthLoading
     : currentGoal === 'onboard_new'
       ? newMembersAudienceLoading
       : (!currentGoal || currentGoal === 'custom' || currentGoal === 'renewal_reminder')

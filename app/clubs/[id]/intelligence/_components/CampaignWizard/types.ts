@@ -10,6 +10,8 @@ export type WizardStep = 1 | 2 | 3 | 4
 
 export type CampaignGoal =
   | 'reactivate_dormant'
+  | 'check_in'
+  | 'retention_boost'
   | 'onboard_new'
   | 'promote_event'
   | 'upsell_tier'

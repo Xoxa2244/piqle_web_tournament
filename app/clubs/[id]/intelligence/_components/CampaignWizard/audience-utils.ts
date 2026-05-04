@@ -6,8 +6,10 @@ type SuggestedAudienceLike = {
 }
 
 const GOAL_LABELS: Partial<Record<CampaignGoal, string>> = {
-  reactivate_dormant: 'reactivate dormant players',
-  onboard_new: 'onboard new members',
+  reactivate_dormant: 'win back inactive members',
+  check_in: 'check in with slipping members',
+  retention_boost: 'boost retention for at-risk members',
+  onboard_new: 'welcome new members',
   promote_event: 'promote an event or program',
   upsell_tier: 'upsell a membership tier',
   renewal_reminder: 'send renewal reminders',

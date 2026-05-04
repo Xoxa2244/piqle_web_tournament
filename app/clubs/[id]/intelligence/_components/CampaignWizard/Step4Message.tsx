@@ -36,6 +36,8 @@ interface Step4Props {
  *  the backend's generateCampaignMessage understands. */
 const GOAL_TO_CAMPAIGN_TYPE: Record<CampaignGoal, 'CHECK_IN' | 'RETENTION_BOOST' | 'REACTIVATION' | 'SLOT_FILLER' | 'EVENT_INVITE' | 'NEW_MEMBER_WELCOME'> = {
   reactivate_dormant: 'REACTIVATION',
+  check_in: 'CHECK_IN',
+  retention_boost: 'RETENTION_BOOST',
   onboard_new: 'NEW_MEMBER_WELCOME',
   promote_event: 'EVENT_INVITE',
   upsell_tier: 'RETENTION_BOOST',
@@ -50,6 +52,20 @@ const TEMPLATES: Record<CampaignGoal, { subject: string; body: string }> = {
       "Hey {first_name},\n\nNoticed you haven't played a session in a while. " +
       "We just opened up some great evening slots — your old favourites.\n\n" +
       "Want to grab a spot this week?\n\n[Book a session →]",
+  },
+  check_in: {
+    subject: 'Quick check-in, {first_name}',
+    body:
+      "Hi {first_name},\n\nJust checking in — we noticed your court time has dipped a little lately. " +
+      "If you want an easy way back in, we’ve got some good sessions coming up this week.\n\n" +
+      "[See upcoming sessions →]",
+  },
+  retention_boost: {
+    subject: '{first_name}, we’d love to see you back on court',
+    body:
+      "Hi {first_name},\n\nYou’re an important part of the club, and we’d love to help you get back into a good playing rhythm. " +
+      "There are some great sessions coming up if you want to jump back in this week.\n\n" +
+      "[Book a session →]",
   },
   onboard_new: {
     subject: 'Welcome to the club, {first_name} 👋',
