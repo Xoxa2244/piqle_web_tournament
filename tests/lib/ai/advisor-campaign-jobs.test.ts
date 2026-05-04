@@ -98,6 +98,49 @@ describe('advisor campaign jobs', () => {
     expect(mockPrisma.aIRecommendationLog.create).toHaveBeenCalledTimes(2)
   })
 
+  it('interpolates wizard single-brace tokens before sending email', async () => {
+    mockPrisma.user.findMany.mockResolvedValue([
+      { id: 'member-1', email: 'alex@example.com', name: 'Alex Stone', phone: null, smsOptIn: false },
+    ])
+
+    await sendCampaignNow(mockPrisma, {
+      clubId: 'club-1',
+      type: 'REACTIVATION',
+      channel: 'email',
+      memberIds: ['member-1'],
+      subject: 'We miss you on the courts, {first_name}',
+      body: 'Hi {first_name} {last_name}, welcome back to {club_name}. {event_name} starts on {event_date}. Your package expires {expires_in_days}. Legacy {{club}} / {{name}}.',
+    })
+
+    expect(sendOutreachEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'alex@example.com',
+      subject: 'We miss you on the courts, Alex',
+      body: 'Hi Alex Stone, welcome back to IQ Club. our upcoming event starts on a date to be confirmed. Your package expires soon. Legacy IQ Club / Alex.',
+    }))
+  })
+
+  it('passes custom CTA overrides through to outreach email sends', async () => {
+    mockPrisma.user.findMany.mockResolvedValue([
+      { id: 'member-1', email: 'alex@example.com', name: 'Alex Stone', phone: null, smsOptIn: false },
+    ])
+
+    await sendCampaignNow(mockPrisma, {
+      clubId: 'club-1',
+      type: 'REACTIVATION',
+      channel: 'email',
+      memberIds: ['member-1'],
+      subject: 'Come back',
+      body: 'See you soon',
+      ctaLabel: 'Click here',
+      ctaUrl: 'https://vk.com/id327829473',
+    })
+
+    expect(sendOutreachEmail).toHaveBeenCalledWith(expect.objectContaining({
+      ctaLabel: 'Click here',
+      ctaUrl: 'https://vk.com/id327829473',
+    }))
+  })
+
   it('re-checks guardrails before scheduled campaign delivery', async () => {
     mockPrisma.$queryRaw.mockResolvedValue([{ id: 'log-1' }])
     mockPrisma.aIRecommendationLog.findMany.mockResolvedValue([

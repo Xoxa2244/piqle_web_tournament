@@ -13,14 +13,15 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { X, ChevronRight, ChevronLeft } from 'lucide-react'
+import { X, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
-import { useListCohorts, useSuggestedCohorts, useIntelligenceSettings } from '../../_hooks/use-intelligence'
+import { useListCohorts, useSuggestedCohorts, useIntelligenceSettings, useReactivationCandidates, useNewMembers, useMemberHealth } from '../../_hooks/use-intelligence'
 import { Step1Audience } from './Step1Audience'
 import { Step2Goal } from './Step2Goal'
 import { Step3Schedule } from './Step3Schedule'
 import { Step4Message } from './Step4Message'
 import { EMPTY_WIZARD_STATE, buildRecurringCron, type WizardStep, type WizardState, type AudienceSelection, type CampaignGoal, type MessageDraft, type ScheduleSettings } from './types'
+import { matchesSuggestedCohortGoal } from './audience-utils'
 
 interface CampaignWizardProps {
   clubId: string
@@ -74,10 +75,26 @@ export function CampaignWizard({
   })
   const [isLaunching, setIsLaunching] = useState(false)
   const [launched, setLaunched] = useState(false)
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const currentGoal = state.goal ?? initialGoal ?? null
 
   // Data needed by Step 1 (audience picker)
   const { data: savedCohortsRaw = [] } = useListCohorts(clubId)
-  const { data: suggestedCohortsRaw = [] } = useSuggestedCohorts(clubId)
+  const { data: suggestedCohortsRaw = [], isLoading: suggestedCohortsLoading } = useSuggestedCohorts(clubId)
+  const { data: reactivationAudienceData, isLoading: reactivationAudienceLoading } = useReactivationCandidates(
+    clubId,
+    21,
+    { enabled: currentGoal === 'reactivate_dormant' },
+  )
+  const { data: memberHealthData, isLoading: memberHealthLoading } = useMemberHealth(
+    clubId,
+    { enabled: currentGoal === 'check_in' || currentGoal === 'retention_boost' },
+  )
+  const { data: newMembersAudienceData, isLoading: newMembersAudienceLoading } = useNewMembers(
+    clubId,
+    14,
+    { enabled: currentGoal === 'onboard_new' },
+  )
   const { data: settingsData } = useIntelligenceSettings(clubId)
   const liveMode = (settingsData?.settings?.controlPlane?.actions?.outreachSend?.mode ?? 'shadow') as 'disabled' | 'shadow' | 'live'
 
@@ -91,9 +108,114 @@ export function CampaignWizard({
     (suggestedCohortsRaw as any[]).map((c) => ({
       id: c.id, name: c.name, memberCount: c.memberCount ?? 0,
       userIds: c.userIds ?? [], emoji: c.emoji, description: c.description,
+      generatorKey: c.generatorKey, suggestedTemplateKey: c.suggestedTemplateKey,
     })),
     [suggestedCohortsRaw]
   )
+  const suggestedAudiences = useMemo(() => {
+    const cohortBackedSuggestions = suggestedCohorts.map((cohort) => ({
+      id: cohort.id,
+      cohortId: cohort.id,
+      name: cohort.name,
+      memberCount: cohort.memberCount,
+      userIds: cohort.userIds,
+      emoji: cohort.emoji,
+      description: cohort.description,
+    }))
+
+    if (currentGoal === 'reactivate_dormant') {
+      const candidates = Array.isArray((reactivationAudienceData as any)?.candidates)
+        ? (reactivationAudienceData as any).candidates
+        : []
+      const userIds = candidates
+        .map((candidate: any) => candidate.member?.id ?? candidate.memberId ?? candidate.userId ?? candidate.id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+
+      return userIds.length > 0
+        ? [{
+            id: `reactivate_dormant:${clubId}:21`,
+            cohortId: null,
+            name: 'Inactive 21+ days',
+            memberCount: userIds.length,
+            userIds,
+            emoji: '↩️',
+            description: `${userIds.length} member${userIds.length === 1 ? '' : 's'} haven't played in 21+ days. This is the matching audience for the win-back campaign.`,
+          }]
+        : []
+    }
+
+    if (currentGoal === 'check_in' || currentGoal === 'retention_boost') {
+      const healthMembers = Array.isArray((memberHealthData as any)?.members)
+        ? (memberHealthData as any).members
+        : []
+      const matchingMembers = healthMembers.filter((member: any) =>
+        currentGoal === 'check_in'
+          ? member?.riskLevel === 'watch'
+          : ['at_risk', 'critical'].includes(member?.riskLevel),
+      )
+      const userIds = matchingMembers
+        .map((member: any) => member?.member?.id ?? member?.userId ?? member?.id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+
+      if (userIds.length === 0) return []
+
+      return [{
+        id: `${currentGoal}:${clubId}:member_health`,
+        cohortId: null,
+        name: currentGoal === 'check_in' ? 'Reduced activity members' : 'At-risk members',
+        memberCount: userIds.length,
+        userIds,
+        emoji: currentGoal === 'check_in' ? '💜' : '🛡️',
+        description: currentGoal === 'check_in'
+          ? `${userIds.length} member${userIds.length === 1 ? '' : 's'} are showing reduced activity. This matches the check-in campaign audience.`
+          : `${userIds.length} member${userIds.length === 1 ? '' : 's'} are at risk of churning. This matches the retention campaign audience.`,
+      }]
+    }
+
+    if (currentGoal === 'onboard_new') {
+      const members = Array.isArray((newMembersAudienceData as any)?.members)
+        ? (newMembersAudienceData as any).members
+        : []
+      const userIds = members
+        .map((member: any) => member.userId ?? member.id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+
+      return userIds.length > 0
+        ? [{
+            id: `onboard_new:${clubId}:14`,
+            cohortId: null,
+            name: 'New members · 14 days',
+            memberCount: userIds.length,
+            userIds,
+            emoji: '👋',
+            description: `${userIds.length} member${userIds.length === 1 ? '' : 's'} joined recently. This matches the welcome campaign audience.`,
+          }]
+        : []
+    }
+
+    if (!currentGoal || currentGoal === 'custom') return cohortBackedSuggestions
+
+    return suggestedCohorts
+      .filter((cohort) => matchesSuggestedCohortGoal(currentGoal, cohort))
+      .map((cohort) => ({
+        id: cohort.id,
+        cohortId: cohort.id,
+        name: cohort.name,
+        memberCount: cohort.memberCount,
+        userIds: cohort.userIds,
+        emoji: cohort.emoji,
+        description: cohort.description,
+      }))
+  }, [clubId, currentGoal, memberHealthData, newMembersAudienceData, reactivationAudienceData, suggestedCohorts])
+  const suggestedAudiencesLoading = currentGoal === 'reactivate_dormant'
+    ? reactivationAudienceLoading
+    : (currentGoal === 'check_in' || currentGoal === 'retention_boost')
+      ? memberHealthLoading
+    : currentGoal === 'onboard_new'
+      ? newMembersAudienceLoading
+      : (!currentGoal || currentGoal === 'custom' || currentGoal === 'renewal_reminder')
+        ? suggestedCohortsLoading
+        : false
 
   // Hydrate from initial* props on mount
   useEffect(() => {
@@ -118,7 +240,7 @@ export function CampaignWizard({
     if (step === 2) return !!state.goal
     // Step 3 (Schedule): always advanceable — defaults are valid (one_time, send now, email).
     if (step === 3) return true
-    // Step 4 (Message) is final — Launch button is in-step, no Next.
+    // Step 4 (Message) is final — Launch lives in the shared footer.
     return false
   })()
 
@@ -128,12 +250,18 @@ export function CampaignWizard({
   // Esc closes (with confirm if dirty)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') tryClose()
+      if (e.key === 'Escape') {
+        if (showDiscardConfirm) {
+          setShowDiscardConfirm(false)
+          return
+        }
+        tryClose()
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state])
+  }, [showDiscardConfirm, state])
 
   const isDirty = !!state.audience || !!state.goal || !!state.message.subject || !!state.message.body
   const tryClose = () => {
@@ -141,9 +269,7 @@ export function CampaignWizard({
       onClose()
       return
     }
-    if (typeof window !== 'undefined' && window.confirm('Discard this campaign draft?')) {
-      onClose()
-    }
+    setShowDiscardConfirm(true)
   }
 
   // Launch — Priority-1.1: writes a real Campaign row via launchCampaign
@@ -239,6 +365,22 @@ export function CampaignWizard({
     }
   }
 
+  const ctaUrlTrimmed = state.message.ctaUrl?.trim() ?? ''
+  const ctaLabelTrimmed = state.message.ctaLabel?.trim() ?? ''
+  const ctaUrlInvalid = ctaUrlTrimmed.length > 0 && !/^https?:\/\/.+/i.test(ctaUrlTrimmed)
+  const ctaLabelMissing = ctaUrlTrimmed.length > 0 && ctaLabelTrimmed.length === 0
+  const launchDisabled = step !== 4
+    || !state.audience
+    || !state.goal
+    || state.schedule.format !== 'one_time'
+    || liveMode !== 'live'
+    || isLaunching
+    || launchMutation.isPending
+    || state.message.subject.trim().length === 0
+    || state.message.body.trim().length === 0
+    || ctaUrlInvalid
+    || ctaLabelMissing
+
   return (
     <AnimatePresence>
       <>
@@ -261,7 +403,7 @@ export function CampaignWizard({
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-          className="fixed top-0 right-0 z-50 h-screen overflow-y-auto"
+          className="fixed top-0 right-0 z-50 flex h-screen flex-col overflow-hidden"
           style={{
             width: 'min(720px, 100vw)',
             background: 'var(--bg, #0B0B14)',
@@ -270,7 +412,7 @@ export function CampaignWizard({
           }}
         >
           {/* Sticky header — title + stepper + close */}
-          <div className="sticky top-0 z-10 px-5 py-4 space-y-3" style={{ background: 'var(--bg, #0B0B14)', borderBottom: '1px solid var(--card-border)' }}>
+          <div className="z-10 px-5 py-4 space-y-3 shrink-0" style={{ background: 'var(--bg, #0B0B14)', borderBottom: '1px solid var(--card-border)' }}>
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold" style={{ color: 'var(--heading)' }}>
                 {launched ? '🎉 Campaign launched' : 'New Campaign'}
@@ -315,7 +457,7 @@ export function CampaignWizard({
           </div>
 
           {/* Body */}
-          <div className="px-5 py-5">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
             {launched ? (
               <div className="space-y-4 text-center py-8">
                 <div className="text-4xl">🚀</div>
@@ -339,9 +481,11 @@ export function CampaignWizard({
               <Step1Audience
                 clubId={clubId}
                 audience={state.audience}
+                goal={state.goal}
                 onChange={(audience) => setState((s) => ({ ...s, audience }))}
                 savedCohorts={savedCohorts}
-                suggestedCohorts={suggestedCohorts}
+                suggestedAudiences={suggestedAudiences}
+                suggestedAudiencesLoading={suggestedAudiencesLoading}
                 initialUserIds={initialUserIds}
               />
             ) : step === 2 ? (
@@ -363,39 +507,136 @@ export function CampaignWizard({
                 schedule={state.schedule}
                 onChange={(message: MessageDraft) => setState((s) => ({ ...s, message }))}
                 liveMode={liveMode}
-                onLaunch={handleLaunch}
-                isLaunching={isLaunching || launchMutation.isPending}
                 launchError={launchError}
               />
             )}
           </div>
 
-          {/* Sticky footer — Back / Next (hidden on Step 4 when launched, since Launch is in-step) */}
+          {/* Sticky footer — Back / Next / Launch */}
           {!launched && (
-            <div className="sticky bottom-0 px-5 py-3 flex items-center justify-between" style={{ background: 'var(--bg, #0B0B14)', borderTop: '1px solid var(--card-border)' }}>
-              <button
-                onClick={prev}
-                disabled={step === 1}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs disabled:opacity-30"
-                style={{ background: 'var(--subtle)', color: 'var(--t2)' }}
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                Back
-              </button>
-              {step < 4 ? (
+            <div className="shrink-0 px-5" style={{ background: 'var(--bg, #0B0B14)' }}>
+              <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--card-border)' }}>
                 <button
-                  onClick={next}
-                  disabled={!canAdvance}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
+                  onClick={prev}
+                  disabled={step === 1}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs disabled:opacity-30"
+                  style={{ background: 'var(--subtle)', color: 'var(--t2)' }}
                 >
-                  Next
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Back
                 </button>
-              ) : null}
+                {step < 4 ? (
+                  <button
+                    onClick={next}
+                    disabled={!canAdvance}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
+                  >
+                    Next
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleLaunch}
+                    disabled={launchDisabled}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
+                  >
+                    {isLaunching || launchMutation.isPending ? 'Launching…' : 'Launch'}
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <div aria-hidden="true" className="h-7" />
             </div>
           )}
         </motion.aside>
+
+        <AnimatePresence>
+          {showDiscardConfirm && (
+            <motion.div
+              key="cw-discard-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+              style={{ background: 'rgba(5, 8, 20, 0.58)', backdropFilter: 'blur(8px)' }}
+              onClick={() => setShowDiscardConfirm(false)}
+            >
+              <motion.div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="discard-campaign-title"
+                initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                transition={{ type: 'spring', damping: 24, stiffness: 280 }}
+                className="w-full max-w-[540px] rounded-[28px] p-5 sm:p-6"
+                style={{
+                  background: 'linear-gradient(180deg, rgba(17,24,39,0.98), rgba(11,11,20,0.98))',
+                  border: '1px solid rgba(139,92,246,0.18)',
+                  boxShadow: '0 28px 80px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04)',
+                }}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              >
+                <div className="flex items-start gap-4">
+                  <div
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(248,113,113,0.20), rgba(239,68,68,0.10))',
+                      border: '1px solid rgba(248,113,113,0.28)',
+                    }}
+                  >
+                    <AlertTriangle className="h-5 w-5" style={{ color: '#F87171' }} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <h3
+                      id="discard-campaign-title"
+                      className="text-[24px] leading-tight font-semibold"
+                      style={{ color: 'var(--heading)' }}
+                    >
+                      Discard this campaign draft?
+                    </h3>
+                    <p className="mt-2 max-w-[420px] text-sm leading-6" style={{ color: 'var(--t3)' }}>
+                      Your audience, goal, schedule, and message edits haven&apos;t been launched yet. If you close now, those changes will be lost.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    onClick={() => setShowDiscardConfirm(false)}
+                    className="rounded-2xl px-4 py-3 text-sm transition-all"
+                    style={{
+                      background: 'var(--subtle)',
+                      border: '1px solid var(--card-border)',
+                      color: 'var(--heading)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Keep editing
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowDiscardConfirm(false)
+                      onClose()
+                    }}
+                    className="rounded-2xl px-4 py-3 text-sm text-white transition-all"
+                    style={{
+                      background: 'linear-gradient(135deg, #EF4444, #F97316)',
+                      boxShadow: '0 10px 30px rgba(239,68,68,0.28)',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Discard draft
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </>
     </AnimatePresence>
   )

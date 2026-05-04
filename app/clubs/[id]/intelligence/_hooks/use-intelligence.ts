@@ -378,6 +378,25 @@ export function useSuggestedCohorts(clubId: string, options?: IntelligenceQueryO
   return query
 }
 
+export function useAudiencePreviewMembers(clubId: string, userIds: string[], options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getAudiencePreviewMembers.useQuery(
+    { clubId, userIds },
+    { enabled: !!clubId && userIds.length > 0 && !isDemo && (options?.enabled ?? true), staleTime: 30 * 1000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [],
+      isLoading: false,
+      error: null,
+    } as any
+  }
+
+  return query
+}
+
 /**
  * P2-T3: List existing user cohorts for bulk-action picker.
  */
@@ -1425,6 +1444,96 @@ export function useBulkApproveProgrammingGrid() {
       mutate: (input: any, opts?: any) => {
         setTimeout(() => opts?.onSuccess?.({ ok: true, approved: input.draftIds.length }), 250)
       },
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
+export function useClearProgrammingScheduleDrafts() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.clearProgrammingScheduleDrafts.useMutation({
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        utils.intelligence.getProgrammingScheduleGrid.invalidate({
+          clubId: variables.clubId,
+          weekStartDate: variables.weekStartDate,
+        }).catch(() => undefined),
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ ok: true, cleared: 0 }), 200)
+      },
+      mutateAsync: async (_input: any) => ({ ok: true, cleared: 0 }),
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
+export function useAcceptProgrammingLiveReview() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.acceptProgrammingLiveReview.useMutation({
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        utils.intelligence.getProgrammingScheduleGrid.invalidate({
+          clubId: variables.clubId,
+        }).catch(() => undefined),
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listSessions.invalidate().catch(() => undefined),
+        utils.intelligence.getSessionsCalendar.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ ok: true }), 200)
+      },
+      mutateAsync: async (_input: any) => ({ ok: true }),
+      isPending: false,
+    } as any
+  }
+
+  return mutation
+}
+
+export function useDeclineProgrammingLiveReview() {
+  const utils = trpc.useUtils()
+  const isDemo = useIsDemo()
+
+  const mutation = trpc.intelligence.declineProgrammingLiveReview.useMutation({
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        utils.intelligence.getProgrammingScheduleGrid.invalidate({
+          clubId: variables.clubId,
+        }).catch(() => undefined),
+        utils.intelligence.listOpsSessionDrafts.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
+  })
+
+  if (isDemo) {
+    return {
+      mutate: (_input: any, opts?: any) => {
+        setTimeout(() => opts?.onSuccess?.({ ok: true }), 200)
+      },
+      mutateAsync: async (_input: any) => ({ ok: true }),
       isPending: false,
     } as any
   }

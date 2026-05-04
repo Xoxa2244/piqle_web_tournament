@@ -1922,7 +1922,23 @@ async function buildProgrammingAssistantResponse(opts: {
     }
   }
 
-  const requestedPrimary = draft.requested || draft.proposals[0]
+  const requestedPrimary = draft.requested || draft.proposals[0] || null
+  if (!requestedPrimary) {
+    const assistantState: AdvisorConversationState = {
+      ...(opts.state || {}),
+      latestOutcome: opts.state?.latestOutcome,
+      recentOutcomes: opts.state?.recentOutcomes || [],
+      currentProgramming: undefined,
+      lastActionKind: 'program_schedule',
+      lastActionTitle: 'Draft programming plan',
+      updatedAt: new Date().toISOString(),
+    }
+
+    return {
+      assistantState,
+      assistantMessage: withSuggested(programmingCopy.empty, programmingCopy.suggestions),
+    }
+  }
   const alternatives = draft.proposals
     .filter((proposal) => !sameProgrammingProposal(proposal, requestedPrimary))
     .slice(0, 3)

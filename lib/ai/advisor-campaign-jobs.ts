@@ -47,6 +47,7 @@ type CampaignClub = {
 
 type CampaignDraftInput = {
   clubId: string
+  campaignId?: string
   type: CampaignType
   channel: CampaignChannel
   memberIds: string[]
@@ -57,6 +58,8 @@ type CampaignDraftInput = {
   subject?: string
   body: string
   smsBody?: string
+  ctaLabel?: string
+  ctaUrl?: string
   sessionId?: string
   source?: string
   actionKind?: AgentOutreachRolloutActionKind
@@ -84,10 +87,31 @@ function getBookingUrl(clubId: string) {
   return buildPlatformUrl(`/clubs/${clubId}/play`)
 }
 
-function interpolateCampaignText(text: string, memberName: string, clubName: string) {
-  return text
-    .replace(/\{\{name\}\}/g, memberName)
-    .replace(/\{\{club\}\}/g, clubName)
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function getCampaignRecipientNameParts(name?: string | null) {
+  const parts = (name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  return {
+    fullName: parts.join(' ') || 'there',
+    firstName: parts[0] || 'there',
+    lastName: parts.slice(1).join(' '),
+  }
+}
+
+function interpolateCampaignText(
+  text: string,
+  replacements: Record<string, string>,
+) {
+  return Object.entries(replacements).reduce((result, [token, replacement]) => {
+    const pattern = new RegExp(`\\{\\{${escapeRegExp(token)}\\}\\}|\\{${escapeRegExp(token)}\\}`, 'gi')
+    return result.replace(pattern, replacement)
+  }, text)
 }
 
 async function deliverCampaignToUser(opts: {
@@ -97,21 +121,34 @@ async function deliverCampaignToUser(opts: {
   subject?: string
   body: string
   smsBody?: string
+  ctaLabel?: string
+  ctaUrl?: string
   logId?: string
 }) : Promise<DeliveryResult> {
   const { club, user, channel, logId } = opts
-  const memberName = user.name?.split(' ')[0] || 'there'
+  const recipientName = getCampaignRecipientNameParts(user.name)
   const bookingUrl = getBookingUrl(club.id)
   const shouldSendEmail = channel === 'email' || channel === 'both'
   const shouldSendSms = channel === 'sms' || channel === 'both'
+  const templateValues = {
+    name: recipientName.firstName,
+    first_name: recipientName.firstName,
+    full_name: recipientName.fullName,
+    last_name: recipientName.lastName,
+    club: club.name,
+    club_name: club.name,
+    event_name: 'our upcoming event',
+    event_date: 'a date to be confirmed',
+    expires_in_days: 'soon',
+  }
 
   const emailSubject = opts.subject
-    ? interpolateCampaignText(opts.subject, memberName, club.name)
+    ? interpolateCampaignText(opts.subject, templateValues)
     : `Message from ${club.name}`
-  const emailBody = interpolateCampaignText(opts.body, memberName, club.name)
+  const emailBody = interpolateCampaignText(opts.body, templateValues)
   const smsText = opts.smsBody
-    ? interpolateCampaignText(opts.smsBody, memberName, club.name)
-    : (shouldSendSms ? interpolateCampaignText(opts.body, memberName, club.name).slice(0, 300) : undefined)
+    ? interpolateCampaignText(opts.smsBody, templateValues)
+    : (shouldSendSms ? interpolateCampaignText(opts.body, templateValues).slice(0, 300) : undefined)
 
   let externalMessageId: string | null = null
   let emailDelivered = false
@@ -128,6 +165,8 @@ async function deliverCampaignToUser(opts: {
           body: emailBody,
           clubName: club.name,
           bookingUrl,
+          ctaLabel: opts.ctaLabel,
+          ctaUrl: opts.ctaUrl,
         })
         emailDelivered = true
         externalMessageId = result.messageId || null
@@ -272,11 +311,14 @@ export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
       subject: input.subject,
       body: input.body,
       smsBody: input.smsBody,
+      ctaLabel: input.ctaLabel,
+      ctaUrl: input.ctaUrl,
     })
 
     await prisma.aIRecommendationLog.create({
       data: {
         clubId: input.clubId,
+        campaignId: input.campaignId || null,
         userId: user.id,
         type: input.type,
         channel: resolvedChannel,
@@ -321,6 +363,270 @@ export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
   if (smsSent > 0) await reportUsage(input.clubId, 'sms', smsSent).catch(() => {})
 
   return { sent, failed, skipped, emailSent, smsSent, results }
+}
+
+function mapWizardGoalToCampaignType(goal: string | null | undefined): CampaignType {
+  switch (goal) {
+    case 'reactivate_dormant':
+      return 'REACTIVATION'
+    case 'check_in':
+      return 'CHECK_IN'
+    case 'retention_boost':
+      return 'RETENTION_BOOST'
+    case 'onboard_new':
+      return 'NEW_MEMBER_WELCOME'
+    case 'promote_event':
+      return 'EVENT_INVITE'
+    case 'upsell_tier':
+      return 'RETENTION_BOOST'
+    case 'renewal_reminder':
+      return 'CHECK_IN'
+    case 'custom':
+    default:
+      return 'CHECK_IN'
+  }
+}
+
+function mapCampaignChannelsToDraftChannel(channels: unknown): CampaignChannel {
+  const normalized = Array.isArray(channels)
+    ? channels.filter((channel): channel is string => typeof channel === 'string')
+    : []
+
+  if (normalized.includes('email') && normalized.includes('sms')) return 'both'
+  if (normalized.includes('sms')) return 'sms'
+  return 'email'
+}
+
+function extractCampaignSnapshotUserIds(snapshot: unknown): string[] {
+  if (!snapshot || typeof snapshot !== 'object' || !Array.isArray((snapshot as Record<string, unknown>).userIds)) {
+    return []
+  }
+
+  return Array.from(
+    new Set(
+      ((snapshot as Record<string, unknown>).userIds as unknown[])
+        .filter((userId): userId is string => typeof userId === 'string' && userId.length > 0),
+    ),
+  )
+}
+
+function extractCampaignSnapshotCta(snapshot: unknown) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    return { ctaLabel: undefined, ctaUrl: undefined }
+  }
+
+  const record = snapshot as Record<string, unknown>
+  return {
+    ctaLabel: typeof record.ctaLabel === 'string' && record.ctaLabel.trim().length > 0 ? record.ctaLabel.trim() : undefined,
+    ctaUrl: typeof record.ctaUrl === 'string' && record.ctaUrl.trim().length > 0 ? record.ctaUrl.trim() : undefined,
+  }
+}
+
+export async function processCampaignSendQueue(prisma: any, opts?: { limit?: number; campaignId?: string }) {
+  const limit = Math.max(1, Math.min(opts?.limit || 50, 200))
+  const now = new Date()
+  const where = opts?.campaignId
+    ? { id: opts.campaignId }
+    : {
+        status: { in: ['running', 'scheduled'] },
+        sentCount: 0,
+        failedCount: 0,
+        OR: [
+          { scheduledAt: null },
+          { scheduledAt: { lte: now } },
+        ],
+      }
+
+  const campaigns = await prisma.campaign.findMany({
+    where,
+    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      clubId: true,
+      goal: true,
+      subject: true,
+      body: true,
+      channels: true,
+      status: true,
+      scheduledAt: true,
+      launchedAt: true,
+      createdAt: true,
+      sentCount: true,
+      deliveredCount: true,
+      failedCount: true,
+      cohortSnapshot: true,
+    },
+    ...(opts?.campaignId ? {} : { take: limit }),
+  })
+
+  if (campaigns.length === 0) {
+    return {
+      processed: 0,
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+      emailSent: 0,
+      smsSent: 0,
+      campaigns: [] as Array<{
+        id: string
+        status: string
+        sent: number
+        skipped: number
+        failed: number
+        emailSent: number
+        smsSent: number
+      }>,
+    }
+  }
+
+  let processed = 0
+  let sent = 0
+  let skipped = 0
+  let failed = 0
+  let emailSent = 0
+  let smsSent = 0
+  const results: Array<{
+    id: string
+    status: string
+    sent: number
+    skipped: number
+    failed: number
+    emailSent: number
+    smsSent: number
+  }> = []
+
+  for (const campaign of campaigns) {
+    const snapshot = (campaign.cohortSnapshot || {}) as Record<string, unknown>
+    const campaignCta = extractCampaignSnapshotCta(snapshot)
+    const memberIds = extractCampaignSnapshotUserIds(snapshot)
+    const processedAt = new Date()
+    const processedAtIso = processedAt.toISOString()
+
+    if (memberIds.length === 0) {
+      await prisma.campaign.update({
+        where: { id: campaign.id },
+        select: { id: true },
+        data: {
+          status: 'failed',
+          completedAt: processedAt,
+          failedCount: Math.max(campaign.failedCount || 0, 1),
+          cohortSnapshot: {
+            ...snapshot,
+            processedAt: processedAtIso,
+            error: 'Campaign snapshot has no recipient userIds',
+          } as any,
+        },
+      })
+      processed += 1
+      failed += 1
+      results.push({
+        id: campaign.id,
+        status: 'failed',
+        sent: 0,
+        skipped: 0,
+        failed: 1,
+        emailSent: 0,
+        smsSent: 0,
+      })
+      continue
+    }
+
+    const body = typeof campaign.body === 'string' ? campaign.body.trim() : ''
+    if (!body) {
+      await prisma.campaign.update({
+        where: { id: campaign.id },
+        select: { id: true },
+        data: {
+          status: 'failed',
+          completedAt: processedAt,
+          failedCount: Math.max(campaign.failedCount || 0, memberIds.length),
+          cohortSnapshot: {
+            ...snapshot,
+            processedAt: processedAtIso,
+            error: 'Campaign body is empty',
+          } as any,
+        },
+      })
+      processed += 1
+      failed += memberIds.length
+      results.push({
+        id: campaign.id,
+        status: 'failed',
+        sent: 0,
+        skipped: 0,
+        failed: memberIds.length,
+        emailSent: 0,
+        smsSent: 0,
+      })
+      continue
+    }
+
+    const delivery = await sendCampaignNow(prisma, {
+      campaignId: campaign.id,
+      clubId: campaign.clubId,
+      type: mapWizardGoalToCampaignType(campaign.goal),
+      channel: mapCampaignChannelsToDraftChannel(campaign.channels),
+      memberIds,
+      subject: typeof campaign.subject === 'string' ? campaign.subject : undefined,
+      body,
+      ctaLabel: campaignCta.ctaLabel,
+      ctaUrl: campaignCta.ctaUrl,
+      source: 'campaign_wizard',
+      actionKind: 'create_campaign',
+    })
+
+    const nextStatus = delivery.sent > 0 || delivery.skipped > 0 ? 'completed' : 'failed'
+
+    await prisma.campaign.update({
+      where: { id: campaign.id },
+      select: { id: true },
+      data: {
+        status: nextStatus,
+        launchedAt: campaign.launchedAt || processedAt,
+        completedAt: processedAt,
+        sentCount: delivery.sent,
+        deliveredCount: delivery.sent,
+        failedCount: delivery.failed,
+        cohortSnapshot: {
+          ...snapshot,
+          processedAt: processedAtIso,
+          sendResult: {
+            sent: delivery.sent,
+            skipped: delivery.skipped,
+            failed: delivery.failed,
+            emailSent: delivery.emailSent,
+            smsSent: delivery.smsSent,
+          },
+        } as any,
+      },
+    })
+
+    processed += 1
+    sent += delivery.sent
+    skipped += delivery.skipped
+    failed += delivery.failed
+    emailSent += delivery.emailSent
+    smsSent += delivery.smsSent
+    results.push({
+      id: campaign.id,
+      status: nextStatus,
+      sent: delivery.sent,
+      skipped: delivery.skipped,
+      failed: delivery.failed,
+      emailSent: delivery.emailSent,
+      smsSent: delivery.smsSent,
+    })
+  }
+
+  return {
+    processed,
+    sent,
+    skipped,
+    failed,
+    emailSent,
+    smsSent,
+    campaigns: results,
+  }
 }
 
 export async function scheduleCampaignSend(prisma: any, input: CampaignDraftInput & {

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAdvisorProgrammingPlan,
+  buildProgrammingAudienceProfileFromMembers,
   parseAdvisorProgrammingRequest,
 } from '@/lib/ai/advisor-programming'
+import { computeProgrammingStrategyProfile } from '@/lib/ai/programming-iq-strategy'
 
 describe('advisor programming request parsing', () => {
   it('extracts day, time, format, skill, and max players from a request', () => {
@@ -18,6 +20,23 @@ describe('advisor programming request parsing', () => {
       skillLevel: 'BEGINNER',
       maxPlayers: 8,
     })
+  })
+
+  it('keeps all explicitly requested days when a prompt mentions multiple mornings', () => {
+    const parsed = parseAdvisorProgrammingRequest(
+      'more morning sessions on tuesday and wednesday',
+    )
+
+    expect(parsed.dayOfWeek).toBe('Tuesday')
+    expect(parsed.dayOfWeeks).toEqual(['Tuesday', 'Wednesday'])
+    expect(parsed.timeSlot).toBe('morning')
+  })
+
+  it('expands weekend language into saturday and sunday requested days', () => {
+    const parsed = parseAdvisorProgrammingRequest('more sessions on weekend')
+
+    expect(parsed.dayOfWeek).toBe('Saturday')
+    expect(parsed.dayOfWeeks).toEqual(['Saturday', 'Sunday'])
   })
 })
 
@@ -112,6 +131,43 @@ describe('advisor programming planning', () => {
       skillLevel: 'BEGINNER',
     })
     expect(plan.proposals.length).toBeGreaterThan(1)
+  })
+
+  it('keeps multiple explicitly requested days at the front of the plan', () => {
+    const plan = buildAdvisorProgrammingPlan({
+      sessions,
+      preferences,
+      request: parseAdvisorProgrammingRequest('more morning sessions on tuesday and wednesday'),
+      limit: 4,
+    })
+
+    expect(plan.requestedAlternates.map((proposal) => proposal.dayOfWeek)).toEqual([
+      'Tuesday',
+      'Wednesday',
+    ])
+    expect(plan.proposals.slice(0, 2).map((proposal) => proposal.dayOfWeek)).toEqual([
+      'Tuesday',
+      'Wednesday',
+    ])
+    expect(plan.proposals.slice(0, 2).every((proposal) => proposal.timeSlot === 'morning')).toBe(true)
+  })
+
+  it('keeps weekend request ideas at the front of the plan when weekend is requested broadly', () => {
+    const plan = buildAdvisorProgrammingPlan({
+      sessions,
+      preferences,
+      request: parseAdvisorProgrammingRequest('more sessions on weekend'),
+      limit: 4,
+    })
+
+    expect(plan.requestedAlternates.map((proposal) => proposal.dayOfWeek)).toEqual([
+      'Saturday',
+      'Sunday',
+    ])
+    expect(plan.proposals.slice(0, 2).map((proposal) => proposal.dayOfWeek)).toEqual([
+      'Saturday',
+      'Sunday',
+    ])
   })
 
   it('marks windows that could cannibalize existing sessions', () => {
@@ -212,6 +268,133 @@ describe('advisor programming planning', () => {
     })
     expect(plan.recommended?.rationale.join(' ')).toContain('notify-me')
     expect(plan.insights.join(' ')).toContain('queued notify-me demand')
+  })
+
+  it('still uses interest requests when the member did not specify a day', () => {
+    const plan = buildAdvisorProgrammingPlan({
+      sessions: [],
+      preferences: Array.from({ length: 3 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: false,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: true,
+        skillLevel: 'ALL_LEVELS' as const,
+        preferredFormats: [],
+        targetSessionsPerWeek: 2,
+        notificationsOptOut: false,
+      })),
+      interestRequests: [
+        {
+          preferredDays: [],
+          preferredFormats: ['Clinic'],
+          preferredTimeSlots: { morning: false, afternoon: false, evening: true },
+          status: 'pending',
+          sessionId: null,
+        },
+      ],
+      courtCount: 2,
+      limit: 5,
+    })
+
+    expect(
+      plan.proposals.some(
+        (proposal) =>
+          proposal.dayOfWeek === 'Tuesday' &&
+          proposal.format === 'CLINIC' &&
+          proposal.timeSlot === 'evening',
+      ),
+    ).toBe(true)
+    expect(plan.insights.join(' ')).toContain('notify-me')
+  })
+
+  it('bootstraps programming suggestions from member profile when history is thin', () => {
+    const audienceProfile = buildProgrammingAudienceProfileFromMembers([
+      ...Array.from({ length: 18 }, () => ({
+        skillLevel: 'INTERMEDIATE',
+        dateOfBirth: new Date('1994-05-10'),
+      })),
+      ...Array.from({ length: 10 }, () => ({
+        skillLevel: 'BEGINNER',
+        dateOfBirth: new Date('1986-03-15'),
+      })),
+    ])
+
+    const plan = buildAdvisorProgrammingPlan({
+      sessions: [],
+      preferences: [],
+      audienceProfile,
+      courtCount: 2,
+      limit: 5,
+    })
+
+    expect(plan.recommended).toBeTruthy()
+    expect(plan.recommended?.source).toBe('fill_gap')
+    expect(plan.proposals.length).toBeGreaterThan(0)
+    expect(plan.proposals[0].confidence).toBeGreaterThanOrEqual(60)
+    expect(plan.insights.join(' ')).toContain('member profile data')
+  })
+
+  it('lets exploratory presets surface weaker empty-window gap-fill ideas while demand-first stays conservative', () => {
+    const baseInput = {
+      sessions: [] as any[],
+      preferences: [
+        {
+          preferredDays: ['Tuesday'],
+          preferredTimeMorning: true,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: false,
+          skillLevel: 'BEGINNER' as const,
+          preferredFormats: ['Clinic'],
+          targetSessionsPerWeek: 1,
+          notificationsOptOut: false,
+        },
+        {
+          preferredDays: ['Tuesday'],
+          preferredTimeMorning: true,
+          preferredTimeAfternoon: false,
+          preferredTimeEvening: false,
+          skillLevel: 'BEGINNER' as const,
+          preferredFormats: ['Clinic'],
+          targetSessionsPerWeek: 1,
+          notificationsOptOut: false,
+        },
+      ],
+      audienceProfile: null,
+      courtCount: 2,
+      limit: 10,
+    }
+
+    const defaultPlan = buildAdvisorProgrammingPlan(baseInput)
+    const demandFirstProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FOLLOW_MEMBER_DEMAND'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+    const testIdeasProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['TEST_NEW_IDEAS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+
+    const demandFirstPlan = buildAdvisorProgrammingPlan({
+      ...baseInput,
+      behaviorProfile: demandFirstProfile.behaviorProfile,
+    })
+    const experimentalPlan = buildAdvisorProgrammingPlan({
+      ...baseInput,
+      behaviorProfile: testIdeasProfile.behaviorProfile,
+    })
+
+    const hasTuesdayMorning = (plan: ReturnType<typeof buildAdvisorProgrammingPlan>) =>
+      plan.proposals.some((proposal) =>
+        proposal.dayOfWeek === 'Tuesday'
+        && proposal.timeSlot === 'morning'
+        && proposal.source === 'fill_gap',
+      )
+
+    expect(hasTuesdayMorning(defaultPlan)).toBe(false)
+    expect(hasTuesdayMorning(demandFirstPlan)).toBe(false)
+    expect(hasTuesdayMorning(experimentalPlan)).toBe(true)
   })
 
   it('raises court pressure risk when the club has limited active courts', () => {

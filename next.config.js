@@ -68,6 +68,13 @@ const nextConfig = {
       },
     ]
   },
+  experimental: {
+    // Enables `unstable_after` from 'next/server' (renamed to `after` in 15.1+).
+    // Used by /api/connectors/courtreserve/sync (orchestrator) and
+    // /api/connectors/courtreserve/sync-worker to dispatch / continue work
+    // after the HTTP response is already sent to the caller.
+    after: true,
+  },
 }
 
 module.exports = withSentryConfig(nextConfig, {

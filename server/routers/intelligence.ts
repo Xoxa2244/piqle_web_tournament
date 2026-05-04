@@ -39,6 +39,7 @@ import {
   withAdvisorDraftMetadata,
 } from '@/lib/ai/advisor-drafts'
 import {
+  processCampaignSendQueue,
   scheduleCampaignSend,
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
@@ -53,6 +54,7 @@ import { evaluateAdvisorContactGuardrails } from '@/lib/ai/advisor-contact-guard
 import { buildPlatformUrl, getPlatformBaseUrl, getPlatformBaseUrlFromRequest } from '@/lib/platform-base-url'
 import { normalizeMembership } from '@/lib/ai/membership-intelligence'
 import { classifyActivityLevel, classifyEngagementTrend, classifyValueTier } from '@/lib/ai/member-health'
+import { PROGRAMMING_IQ_PRESET_IDS } from '@/lib/ai/programming-iq-strategy'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
@@ -90,6 +92,46 @@ function timeSlotFromStart(startTime: string): 'morning' | 'afternoon' | 'evenin
   if (hour < 12) return 'morning'
   if (hour < 17) return 'afternoon'
   return 'evening'
+}
+
+function addDaysToIsoDate(isoDate: string, days: number): string {
+  const [year, month, day] = isoDate.split('-').map(Number)
+  const dt = new Date(Date.UTC(year || 1970, (month || 1) - 1, day || 1))
+  dt.setUTCDate(dt.getUTCDate() + days)
+  return dt.toISOString().slice(0, 10)
+}
+
+function isoDateInTimezone(date: Date, timezone = 'America/New_York'): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date)
+    const year = parts.find((part) => part.type === 'year')?.value
+    const month = parts.find((part) => part.type === 'month')?.value
+    const day = parts.find((part) => part.type === 'day')?.value
+    if (year && month && day) {
+      return `${year}-${month}-${day}`
+    }
+  } catch {
+    // Fall through to UTC date slice below.
+  }
+  return date.toISOString().slice(0, 10)
+}
+
+function filterSessionsToProgrammingWeek<T extends { date: Date | string }>(
+  sessions: T[],
+  weekStartDate: string,
+  timezone = 'America/New_York',
+): T[] {
+  const weekEndDate = addDaysToIsoDate(weekStartDate, 7)
+  return sessions.filter((session) => {
+    const sessionDate = session.date instanceof Date ? session.date : new Date(session.date)
+    const localIsoDate = isoDateInTimezone(sessionDate, timezone)
+    return localIsoDate >= weekStartDate && localIsoDate < weekEndDate
+  })
 }
 
 // ── Helper: describe agent action for pending queue ──
@@ -2968,11 +3010,21 @@ export const intelligenceRouter = createTRPCRouter({
       }
 
       let csvSessions: any[] = []
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      }).catch(() => null)
+      const timezone = (
+        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
+      ) || 'America/New_York'
 
       // Primary: fast Prisma query on play_sessions (indexed, no JSON parsing)
       try {
         const dbSessions = await ctx.prisma.playSession.findMany({
-          where: { clubId: input.clubId },
+          where: {
+            clubId: input.clubId,
+            status: { not: 'CANCELLED' },
+          },
           select: {
             id: true, date: true, startTime: true, endTime: true, format: true,
             skillLevel: true, maxPlayers: true, pricePerSlot: true, registeredCount: true,
@@ -2989,7 +3041,10 @@ export const intelligenceRouter = createTRPCRouter({
             : s._count.bookings;
           return {
             id: s.id,
-            date: s.date instanceof Date ? s.date.toISOString().slice(0, 10) : String(s.date).slice(0, 10),
+            date: isoDateInTimezone(
+              s.date instanceof Date ? s.date : new Date(s.date),
+              timezone,
+            ),
             startTime: s.startTime,
             endTime: s.endTime,
             court: s.clubCourt?.name || '',
@@ -7072,6 +7127,72 @@ Spirit: ${guidance.spirit}`
       return { cohort, members }
     }),
 
+  getAudiencePreviewMembers: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      userIds: z.array(z.string()).max(200),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const userIds = Array.from(new Set(input.userIds.filter(Boolean))).slice(0, 200)
+      if (userIds.length === 0) return []
+
+      const [followers, bookings] = await Promise.all([
+        ctx.prisma.clubFollower.findMany({
+          where: { clubId: input.clubId, userId: { in: userIds } },
+          select: {
+            userId: true,
+            createdAt: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        }),
+        ctx.prisma.playSessionBooking.findMany({
+          where: {
+            userId: { in: userIds },
+            status: 'CONFIRMED',
+            playSession: { clubId: input.clubId },
+          },
+          select: {
+            userId: true,
+            bookedAt: true,
+          },
+          orderBy: { bookedAt: 'desc' },
+        }),
+      ])
+
+      const latestBookingByUserId = new Map<string, Date>()
+      for (const booking of bookings) {
+        if (!latestBookingByUserId.has(booking.userId)) {
+          latestBookingByUserId.set(booking.userId, booking.bookedAt)
+        }
+      }
+
+      const now = Date.now()
+
+      return followers.map((follower) => {
+        const lastBookedAt = latestBookingByUserId.get(follower.userId) ?? null
+        const joinedDaysAgo = Math.max(0, Math.floor((now - follower.createdAt.getTime()) / 86400000))
+        const daysSinceLastVisit = lastBookedAt
+          ? Math.max(0, Math.floor((now - lastBookedAt.getTime()) / 86400000))
+          : null
+
+        return {
+          id: follower.user.id,
+          name: follower.user.name || follower.user.email || 'Unknown member',
+          email: follower.user.email,
+          joinedDaysAgo,
+          daysSinceLastVisit,
+        }
+      })
+    }),
+
   parseCohortFromText: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
@@ -7752,7 +7873,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const club = await ctx.prisma.club.findUnique({ where: { id: input.clubId }, select: { name: true } })
       const session = await ctx.prisma.playSession.findUnique({
         where: { id: input.sessionId },
-        select: { title: true, date: true, startTime: true, endTime: true, maxPlayers: true, format: true },
+        // externalUrl pulled so the email can link straight to the CR
+        // booking page when sync captured one (2026-05-02).
+        select: { title: true, date: true, startTime: true, endTime: true, maxPlayers: true, format: true, externalUrl: true },
       })
       if (!session) throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found' })
 
@@ -7789,7 +7912,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
               sessionDate,
               sessionTime: `${session.startTime} - ${session.endTime}`,
               spotsLeft,
-              bookingUrl: buildPlatformUrl(`/clubs/${input.clubId}/intelligence/sessions`, requestBaseUrl),
+              // 2026-05-02: prefer CR PublicEventUrl when sync captured
+              // it (one-click direct booking) over generic club page.
+              bookingUrl: (session as any).externalUrl
+                || buildPlatformUrl(`/clubs/${input.clubId}/intelligence/sessions`, requestBaseUrl),
               customSubject: input.subject,
               customMessage: input.body,
             })
@@ -8389,6 +8515,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       clubId: z.string().uuid(),
       weekStartDate: z.string(),
       regeneratePrompt: z.string().max(1000).optional(),
+      selectedPresetIds: z.array(z.enum(PROGRAMMING_IQ_PRESET_IDS)).max(PROGRAMMING_IQ_PRESET_IDS.length).optional(),
+      prioritizeRequest: z.boolean().optional(),
       courtIds: z.array(z.string()).max(50).optional(),
       targetSuggestionCount: z.number().int().min(1).max(100).optional(),
     }))
@@ -8401,11 +8529,19 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 7)
+      const bufferedWeekStart = new Date(weekStart)
+      bufferedWeekStart.setDate(bufferedWeekStart.getDate() - 1)
+      const bufferedWeekEnd = new Date(weekEnd)
+      bufferedWeekEnd.setDate(bufferedWeekEnd.getDate() + 1)
       const since60d = new Date()
       since60d.setDate(since60d.getDate() - 60)
 
-      const [courts, historicalSessions, weekSessions, lastNDaysSessions, preferences, interestRequests] =
+      const [club, courts, historicalSessions, rawWeekSessions, lastNDaysSessions, preferences, interestRequests, followers] =
         await Promise.all([
+          ctx.prisma.club.findUnique({
+            where: { id: input.clubId },
+            select: { automationSettings: true },
+          }),
           ctx.prisma.clubCourt.findMany({
             where: {
               clubId: input.clubId,
@@ -8421,7 +8557,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           ctx.prisma.playSession.findMany({
             where: {
               clubId: input.clubId,
-              date: { gte: weekStart, lt: weekEnd },
+              date: { gte: bufferedWeekStart, lt: bufferedWeekEnd },
               status: { not: 'CANCELLED' },
             },
             select: {
@@ -8434,6 +8570,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
               format: true,
               skillLevel: true,
               maxPlayers: true,
+              registeredCount: true,
               status: true,
             },
           }).catch(() => []),
@@ -8479,7 +8616,29 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             take: 500,
             orderBy: { updatedAt: 'desc' },
           }).catch(() => []),
+          ctx.prisma.clubFollower.findMany({
+            where: { clubId: input.clubId },
+            select: {
+              user: {
+                select: {
+                  skillLevel: true,
+                  dateOfBirth: true,
+                  gender: true,
+                },
+              },
+            },
+            take: 5000,
+          }).catch(() => []),
         ])
+
+      const clubTimezone = (
+        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
+      ) || 'America/New_York'
+      const weekSessions = filterSessionsToProgrammingWeek(
+        rawWeekSessions as Array<{ date: Date | string }>,
+        input.weekStartDate,
+        clubTimezone,
+      )
 
       const explicitUserIds = new Set(
         (preferences as any[]).map((p) => p.userId).filter(Boolean),
@@ -8538,11 +8697,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }
       const enrichedPreferences = [...(preferences as any[]), ...inferredRows]
 
+      const {
+        buildProgrammingAudienceProfileFromMembers,
+      } = await import('@/lib/ai/advisor-programming')
       const { buildWeeklyGrid } = await import('@/lib/ai/programming-iq-scheduler')
-      const club = await ctx.prisma.club.findUnique({
-        where: { id: input.clubId },
-        select: { automationSettings: true },
-      })
       const policySettings = (club?.automationSettings as any)?.contactPolicy
       const inviteCapPerMemberPerWeek = Number(
         policySettings?.inviteCapPerMemberPerWeek ?? policySettings?.weeklyCap ?? 3,
@@ -8561,12 +8719,54 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             '[programming-iq] regenerate LLM threw:',
             err?.message?.slice(0, 160),
           )
+          // Bug-fix 2026-05-01: previously the wrap-around try/catch
+          // swallowed every LLM error and left regenerateHint=null,
+          // which broke the heuristic graceful-degradation path that
+          // interpretRegeneratePrompt itself implements (it falls back
+          // to buildHeuristicHintFromPrompt on known LLM failures, but
+          // the outer catch fires first on network/timeout/runtime
+          // throws). Now we explicitly call the heuristic on the catch
+          // path so admins typing "less open play" still get keyword-
+          // matched boost/penalize hints even when OpenAI is down.
+          try {
+            const { buildHeuristicHintFromPrompt } = await import('@/lib/ai/programming-iq-regenerate')
+            regenerateHint = buildHeuristicHintFromPrompt(input.regeneratePrompt)
+          } catch (heuristicErr: any) {
+            log.warn(
+              '[programming-iq] heuristic hint fallback also failed:',
+              heuristicErr?.message?.slice(0, 160),
+            )
+          }
         }
       }
 
-      const clubTimezone = (
-        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
-      ) || 'America/New_York'
+      const audienceProfile = buildProgrammingAudienceProfileFromMembers(
+        (followers as Array<{ user?: { skillLevel?: string | null; dateOfBirth?: Date | null; gender?: string | null } | null }>)
+          .flatMap((follower) => follower.user ? [follower.user] : []),
+      )
+
+      const existingProgrammingDrafts = await (ctx.prisma as any).opsSessionDraft.findMany({
+        where: {
+          clubId: input.clubId,
+          origin: 'programming_iq',
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+          publishedPlaySessionId: null,
+        },
+        select: {
+          dayOfWeek: true,
+          startTime: true,
+          format: true,
+          skillLevel: true,
+          metadata: true,
+        },
+        take: 200,
+      }).catch(() => [])
+
+      const previousSuggestionSignatures = !input.regeneratePrompt?.trim()
+        ? (existingProgrammingDrafts as any[])
+          .filter((draft) => (draft.metadata as any)?.weekStartDate === input.weekStartDate)
+          .map((draft) => `${draft.dayOfWeek}__${draft.startTime}__${draft.format}__${draft.skillLevel}`)
+        : []
 
       const grid = buildWeeklyGrid({
         weekStartDate: weekStart,
@@ -8576,10 +8776,15 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         lastNDaysSessions: lastNDaysSessions as any,
         preferences: enrichedPreferences as any,
         interestRequests: interestRequests as any,
+        audienceProfile,
         contactPolicy: { inviteCapPerMemberPerWeek },
         targetSuggestionCount: input.targetSuggestionCount,
         regeneratePrompt: input.regeneratePrompt,
         regenerateHint,
+        selectedPresetIds: input.selectedPresetIds,
+        inferredPresetIds: regenerateHint?.inferredPresets || [],
+        prioritizeRequest: input.prioritizeRequest,
+        previousSuggestionSignatures,
         timezone: clubTimezone,
       })
 
@@ -8590,14 +8795,35 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         ]
       }
 
-      await (ctx.prisma as any).opsSessionDraft.deleteMany({
+      // Bug-fix 2026-05-01: previously this deleted ALL programming_iq
+      // drafts for the club regardless of which week they belonged to.
+      // That meant Generate-on-week-B silently nuked week-A's pending
+      // drafts, including any SESSION_DRAFT rows the admin had already
+      // Accepted via Live Review. Now mirrors the per-week filter from
+      // clearProgrammingScheduleDrafts (line ~8959): query first, filter
+      // by metadata.weekStartDate in JS (Prisma can't `where` on JSON
+      // path consistently across Postgres versions), then delete only
+      // the matching ids.
+      const draftsForWeek = await (ctx.prisma as any).opsSessionDraft.findMany({
         where: {
           clubId: input.clubId,
           status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
           origin: 'programming_iq',
           publishedPlaySessionId: null,
         },
-      }).catch(() => ({ count: 0 }))
+        select: { id: true, metadata: true },
+        take: 500,
+      }).catch(() => [])
+
+      const idsToDelete = (draftsForWeek as any[])
+        .filter((draft) => (draft.metadata as any)?.weekStartDate === input.weekStartDate)
+        .map((draft) => draft.id)
+
+      if (idsToDelete.length > 0) {
+        await (ctx.prisma as any).opsSessionDraft.deleteMany({
+          where: { clubId: input.clubId, id: { in: idsToDelete } },
+        }).catch(() => ({ count: 0 }))
+      }
 
       const carrierDraft = await ctx.prisma.agentDraft.create({
         data: {
@@ -8614,18 +8840,26 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             clubId: input.clubId,
             weekStartDate: input.weekStartDate,
             regeneratePrompt: input.regeneratePrompt || null,
+            selectedPresetIds: input.selectedPresetIds || [],
+            prioritizeRequest: !!input.prioritizeRequest,
           },
           workingAction: {
             kind: 'program_schedule',
             clubId: input.clubId,
             weekStartDate: input.weekStartDate,
             regeneratePrompt: input.regeneratePrompt || null,
+            selectedPresetIds: input.selectedPresetIds || [],
+            prioritizeRequest: !!input.prioritizeRequest,
           },
           sandboxMode: false,
           metadata: {
             source: 'programming_iq',
             weekStartDate: input.weekStartDate,
             generationId: grid.generationId,
+            selectedPresetIds: input.selectedPresetIds || [],
+            inferredPresetIds: regenerateHint?.inferredPresets || [],
+            prioritizeRequest: !!input.prioritizeRequest,
+            summary: grid.summary,
           },
         } as any,
         select: { id: true },
@@ -8633,7 +8867,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
       const draftRows: any[] = []
       for (const cell of grid.cells) {
-        if (cell.kind !== 'suggested') continue
+        if (cell.kind === 'live' || cell.kind === 'empty') continue
         const row = await (ctx.prisma as any).opsSessionDraft.create({
           data: {
             clubId: input.clubId,
@@ -8654,13 +8888,19 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             estimatedInterestedMembers: cell.estimatedInterestedMembers || 0,
             confidence: cell.confidence || 50,
             note: (cell.rationale || []).join(' · ').slice(0, 1000),
-            courtId: cell.courtId,
+            courtId: cell.courtId || null,
             generationId: grid.generationId,
             metadata: {
               weekStartDate: input.weekStartDate,
               rationale: cell.rationale || [],
               warnings: cell.warnings || [],
               origin: 'programming_iq',
+              cellKind: cell.kind,
+              requestedByAdmin: !!cell.requestedByAdmin,
+              requestEvaluation: cell.requestEvaluation || null,
+              liveOptimization: cell.liveOptimization || null,
+              selectedPresetIds: input.selectedPresetIds || [],
+              inferredPresetIds: regenerateHint?.inferredPresets || [],
             },
           },
         }).catch((err: any) => {
@@ -8687,6 +8927,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           weekStartDate: input.weekStartDate,
           stats: grid.stats,
           regeneratePrompt: input.regeneratePrompt || null,
+          selectedPresetIds: input.selectedPresetIds || [],
+          inferredPresetIds: regenerateHint?.inferredPresets || [],
+          prioritizeRequest: !!input.prioritizeRequest,
+          summary: grid.summary,
         },
       })
 
@@ -8710,8 +8954,16 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }
       const weekEnd = new Date(weekStart)
       weekEnd.setDate(weekEnd.getDate() + 7)
+      const bufferedWeekStart = new Date(weekStart)
+      bufferedWeekStart.setDate(bufferedWeekStart.getDate() - 1)
+      const bufferedWeekEnd = new Date(weekEnd)
+      bufferedWeekEnd.setDate(bufferedWeekEnd.getDate() + 1)
 
-      const [courts, liveSessions, drafts, memberCount] = await Promise.all([
+      const [club, courts, rawLiveSessions, drafts, memberCount] = await Promise.all([
+        ctx.prisma.club.findUnique({
+          where: { id: input.clubId },
+          select: { automationSettings: true },
+        }),
         ctx.prisma.clubCourt.findMany({
           where: { clubId: input.clubId },
           select: { id: true, name: true, isIndoor: true, isActive: true },
@@ -8720,7 +8972,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         ctx.prisma.playSession.findMany({
           where: {
             clubId: input.clubId,
-            date: { gte: weekStart, lt: weekEnd },
+            date: { gte: bufferedWeekStart, lt: bufferedWeekEnd },
             status: { not: 'CANCELLED' },
           },
           select: {
@@ -8754,11 +9006,90 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         }).catch(() => 0),
       ])
 
+      const timezone = (
+        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
+      ) || 'America/New_York'
+      const liveSessions = filterSessionsToProgrammingWeek(
+        rawLiveSessions as Array<{ date: Date | string }>,
+        input.weekStartDate,
+        timezone,
+      )
+
+      // Bug-fix 2026-05-01: previously this only filtered by
+      // metadata.weekStartDate. If two tabs hit Generate within ~1s,
+      // tab A's create-loop is interleaved with tab B's delete + create
+      // — both generations' drafts can persist briefly. The user then
+      // sees an unstable mix of "old" and "new" drafts in the grid.
+      // Fix: keep only drafts from the LATEST agentDraftId for this
+      // week (drafts are ordered by createdAt DESC by the query
+      // upstream, so the first draft we encounter for the requested
+      // week names the winning generation).
+      let latestGenerationAgentDraftId: string | null = null
+      const visibleDrafts = (drafts as any[]).filter((draft) => {
+        const draftWeekStart = (draft.metadata as any)?.weekStartDate
+        if (draftWeekStart && draftWeekStart !== input.weekStartDate) {
+          return false
+        }
+        const reviewDecision = (draft.metadata as any)?.liveOptimizationReviewDecision
+        if (reviewDecision === 'declined') return false
+        // Lock onto the first (most recent) agentDraftId we see for
+        // this week. Drafts from prior generations are filtered out so
+        // the UI never shows interleaved old/new state.
+        if (!latestGenerationAgentDraftId && draft.agentDraftId) {
+          latestGenerationAgentDraftId = draft.agentDraftId
+        }
+        if (
+          latestGenerationAgentDraftId
+          && draft.agentDraftId
+          && draft.agentDraftId !== latestGenerationAgentDraftId
+        ) {
+          return false
+        }
+        return true
+      })
+      const bestLiveOptimizationBySessionId = new Map<string, any>()
+      const acceptedLiveOptimizationSessionIds = new Set<string>()
+      for (const draft of visibleDrafts) {
+        const optimization = (draft.metadata as any)?.liveOptimization
+        const liveSessionId = optimization?.liveSessionId || optimization?.before?.id
+        if (!liveSessionId) continue
+        const reviewDecision = (draft.metadata as any)?.liveOptimizationReviewDecision
+        const isPlaceableDraft = Boolean(draft.courtId)
+        if (!isPlaceableDraft) continue
+        const enrichedOptimization = {
+          ...optimization,
+          draftId: draft.id,
+          reviewDecision: reviewDecision || null,
+        }
+        if (reviewDecision === 'accepted') {
+          acceptedLiveOptimizationSessionIds.add(liveSessionId)
+        }
+        const existing = bestLiveOptimizationBySessionId.get(liveSessionId)
+        const existingAccepted = existing?.reviewDecision === 'accepted'
+        const nextAccepted = reviewDecision === 'accepted'
+        if (
+          !existing ||
+          (nextAccepted && !existingAccepted) ||
+          (nextAccepted === existingAccepted && Number(optimization?.scoreDelta || 0) > Number(existing?.scoreDelta || 0))
+        ) {
+          bestLiveOptimizationBySessionId.set(liveSessionId, enrichedOptimization)
+        }
+      }
+      const enrichedLiveSessions = (liveSessions as any[])
+        .filter((session) => !acceptedLiveOptimizationSessionIds.has(session.id))
+        .map((session) => ({
+          ...session,
+          metadata: bestLiveOptimizationBySessionId.has(session.id)
+            ? { liveOptimization: bestLiveOptimizationBySessionId.get(session.id) }
+            : null,
+        }))
+
       return {
         courts,
-        liveSessions,
-        drafts,
+        liveSessions: enrichedLiveSessions,
+        drafts: visibleDrafts,
         memberCount,
+        timezone,
       }
     }),
 
@@ -8790,6 +9121,157 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       return { ok: true, draft: updated }
     }),
 
+  acceptProgrammingLiveReview: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const draft = await (ctx.prisma as any).opsSessionDraft.findFirst({
+        where: {
+          id: input.draftId,
+          clubId: input.clubId,
+          origin: 'programming_iq',
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+        },
+        select: {
+          id: true,
+          status: true,
+          title: true,
+          dayOfWeek: true,
+          startTime: true,
+          endTime: true,
+          sessionDraftedAt: true,
+          metadata: true,
+        },
+      }).catch(() => null)
+
+      if (!draft) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Review suggestion not found.' })
+      }
+
+      const existingMetadata = ((draft.metadata as any) || {}) as Record<string, any>
+      const liveOptimization = existingMetadata.liveOptimization || null
+      const liveSessionId = liveOptimization?.liveSessionId || liveOptimization?.before?.id
+      if (!liveOptimization || !liveSessionId) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'This suggestion is not linked to a live-session review.' })
+      }
+
+      const nextMetadata = {
+        ...existingMetadata,
+        liveOptimizationReviewDecision: 'accepted',
+        liveOptimizationReviewedAt: new Date().toISOString(),
+        liveOptimizationReviewedByUserId: ctx.session.user.id,
+      }
+
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: {
+          status: 'SESSION_DRAFT',
+          sessionDraftedAt: draft.sessionDraftedAt || new Date(),
+          metadata: nextMetadata,
+        },
+      }).catch((err: any) => {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Could not accept review suggestion: ${err?.message?.slice(0, 120) || 'unknown'}`,
+        })
+      })
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'programmingIqAcceptLiveReview',
+        targetType: 'ops_session_draft',
+        targetId: input.draftId,
+        mode: 'draft',
+        result: 'executed',
+        summary: `Accepted review suggestion for ${draft.title} (${draft.dayOfWeek} ${draft.startTime}–${draft.endTime}) in Programming IQ.`,
+        metadata: {
+          draftId: input.draftId,
+          liveSessionId,
+          reviewDecision: 'accepted',
+        },
+      })
+
+      return { ok: true, draft: updated, liveSessionId }
+    }),
+
+  declineProgrammingLiveReview: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      draftId: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const draft = await (ctx.prisma as any).opsSessionDraft.findFirst({
+        where: {
+          id: input.draftId,
+          clubId: input.clubId,
+          origin: 'programming_iq',
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+        },
+        select: {
+          id: true,
+          title: true,
+          dayOfWeek: true,
+          startTime: true,
+          endTime: true,
+          metadata: true,
+        },
+      }).catch(() => null)
+
+      if (!draft) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Review suggestion not found.' })
+      }
+
+      const existingMetadata = ((draft.metadata as any) || {}) as Record<string, any>
+      const liveOptimization = existingMetadata.liveOptimization || null
+      const liveSessionId = liveOptimization?.liveSessionId || liveOptimization?.before?.id || null
+
+      const nextMetadata = {
+        ...existingMetadata,
+        liveOptimizationReviewDecision: 'declined',
+        liveOptimizationReviewedAt: new Date().toISOString(),
+        liveOptimizationReviewedByUserId: ctx.session.user.id,
+      }
+
+      const updated = await (ctx.prisma as any).opsSessionDraft.update({
+        where: { id: input.draftId },
+        data: {
+          status: 'REJECTED',
+          archivedAt: new Date(),
+          metadata: nextMetadata,
+        },
+      }).catch((err: any) => {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Could not decline review suggestion: ${err?.message?.slice(0, 120) || 'unknown'}`,
+        })
+      })
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'programmingIqDeclineLiveReview',
+        targetType: 'ops_session_draft',
+        targetId: input.draftId,
+        mode: 'draft',
+        result: 'executed',
+        summary: `Declined review suggestion for ${draft.title} (${draft.dayOfWeek} ${draft.startTime}–${draft.endTime}) in Programming IQ.`,
+        metadata: {
+          draftId: input.draftId,
+          liveSessionId,
+          reviewDecision: 'declined',
+        },
+      })
+
+      return { ok: true, draft: updated, liveSessionId }
+    }),
+
   bulkApproveProgrammingGrid: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
@@ -8811,6 +9293,61 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       return { ok: true, approved: result.count }
     }),
 
+  clearProgrammingScheduleDrafts: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      weekStartDate: z.string(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const drafts = await (ctx.prisma as any).opsSessionDraft.findMany({
+        where: {
+          clubId: input.clubId,
+          origin: 'programming_iq',
+          status: { in: ['READY_FOR_OPS', 'SESSION_DRAFT'] },
+          publishedPlaySessionId: null,
+        },
+        select: {
+          id: true,
+          metadata: true,
+        },
+        take: 500,
+      }).catch(() => [])
+
+      const idsToDelete = (drafts as any[])
+        .filter((draft) => (draft.metadata as any)?.weekStartDate === input.weekStartDate)
+        .map((draft) => draft.id)
+
+      if (idsToDelete.length === 0) {
+        return { ok: true, cleared: 0 }
+      }
+
+      const result = await (ctx.prisma as any).opsSessionDraft.deleteMany({
+        where: {
+          clubId: input.clubId,
+          id: { in: idsToDelete },
+        },
+      }).catch(() => ({ count: 0 }))
+
+      await persistAgentDecisionRecord(ctx.prisma, {
+        clubId: input.clubId,
+        userId: ctx.session.user.id,
+        action: 'programmingIqClear',
+        targetType: 'programming_generation',
+        targetId: input.weekStartDate,
+        mode: 'draft',
+        result: 'executed',
+        summary: `Cleared ${result.count} programming suggestions for week ${input.weekStartDate}`,
+        metadata: {
+          weekStartDate: input.weekStartDate,
+          clearedDraftIds: idsToDelete,
+        },
+      })
+
+      return { ok: true, cleared: result.count }
+    }),
+
   publishProgrammingGrid: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
@@ -8821,7 +9358,29 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const weekStart = new Date(input.weekStartDate)
+      // Bug-fix 2026-05-01: previously this did `new Date(weekStartDate)`
+      // which parses YYYY-MM-DD as UTC midnight, then `setDate(+offset)`
+      // mutated in *server-local* timezone. On a UTC server crossing
+      // DST or past local midnight, the resulting `sessionDate` lands
+      // on the wrong calendar day — e.g. Wednesday's draft published as
+      // Tuesday. The rest of the Programming IQ pipeline carefully
+      // threads club timezone through (`scheduler.ts:333-372`); only
+      // this publish path was using runtime-local math.
+      //
+      // Fix: parse YYYY-MM-DD parts explicitly + use Date.UTC to
+      // construct an unambiguous UTC midnight. setUTCDate then stays in
+      // UTC. PlaySession.date already follows the convention "UTC
+      // midnight representing wall-clock day in club TZ" everywhere
+      // else in this codebase (filterSessionsToProgrammingWeek, etc.).
+      const dateParts = input.weekStartDate.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+      if (!dateParts) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'weekStartDate must be YYYY-MM-DD' })
+      }
+      const weekStart = new Date(Date.UTC(
+        Number(dateParts[1]),
+        Number(dateParts[2]) - 1,
+        Number(dateParts[3]),
+      ))
       if (Number.isNaN(weekStart.getTime())) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid weekStartDate' })
       }
@@ -8862,7 +9421,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
         const offset = DAY_OFFSET[draft.dayOfWeek] ?? 0
         const sessionDate = new Date(weekStart)
-        sessionDate.setDate(sessionDate.getDate() + offset)
+        sessionDate.setUTCDate(sessionDate.getUTCDate() + offset)
 
         const conflict = await ctx.prisma.playSession.findFirst({
           where: {
@@ -9595,7 +10154,6 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
       return { ok: true, fulfilledAt: merged.fulfilledAt }
     }),
-
   // P2-T5 — Members AI Insight ribbon (rules-based v1).
   //
   // Returns at most one insight ranked by confidence/$-impact.
@@ -9692,38 +10250,49 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      // P2-T9: real Campaign query (was stubbed return []). Active = anything
-      // that isn't `draft` or `completed` — the surface admins want to see
-      // before/while campaigns are doing work.
+      // Return both active and finished rows; the frontend splits them into
+      // "Active Campaigns" and expandable "Campaign History".
       const rows = await ctx.prisma.campaign.findMany({
-        where: { clubId: input.clubId, status: { in: ['running', 'scheduled', 'paused'] } },
+        where: { clubId: input.clubId, status: { in: ['running', 'scheduled', 'paused', 'completed', 'failed'] } },
         orderBy: { createdAt: 'desc' },
-        include: { cohort: { select: { name: true } } },
+        select: {
+          id: true,
+          name: true,
+          cohortId: true,
+          channels: true,
+          sentCount: true,
+          deliveredCount: true,
+          openedCount: true,
+          attribution: true,
+          status: true,
+          launchedAt: true,
+          scheduledAt: true,
+          completedAt: true,
+          createdAt: true,
+          cohortSnapshot: true,
+          cohort: { select: { name: true } },
+        },
       })
       return rows.map((c: any) => {
+        const snapshot = (c.cohortSnapshot as Record<string, unknown> | null) || {}
         const channelArr = Array.isArray(c.channels) ? c.channels : []
         const channel: 'email' | 'sms' | 'email+sms' = channelArr.includes('email') && channelArr.includes('sms')
           ? 'email+sms'
           : channelArr.includes('sms') ? 'sms' : 'email'
         const attribution = (c.attribution as any) || {}
         const openRate = c.deliveredCount > 0 ? c.openedCount / c.deliveredCount : 0
-        // Sequence metadata for the Active Campaigns table:
-        //   - format='sequence' lets the UI render a different progress indicator
-        //   - totalSteps is the length of the steps[] array (1 for one_time)
-        const stepsArr: any[] = Array.isArray(c.steps) ? c.steps : []
-        const totalSteps = c.format === 'sequence' && stepsArr.length > 0 ? stepsArr.length : 1
-        // Recurring metadata: human-readable description from the cron
-        // expression. Skips exact next-run calculation in MVP — that
-        // requires full IANA tz arithmetic and the description is
-        // already enough context for the admin.
-        const recurringDescription = c.format === 'recurring' && c.cronExpression
-          ? describeRecurringCron(c.cronExpression, c.recurringTimezone || 'UTC')
+        const sendFormat = typeof snapshot.sendFormat === 'string' ? snapshot.sendFormat : 'one_time'
+        const stepsArr: any[] = Array.isArray(snapshot.steps) ? snapshot.steps : []
+        const totalSteps = sendFormat === 'sequence' && stepsArr.length > 0 ? stepsArr.length : 1
+        const recurringTimezone = typeof snapshot.recurringTimezone === 'string' ? snapshot.recurringTimezone : null
+        const recurringDescription = sendFormat === 'recurring' && typeof snapshot.cronExpression === 'string'
+          ? describeRecurringCron(snapshot.cronExpression, recurringTimezone || 'UTC')
           : null
         return {
           id: c.id,
           name: c.name,
           cohortId: c.cohortId,
-          cohortName: c.cohort?.name ?? null,
+          cohortName: c.cohort?.name ?? (typeof snapshot.cohortName === 'string' ? snapshot.cohortName : null),
           channel,
           sentCount: c.sentCount,
           deliveredCount: c.deliveredCount,
@@ -9731,15 +10300,134 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           openRate,
           bookedCount: Number(attribution.booked_count ?? 0),
           bookedRevenueCents: Number(attribution.booked_revenue_cents ?? 0),
-          status: c.status as 'draft' | 'scheduled' | 'running' | 'paused' | 'completed',
+          status: c.status as 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed',
+          sendFormat: sendFormat as 'one_time' | 'sequence' | 'recurring',
+          createdAt: c.createdAt,
           startedAt: c.launchedAt ?? c.scheduledAt,
-          format: (c.format ?? 'one_time') as 'one_time' | 'sequence' | 'recurring',
           totalSteps,
           recurringDescription,
-          recurringTimezone: c.recurringTimezone ?? null,
-          lastRecurringRun: c.lastRecurringRun ?? null,
+          completedAt: c.completedAt,
+          recurringTimezone,
         }
       })
+    }),
+
+  toggleCampaignPause: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      campaignId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const campaign = await ctx.prisma.campaign.findFirst({
+        where: { id: input.campaignId, clubId: input.clubId },
+        select: {
+          id: true,
+          status: true,
+          scheduledAt: true,
+          cohortSnapshot: true,
+        },
+      })
+
+      if (!campaign) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
+      }
+
+      const snapshot = (campaign.cohortSnapshot as Record<string, unknown> | null) || {}
+      const sendFormat = typeof snapshot.sendFormat === 'string' ? snapshot.sendFormat : 'one_time'
+      if (sendFormat === 'one_time') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only repeating campaigns can be paused.' })
+      }
+
+      const now = new Date()
+      if (campaign.status === 'paused') {
+        const rawResumeStatus = typeof snapshot.pauseResumeStatus === 'string' ? snapshot.pauseResumeStatus : null
+        const computedResumeStatus = rawResumeStatus === 'scheduled' || rawResumeStatus === 'running'
+          ? rawResumeStatus
+          : (campaign.scheduledAt && campaign.scheduledAt.getTime() > now.getTime() ? 'scheduled' : 'running')
+        const nextStatus = computedResumeStatus === 'scheduled' && campaign.scheduledAt && campaign.scheduledAt.getTime() <= now.getTime()
+          ? 'running'
+          : computedResumeStatus
+
+        const updated = await ctx.prisma.campaign.update({
+          where: { id: campaign.id },
+          select: { id: true, status: true },
+          data: {
+            status: nextStatus,
+            cohortSnapshot: {
+              ...snapshot,
+              pauseResumeStatus: null,
+              resumedAt: now.toISOString(),
+            } as any,
+          },
+        })
+
+        return { id: updated.id, status: updated.status }
+      }
+
+      if (campaign.status !== 'running' && campaign.status !== 'scheduled') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only running or scheduled campaigns can be paused.' })
+      }
+
+      const updated = await ctx.prisma.campaign.update({
+        where: { id: campaign.id },
+        select: { id: true, status: true },
+        data: {
+          status: 'paused',
+          cohortSnapshot: {
+            ...snapshot,
+            pauseResumeStatus: campaign.status,
+            pausedAt: now.toISOString(),
+          } as any,
+        },
+      })
+
+      return { id: updated.id, status: updated.status }
+    }),
+
+  stopCampaign: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      campaignId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const campaign = await ctx.prisma.campaign.findFirst({
+        where: { id: input.campaignId, clubId: input.clubId },
+        select: {
+          id: true,
+          status: true,
+          cohortSnapshot: true,
+        },
+      })
+
+      if (!campaign) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
+      }
+
+      if (!['running', 'scheduled', 'paused'].includes(campaign.status)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only active campaigns can be stopped.' })
+      }
+
+      const now = new Date()
+      const snapshot = (campaign.cohortSnapshot as Record<string, unknown> | null) || {}
+      const updated = await ctx.prisma.campaign.update({
+        where: { id: campaign.id },
+        select: { id: true, status: true },
+        data: {
+          status: 'completed',
+          completedAt: now,
+          cohortSnapshot: {
+            ...snapshot,
+            stoppedAt: now.toISOString(),
+            stoppedByUserId: ctx.session.user.id,
+          } as any,
+        },
+      })
+
+      return { id: updated.id, status: updated.status }
     }),
 
   /**
@@ -9747,9 +10435,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
    *
    * Resolves the audience to a frozen list of userIds (either from a saved
    * cohort's filters, an AI-suggested cohort's userIds payload, or hand-picked
-   * inline ids), creates a Campaign row, and returns its id. The actual
-   * outbound sends are performed by the campaign-sends cron in Priority-1.2;
-   * this mutation only persists intent.
+   * inline ids), creates a Campaign row, and returns its id. "Send now"
+   * campaigns are dispatched immediately after the row is created; scheduled
+   * campaigns are picked up later by the campaign-sends cron.
    *
    * Status logic:
    *   - scheduledAt in the future → status='scheduled'
@@ -9894,8 +10582,24 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const scheduledDate = input.scheduledAt ? new Date(input.scheduledAt) : null
       const isFuture = scheduledDate ? scheduledDate.getTime() > now.getTime() : false
       const status = isFuture ? 'scheduled' : 'running'
+      const campaignSnapshot = {
+        userIds: recipientIds,
+        cohortName: resolvedCohortName,
+        sendFormat: input.format,
+        rendered_at: now.toISOString(),
+        ...(input.steps?.length ? { steps: input.steps } : {}),
+        ...(input.format === 'sequence' ? { exitOnBooking: input.exitOnBooking ?? true } : {}),
+        ...(input.format === 'recurring' && input.cronExpression ? { cronExpression: input.cronExpression.trim() } : {}),
+        ...(input.format === 'recurring' ? { recurringTimezone: input.recurringTimezone ?? 'UTC' } : {}),
+        ...(input.ctaLabel ? { ctaLabel: input.ctaLabel } : {}),
+        ...(input.ctaUrl ? { ctaUrl: input.ctaUrl } : {}),
+      }
 
       const campaign = await ctx.prisma.campaign.create({
+        select: {
+          id: true,
+          status: true,
+        },
         data: {
           clubId: input.clubId,
           cohortId: resolvedCohortId,
@@ -9905,181 +10609,33 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           subject: input.subject,
           body: input.body,
           channels: input.channels,
-          ctaLabel: input.ctaLabel,
-          ctaUrl: input.ctaUrl,
-          format: input.format,
-          // For one_time: persist NULL. For sequence: array of step objects.
-          // The sequence runner reads from this; the cron picks step[log.sequenceStep].
-          steps: input.format === 'sequence' ? (input.steps as any) : undefined,
-          // Mirror Tier 1 conditional follow-up behaviour. Only meaningful
-          // for sequences; harmless for one-time (runner won't read it).
-          exitOnBooking: input.format === 'sequence' ? (input.exitOnBooking ?? true) : true,
-          // Recurring schedule — runner reads these at each tick.
-          cronExpression: input.format === 'recurring' ? input.cronExpression!.trim() : undefined,
-          recurringTimezone: input.format === 'recurring' ? (input.recurringTimezone ?? 'UTC') : undefined,
           status,
           scheduledAt: scheduledDate,
           launchedAt: status === 'running' ? now : null,
           // Frozen audience snapshot — the send queue reads userIds from here,
           // so cohort filter changes after launch don't affect this campaign.
-          cohortSnapshot: {
-            userIds: recipientIds,
-            cohortName: resolvedCohortName,
-            rendered_at: now.toISOString(),
-          } as any,
+          cohortSnapshot: campaignSnapshot as any,
         },
       })
 
-      // P1.2: eager fan-out — one ai_recommendation_logs row per recipient.
-      // Created with status='pending' and sent_at=null; the per-minute
-      // campaign-sends cron claims them in batches via atomic UPDATE
-      // (see app/api/cron/campaign-sends/route.ts).
-      //
-      // We fan out unconditionally — even if status='scheduled' the rows
-      // exist immediately so progress is visible from the moment the
-      // admin clicks Launch. The cron is gated by status='running' AND
-      // scheduledAt <= now, so scheduled campaigns won't dispatch early.
-      //
-      // Picking a primary channel: if 'email' is in channels we use it,
-      // otherwise 'sms'. Multi-channel sends will fan out one log per
-      // (userId × channel) once SMS sender lands — for P1.2 only the
-      // primary channel ships.
-      const primaryChannel = input.channels.includes('email') ? 'email' : 'sms'
-      // For sequence campaigns we only fan out Step 1 (sequenceStep=0) at
-      // launch — the runner will create logs for steps 1+ as each step's
-      // delay elapses for each recipient. This keeps the row count bounded
-      // and lets the runner respect exitOnBooking + survey-response exits.
-      // For one-time campaigns sequenceStep stays NULL (back-compat).
-      // For recurring campaigns we DON'T eager-fan-out — the runner
-      // re-evaluates the cohort on each tick and creates fresh logs then.
-      const isSequence = input.format === 'sequence'
-      const isRecurring = input.format === 'recurring'
-      if (!isRecurring) {
-        await ctx.prisma.aIRecommendationLog.createMany({
-          data: recipientIds.map((userId) => ({
-            clubId: input.clubId,
-            userId,
-            type: 'CAMPAIGN_SEND' as const,
-            channel: primaryChannel,
-            status: 'pending',
-            campaignId: campaign.id,
-            ...(isSequence ? { sequenceStep: 0 } : {}),
-            // Reasoning carries enough context for the webhook ingest /
-            // attribution pipeline to look up the campaign without an extra
-            // join (we already correlate via campaignId, this is for logs).
-            reasoning: {
-              campaignName: input.name,
-              goal: input.goal,
-              ...(isSequence ? { totalSteps: input.steps!.length } : {}),
-            },
-          })),
-          skipDuplicates: true,
-        })
+      // Send-now campaigns should actually dispatch before we return so the
+      // wizard reflects the real status. Future sends stay queued for cron.
+      let finalStatus = campaign.status
+      if (input.format === 'one_time' && !isFuture) {
+        const queueResult = await processCampaignSendQueue(ctx.prisma, { campaignId: campaign.id })
+        const processedCampaign = queueResult.campaigns.find((entry) => entry.id === campaign.id)
+        if (processedCampaign?.status) {
+          finalStatus = processedCampaign.status
+        }
       }
 
       return {
         campaignId: campaign.id,
         recipientCount: recipientIds.length,
-        status: campaign.status,
-        format: campaign.format,
-        totalSteps: isSequence ? input.steps!.length : 1,
+        status: finalStatus,
+        format: input.format,
+        totalSteps: input.format === 'sequence' ? (input.steps?.length ?? 1) : 1,
       }
-    }),
-
-  /**
-   * R5 — Pause / Resume for an active campaign.
-   *
-   * Pausing flips status='running'|'scheduled' → 'paused'. The cron
-   * skips any campaign that isn't 'running', so paused campaigns
-   * don't dispatch (one_time, sequence) and don't fan out new ticks
-   * (recurring). Resuming flips back to 'running' and the next cron
-   * tick picks up where it left off.
-   *
-   * Idempotent: calling pause on an already-paused campaign is a no-op
-   * (returns the current row unchanged).
-   */
-  pauseCampaign: protectedProcedure
-    .input(z.object({ clubId: z.string().uuid(), campaignId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const c = await ctx.prisma.campaign.findUnique({
-        where: { id: input.campaignId },
-        select: { id: true, clubId: true, status: true },
-      })
-      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
-      if (c.clubId !== input.clubId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Campaign does not belong to this club' })
-      }
-      if (c.status !== 'running' && c.status !== 'scheduled') {
-        return { id: c.id, status: c.status, changed: false }
-      }
-      const updated = await ctx.prisma.campaign.update({
-        where: { id: input.campaignId },
-        data: { status: 'paused' },
-      })
-      return { id: updated.id, status: updated.status, changed: true }
-    }),
-
-  resumeCampaign: protectedProcedure
-    .input(z.object({ clubId: z.string().uuid(), campaignId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const c = await ctx.prisma.campaign.findUnique({
-        where: { id: input.campaignId },
-        select: { id: true, clubId: true, status: true, scheduledAt: true },
-      })
-      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
-      if (c.clubId !== input.clubId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Campaign does not belong to this club' })
-      }
-      if (c.status !== 'paused') {
-        return { id: c.id, status: c.status, changed: false }
-      }
-      // If scheduledAt is still in the future, restore 'scheduled';
-      // otherwise 'running'. The cron's status filter handles either.
-      const now = new Date()
-      const isFuture = c.scheduledAt ? c.scheduledAt.getTime() > now.getTime() : false
-      const updated = await ctx.prisma.campaign.update({
-        where: { id: input.campaignId },
-        data: { status: isFuture ? 'scheduled' : 'running' },
-      })
-      return { id: updated.id, status: updated.status, changed: true }
-    }),
-
-  /**
-   * Stop a campaign permanently — admin clicked the red Stop button after
-   * confirming. Unlike pause, this is a one-way trip: status='completed'
-   * and completedAt=now. The cron's status filter (`'running'`) means
-   * stopped campaigns no longer dispatch, no longer fan out next steps
-   * (sequence) or recurring ticks.
-   *
-   * Pending logs stay in the table with sent_at=NULL — they're orphaned
-   * but harmless. A future cleanup pass can mark them bouncedAt with
-   * bounceType='campaign_stopped' for accounting clarity. For MVP we
-   * leave them as-is.
-   *
-   * Idempotent: stopping an already-completed campaign returns unchanged.
-   */
-  stopCampaign: protectedProcedure
-    .input(z.object({ clubId: z.string().uuid(), campaignId: z.string().uuid() }))
-    .mutation(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const c = await ctx.prisma.campaign.findUnique({
-        where: { id: input.campaignId },
-        select: { id: true, clubId: true, status: true },
-      })
-      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
-      if (c.clubId !== input.clubId) {
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Campaign does not belong to this club' })
-      }
-      if (c.status === 'completed' || c.status === 'failed') {
-        return { id: c.id, status: c.status, changed: false }
-      }
-      const updated = await ctx.prisma.campaign.update({
-        where: { id: input.campaignId },
-        data: { status: 'completed', completedAt: new Date() },
-      })
-      return { id: updated.id, status: updated.status, changed: true }
     }),
 
   /**

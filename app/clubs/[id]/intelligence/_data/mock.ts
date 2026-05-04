@@ -1496,6 +1496,7 @@ export function mockProgrammingGrid(weekStartDate: string) {
       title: 'Intermediate Clinic',
       format: 'CLINIC', skillLevel: 'INTERMEDIATE',
       maxPlayers: 6, registeredCount: 6,
+      metadata: null,
     },
     {
       id: 'demo-live-sat-league', clubId: MOCK_DEMO_CLUB_ID,
@@ -1504,7 +1505,37 @@ export function mockProgrammingGrid(weekStartDate: string) {
       startTime: '09:00', endTime: '10:30',
       title: '4.0 League',
       format: 'LEAGUE_PLAY', skillLevel: 'ADVANCED',
-      maxPlayers: 8, registeredCount: 8,
+      maxPlayers: 8, registeredCount: 4,
+      metadata: {
+        liveOptimization: {
+          type: 'move',
+          liveSessionId: 'demo-live-sat-league',
+          currentScore: 58,
+          scoreDelta: 17,
+          summary: 'Move this live session to Tuesday evening for a stronger fit.',
+          reasons: [
+            'Current live session is sitting at 50% occupancy with a weaker demand fit than weekday evening options.',
+            'Tuesday Evening Intermediate Open Play scores better in the weekly model.',
+          ],
+          before: {
+            id: 'demo-live-sat-league',
+            title: '4.0 League',
+            dayOfWeek: 'Saturday',
+            startTime: '09:00',
+            endTime: '10:30',
+            registeredCount: 4,
+            occupancy: 50,
+          },
+          after: {
+            title: 'Tuesday Evening Intermediate Open Play',
+            dayOfWeek: 'Tuesday',
+            startTime: '19:30',
+            endTime: '21:00',
+            projectedOccupancy: 85,
+            confidence: 78,
+          },
+        },
+      },
     },
   ]
 
@@ -1588,6 +1619,44 @@ export function mockProgrammingGrid(weekStartDate: string) {
           '12 Beginner members available in pool',
         ],
         warnings: [],
+        requestedByAdmin: true,
+        requestEvaluation: {
+          verdict: 'viable_with_risks',
+          label: 'Viable with risks',
+          summary: 'Requested idea can work, but it carries noticeable tradeoffs.',
+          reasons: [
+            'Could be placed directly in the calendar.',
+            'Demand is weaker than your strongest evening options.',
+          ],
+          score: 63,
+        },
+        liveOptimization: {
+          type: 'move',
+          liveSessionId: 'demo-live-sat-league',
+          currentScore: 58,
+          scoreDelta: 17,
+          summary: 'Move this live session to Tuesday evening for a stronger fit.',
+          reasons: [
+            'Current live session is sitting at 50% occupancy with a weaker demand fit than weekday evening options.',
+            'Tuesday Evening Intermediate Open Play scores better in the weekly model.',
+          ],
+          before: {
+            title: '4.0 League',
+            dayOfWeek: 'Saturday',
+            startTime: '09:00',
+            endTime: '10:30',
+            registeredCount: 4,
+            occupancy: 50,
+          },
+          after: {
+            title: 'Tuesday Evening Intermediate Open Play',
+            dayOfWeek: 'Tuesday',
+            startTime: '19:30',
+            endTime: '21:00',
+            projectedOccupancy: 85,
+            confidence: 78,
+          },
+        },
       },
     },
     {
@@ -1661,6 +1730,43 @@ export function mockProgrammingGenerationResult() {
       preferencesCount: 89,
       unmetInterestRequests: 14,
       activeCourts: 3,
+    },
+    summary: {
+      appliedPresets: [
+        {
+          id: 'FILL_IDLE_HOURS',
+          label: 'Fill idle hours',
+          description: 'Focus on empty court time and improve court utilization.',
+          source: 'selected',
+        },
+        {
+          id: 'BALANCE_THE_WEEK',
+          label: 'Balance the week',
+          description: 'Keep a healthier mix of skill levels, formats, and times.',
+          source: 'inferred',
+        },
+      ],
+      requestPriorityNote: 'Your request is included and scored normally against the week.',
+      requestSummary: {
+        requestedIdeas: 2,
+        placed: 1,
+        backup: 1,
+        unplaced: 0,
+        overallVerdict: 'Viable with risks',
+        overallSummary: 'Requested idea can work, but it carries noticeable tradeoffs.',
+      },
+      improvements: [
+        '6 publish-ready suggestions generated across 3 active courts.',
+        'Average projected occupancy for calendar-ready suggestions is 72%.',
+        '2 off-peak ideas were evaluated to improve idle court coverage.',
+        'Reviewed 2 live sessions and found 1 higher-value move or replace option.',
+      ],
+      changes: [
+        'Move 4.0 League from Saturday 09:00 to Tuesday 19:30.',
+        'Added Tuesday 19:30 Intermediate Open Play.',
+        'Added Wednesday 18:30 Beginner Clinic.',
+        'Added as backup Thursday 19:00 Intermediate Drill.',
+      ],
     },
     draftCount: 6,
   }
