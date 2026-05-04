@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Wizard Step 4 — Message editor + Launch.
+ * Wizard Step 4 — Message editor.
  *
  * Format-aware:
  *   - one_time: single subject + body editor (legacy behaviour)
@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Wand2, Loader2, AlertTriangle, Plus, X } from 'lucide-react'
+import { Wand2, Loader2, AlertTriangle, HelpCircle, Plus, X } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 import { MAX_SEQUENCE_STEPS } from './types'
 import type { AudienceSelection, CampaignGoal, MessageDraft, ScheduleSettings, SequenceStep } from './types'
@@ -34,8 +34,6 @@ interface Step4Props {
   schedule: ScheduleSettings
   onChange: (next: MessageDraft) => void
   liveMode: 'disabled' | 'shadow' | 'live'
-  onLaunch: () => void
-  isLaunching: boolean
   /** Server error from launchCampaign mutation. Rendered inline above Launch. */
   launchError?: string | null
 }
@@ -44,6 +42,8 @@ interface Step4Props {
  *  the backend's generateCampaignMessage understands. */
 const GOAL_TO_CAMPAIGN_TYPE: Record<CampaignGoal, 'CHECK_IN' | 'RETENTION_BOOST' | 'REACTIVATION' | 'SLOT_FILLER' | 'EVENT_INVITE' | 'NEW_MEMBER_WELCOME'> = {
   reactivate_dormant: 'REACTIVATION',
+  check_in: 'CHECK_IN',
+  retention_boost: 'RETENTION_BOOST',
   onboard_new: 'NEW_MEMBER_WELCOME',
   promote_event: 'EVENT_INVITE',
   upsell_tier: 'RETENTION_BOOST',
@@ -58,6 +58,20 @@ const TEMPLATES: Record<CampaignGoal, { subject: string; body: string }> = {
       "Hey {first_name},\n\nNoticed you haven't played a session in a while. " +
       "We just opened up some great evening slots — your old favourites.\n\n" +
       "Want to grab a spot this week?\n\n[Book a session →]",
+  },
+  check_in: {
+    subject: 'Quick check-in, {first_name}',
+    body:
+      "Hi {first_name},\n\nJust checking in — we noticed your court time has dipped a little lately. " +
+      "If you want an easy way back in, we’ve got some good sessions coming up this week.\n\n" +
+      "[See upcoming sessions →]",
+  },
+  retention_boost: {
+    subject: '{first_name}, we’d love to see you back on court',
+    body:
+      "Hi {first_name},\n\nYou’re an important part of the club, and we’d love to help you get back into a good playing rhythm. " +
+      "There are some great sessions coming up if you want to jump back in this week.\n\n" +
+      "[Book a session →]",
   },
   onboard_new: {
     subject: 'Welcome to the club, {first_name} 👋',
@@ -101,11 +115,10 @@ export function Step4Message({
   schedule,
   onChange,
   liveMode,
-  onLaunch,
-  isLaunching,
   launchError,
 }: Step4Props) {
   const [aiError, setAiError] = useState<string | null>(null)
+  const [showVariableHelp, setShowVariableHelp] = useState(false)
   const [testEmail, setTestEmail] = useState('')
   const [testSendError, setTestSendError] = useState<string | null>(null)
   const [testSendOk, setTestSendOk] = useState<string | null>(null)
@@ -320,12 +333,6 @@ export function Step4Message({
   }
 
   const isLive = liveMode === 'live'
-  const launchDisabled = isLaunching || !isLive || regenerateMutation.isPending
-    || (isSequence
-      ? sequenceInvalid
-      : (currentSubject.trim().length === 0 || currentBody.trim().length === 0))
-    || ctaInvalid
-
   if (!goal) {
     return (
       <div className="rounded-xl p-4 text-xs text-center" style={{ background: 'var(--subtle)', color: 'var(--t4)' }}>
@@ -441,7 +448,25 @@ export function Step4Message({
       </div>
 
       <div>
-        <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Body</label>
+        <div className="flex items-center justify-between gap-3">
+          <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+            Body
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowVariableHelp((current) => !current)}
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] transition-all"
+            style={{
+              background: showVariableHelp ? 'rgba(139,92,246,0.14)' : 'var(--subtle)',
+              border: `1px solid ${showVariableHelp ? 'rgba(139,92,246,0.32)' : 'var(--card-border)'}`,
+              color: showVariableHelp ? '#C4B5FD' : 'var(--t3)',
+              fontWeight: 600,
+            }}
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+            Personalization tags
+          </button>
+        </div>
         <textarea
           value={currentBody}
           onChange={(e) => updateCurrent({ body: e.target.value })}
@@ -450,6 +475,30 @@ export function Step4Message({
           className="w-full mt-1 px-3 py-2 rounded-lg text-sm outline-none resize-y"
           style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)', minHeight: 200 }}
         />
+        {showVariableHelp && (
+          <div
+            className="mt-2 rounded-xl p-3 text-[11px]"
+            style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.22)' }}
+          >
+            <div style={{ color: 'var(--heading)', fontWeight: 600 }}>
+              Use tags to personalize the message automatically.
+            </div>
+            <div className="mt-1 leading-5" style={{ color: 'var(--t3)' }}>
+              Example: <code>Hi {`{first_name}`}, your package expires in {`{expires_in_days}`}</code>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[ '{first_name}', '{last_name}', '{event_name}', '{event_date}', '{expires_in_days}' ].map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full px-2 py-1 text-[11px]"
+                  style={{ background: 'rgba(255,255,255,0.04)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.18)' }}
+                >
+                  <code>{tag}</code>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -488,11 +537,6 @@ export function Step4Message({
         </div>
       )}
 
-      {/* Variables hint */}
-      <div className="rounded-xl p-3 text-[11px]" style={{ background: 'var(--subtle)', color: 'var(--t4)' }}>
-        Variables available: <code>{`{first_name}`}</code> · <code>{`{last_name}`}</code> · <code>{`{event_name}`}</code> · <code>{`{event_date}`}</code> · <code>{`{expires_in_days}`}</code>
-      </div>
-
       {/* Call to action — optional override for the email button.
           When both fields are empty the email shows the default
           "Book a Session" button linking to the club page. For
@@ -500,14 +544,14 @@ export function Step4Message({
           can have its own CTA). */}
       <div>
         <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
-          Call to action {isSequence ? `for Step ${editingStepIndex + 1}` : ''} <span style={{ textTransform: 'none', color: 'var(--t4)', fontWeight: 400 }}>— leave blank for default &ldquo;Book a Session&rdquo; button</span>
+          Email button {isSequence ? `for Step ${editingStepIndex + 1}` : ''} <span style={{ textTransform: 'none', color: 'var(--t4)', fontWeight: 400 }}>— optional, leave blank to keep the default &ldquo;Book a Session&rdquo; button</span>
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-2 mt-1">
           <input
             type="text"
             value={currentCtaLabel}
             onChange={(e) => updateCurrent({ ctaLabel: e.target.value })}
-            placeholder="Button label (e.g. Renew now)"
+            placeholder="Button text (e.g. Renew now)"
             maxLength={100}
             className="px-3 py-2 rounded-lg text-sm outline-none"
             style={{
@@ -520,7 +564,7 @@ export function Step4Message({
             type="url"
             value={currentCtaUrl}
             onChange={(e) => updateCurrent({ ctaUrl: e.target.value })}
-            placeholder="https://yourclub.com/renew"
+            placeholder="Button link (https://yourclub.com/renew)"
             maxLength={500}
             className="px-3 py-2 rounded-lg text-sm outline-none"
             style={{
@@ -618,17 +662,6 @@ export function Step4Message({
           </div>
         </div>
       )}
-
-      <div className="flex justify-end pt-2">
-        <button
-          onClick={onLaunch}
-          disabled={launchDisabled}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm text-white transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
-        >
-          {isLaunching ? '…' : isSequence ? `✅ Launch sequence (${steps.length} step${steps.length === 1 ? '' : 's'})` : '✅ Launch'}
-        </button>
-      </div>
     </div>
   )
 }

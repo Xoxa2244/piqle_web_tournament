@@ -7,7 +7,7 @@
  */
 
 import {
-  RotateCcw, UserPlus, CalendarDays, ArrowUpRight, BellRing, Sparkles, Check,
+  RotateCcw, UserPlus, CalendarDays, ArrowUpRight, BellRing, Sparkles, Check, Heart, Shield,
 } from 'lucide-react'
 import type { CampaignGoal } from './types'
 
@@ -26,16 +26,32 @@ const GOALS: Array<{
 }> = [
   {
     key: 'reactivate_dormant',
-    label: 'Reactivate dormant players',
-    description: 'Members who haven\'t played in 21+ days. Personal "we miss you" outreach.',
+    label: 'Win back inactive members',
+    description: 'Members who haven\'t played in 21+ days. Personalized comeback outreach.',
     icon: RotateCcw,
     channel: 'Email + SMS',
     accent: '#EF4444',
   },
   {
+    key: 'check_in',
+    label: 'Check in',
+    description: 'Members showing reduced activity. Friendly, low-pressure outreach before they drift further.',
+    icon: Heart,
+    channel: 'Email',
+    accent: '#8B5CF6',
+  },
+  {
+    key: 'retention_boost',
+    label: 'Boost retention',
+    description: 'At-risk members with a sharper activity drop. Stronger save-the-routine outreach.',
+    icon: Shield,
+    channel: 'Email',
+    accent: '#F97316',
+  },
+  {
     key: 'onboard_new',
-    label: 'Onboard new members',
-    description: 'First-month engagement series. Lock in long-term LTV.',
+    label: 'Welcome new members',
+    description: 'First-month engagement series. Help new members book early and stick.',
     icon: UserPlus,
     channel: 'Email',
     accent: '#10B981',

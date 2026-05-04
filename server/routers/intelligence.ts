@@ -39,6 +39,7 @@ import {
   withAdvisorDraftMetadata,
 } from '@/lib/ai/advisor-drafts'
 import {
+  processCampaignSendQueue,
   scheduleCampaignSend,
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
@@ -6946,6 +6947,72 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       return { cohort, members }
     }),
 
+  getAudiencePreviewMembers: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      userIds: z.array(z.string()).max(200),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const userIds = Array.from(new Set(input.userIds.filter(Boolean))).slice(0, 200)
+      if (userIds.length === 0) return []
+
+      const [followers, bookings] = await Promise.all([
+        ctx.prisma.clubFollower.findMany({
+          where: { clubId: input.clubId, userId: { in: userIds } },
+          select: {
+            userId: true,
+            createdAt: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        }),
+        ctx.prisma.playSessionBooking.findMany({
+          where: {
+            userId: { in: userIds },
+            status: 'CONFIRMED',
+            playSession: { clubId: input.clubId },
+          },
+          select: {
+            userId: true,
+            bookedAt: true,
+          },
+          orderBy: { bookedAt: 'desc' },
+        }),
+      ])
+
+      const latestBookingByUserId = new Map<string, Date>()
+      for (const booking of bookings) {
+        if (!latestBookingByUserId.has(booking.userId)) {
+          latestBookingByUserId.set(booking.userId, booking.bookedAt)
+        }
+      }
+
+      const now = Date.now()
+
+      return followers.map((follower) => {
+        const lastBookedAt = latestBookingByUserId.get(follower.userId) ?? null
+        const joinedDaysAgo = Math.max(0, Math.floor((now - follower.createdAt.getTime()) / 86400000))
+        const daysSinceLastVisit = lastBookedAt
+          ? Math.max(0, Math.floor((now - lastBookedAt.getTime()) / 86400000))
+          : null
+
+        return {
+          id: follower.user.id,
+          name: follower.user.name || follower.user.email || 'Unknown member',
+          email: follower.user.email,
+          joinedDaysAgo,
+          daysSinceLastVisit,
+        }
+      })
+    }),
+
   parseCohortFromText: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
@@ -9907,7 +9974,6 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
       return { ok: true, fulfilledAt: merged.fulfilledAt }
     }),
-
   // P2-T5 — Members AI Insight ribbon (rules-based v1).
   //
   // Returns at most one insight ranked by confidence/$-impact.
@@ -10004,38 +10070,49 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      // P2-T9: real Campaign query (was stubbed return []). Active = anything
-      // that isn't `draft` or `completed` — the surface admins want to see
-      // before/while campaigns are doing work.
+      // Return both active and finished rows; the frontend splits them into
+      // "Active Campaigns" and expandable "Campaign History".
       const rows = await ctx.prisma.campaign.findMany({
-        where: { clubId: input.clubId, status: { in: ['running', 'scheduled', 'paused'] } },
+        where: { clubId: input.clubId, status: { in: ['running', 'scheduled', 'paused', 'completed', 'failed'] } },
         orderBy: { createdAt: 'desc' },
-        include: { cohort: { select: { name: true } } },
+        select: {
+          id: true,
+          name: true,
+          cohortId: true,
+          channels: true,
+          sentCount: true,
+          deliveredCount: true,
+          openedCount: true,
+          attribution: true,
+          status: true,
+          launchedAt: true,
+          scheduledAt: true,
+          completedAt: true,
+          createdAt: true,
+          cohortSnapshot: true,
+          cohort: { select: { name: true } },
+        },
       })
       return rows.map((c: any) => {
+        const snapshot = (c.cohortSnapshot as Record<string, unknown> | null) || {}
         const channelArr = Array.isArray(c.channels) ? c.channels : []
         const channel: 'email' | 'sms' | 'email+sms' = channelArr.includes('email') && channelArr.includes('sms')
           ? 'email+sms'
           : channelArr.includes('sms') ? 'sms' : 'email'
         const attribution = (c.attribution as any) || {}
         const openRate = c.deliveredCount > 0 ? c.openedCount / c.deliveredCount : 0
-        // Sequence metadata for the Active Campaigns table:
-        //   - format='sequence' lets the UI render a different progress indicator
-        //   - totalSteps is the length of the steps[] array (1 for one_time)
-        const stepsArr: any[] = Array.isArray(c.steps) ? c.steps : []
-        const totalSteps = c.format === 'sequence' && stepsArr.length > 0 ? stepsArr.length : 1
-        // Recurring metadata: human-readable description from the cron
-        // expression. Skips exact next-run calculation in MVP — that
-        // requires full IANA tz arithmetic and the description is
-        // already enough context for the admin.
-        const recurringDescription = c.format === 'recurring' && c.cronExpression
-          ? describeRecurringCron(c.cronExpression, c.recurringTimezone || 'UTC')
+        const sendFormat = typeof snapshot.sendFormat === 'string' ? snapshot.sendFormat : 'one_time'
+        const stepsArr: any[] = Array.isArray(snapshot.steps) ? snapshot.steps : []
+        const totalSteps = sendFormat === 'sequence' && stepsArr.length > 0 ? stepsArr.length : 1
+        const recurringTimezone = typeof snapshot.recurringTimezone === 'string' ? snapshot.recurringTimezone : null
+        const recurringDescription = sendFormat === 'recurring' && typeof snapshot.cronExpression === 'string'
+          ? describeRecurringCron(snapshot.cronExpression, recurringTimezone || 'UTC')
           : null
         return {
           id: c.id,
           name: c.name,
           cohortId: c.cohortId,
-          cohortName: c.cohort?.name ?? null,
+          cohortName: c.cohort?.name ?? (typeof snapshot.cohortName === 'string' ? snapshot.cohortName : null),
           channel,
           sentCount: c.sentCount,
           deliveredCount: c.deliveredCount,
@@ -10043,15 +10120,134 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           openRate,
           bookedCount: Number(attribution.booked_count ?? 0),
           bookedRevenueCents: Number(attribution.booked_revenue_cents ?? 0),
-          status: c.status as 'draft' | 'scheduled' | 'running' | 'paused' | 'completed',
+          status: c.status as 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed',
+          sendFormat: sendFormat as 'one_time' | 'sequence' | 'recurring',
+          createdAt: c.createdAt,
           startedAt: c.launchedAt ?? c.scheduledAt,
-          format: (c.format ?? 'one_time') as 'one_time' | 'sequence' | 'recurring',
           totalSteps,
           recurringDescription,
-          recurringTimezone: c.recurringTimezone ?? null,
-          lastRecurringRun: c.lastRecurringRun ?? null,
+          completedAt: c.completedAt,
+          recurringTimezone,
         }
       })
+    }),
+
+  toggleCampaignPause: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      campaignId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const campaign = await ctx.prisma.campaign.findFirst({
+        where: { id: input.campaignId, clubId: input.clubId },
+        select: {
+          id: true,
+          status: true,
+          scheduledAt: true,
+          cohortSnapshot: true,
+        },
+      })
+
+      if (!campaign) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
+      }
+
+      const snapshot = (campaign.cohortSnapshot as Record<string, unknown> | null) || {}
+      const sendFormat = typeof snapshot.sendFormat === 'string' ? snapshot.sendFormat : 'one_time'
+      if (sendFormat === 'one_time') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only repeating campaigns can be paused.' })
+      }
+
+      const now = new Date()
+      if (campaign.status === 'paused') {
+        const rawResumeStatus = typeof snapshot.pauseResumeStatus === 'string' ? snapshot.pauseResumeStatus : null
+        const computedResumeStatus = rawResumeStatus === 'scheduled' || rawResumeStatus === 'running'
+          ? rawResumeStatus
+          : (campaign.scheduledAt && campaign.scheduledAt.getTime() > now.getTime() ? 'scheduled' : 'running')
+        const nextStatus = computedResumeStatus === 'scheduled' && campaign.scheduledAt && campaign.scheduledAt.getTime() <= now.getTime()
+          ? 'running'
+          : computedResumeStatus
+
+        const updated = await ctx.prisma.campaign.update({
+          where: { id: campaign.id },
+          select: { id: true, status: true },
+          data: {
+            status: nextStatus,
+            cohortSnapshot: {
+              ...snapshot,
+              pauseResumeStatus: null,
+              resumedAt: now.toISOString(),
+            } as any,
+          },
+        })
+
+        return { id: updated.id, status: updated.status }
+      }
+
+      if (campaign.status !== 'running' && campaign.status !== 'scheduled') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only running or scheduled campaigns can be paused.' })
+      }
+
+      const updated = await ctx.prisma.campaign.update({
+        where: { id: campaign.id },
+        select: { id: true, status: true },
+        data: {
+          status: 'paused',
+          cohortSnapshot: {
+            ...snapshot,
+            pauseResumeStatus: campaign.status,
+            pausedAt: now.toISOString(),
+          } as any,
+        },
+      })
+
+      return { id: updated.id, status: updated.status }
+    }),
+
+  stopCampaign: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      campaignId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const campaign = await ctx.prisma.campaign.findFirst({
+        where: { id: input.campaignId, clubId: input.clubId },
+        select: {
+          id: true,
+          status: true,
+          cohortSnapshot: true,
+        },
+      })
+
+      if (!campaign) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
+      }
+
+      if (!['running', 'scheduled', 'paused'].includes(campaign.status)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only active campaigns can be stopped.' })
+      }
+
+      const now = new Date()
+      const snapshot = (campaign.cohortSnapshot as Record<string, unknown> | null) || {}
+      const updated = await ctx.prisma.campaign.update({
+        where: { id: campaign.id },
+        select: { id: true, status: true },
+        data: {
+          status: 'completed',
+          completedAt: now,
+          cohortSnapshot: {
+            ...snapshot,
+            stoppedAt: now.toISOString(),
+            stoppedByUserId: ctx.session.user.id,
+          } as any,
+        },
+      })
+
+      return { id: updated.id, status: updated.status }
     }),
 
   /**
@@ -10059,9 +10255,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
    *
    * Resolves the audience to a frozen list of userIds (either from a saved
    * cohort's filters, an AI-suggested cohort's userIds payload, or hand-picked
-   * inline ids), creates a Campaign row, and returns its id. The actual
-   * outbound sends are performed by the campaign-sends cron in Priority-1.2;
-   * this mutation only persists intent.
+   * inline ids), creates a Campaign row, and returns its id. "Send now"
+   * campaigns are dispatched immediately after the row is created; scheduled
+   * campaigns are picked up later by the campaign-sends cron.
    *
    * Status logic:
    *   - scheduledAt in the future → status='scheduled'
@@ -10206,8 +10402,24 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const scheduledDate = input.scheduledAt ? new Date(input.scheduledAt) : null
       const isFuture = scheduledDate ? scheduledDate.getTime() > now.getTime() : false
       const status = isFuture ? 'scheduled' : 'running'
+      const campaignSnapshot = {
+        userIds: recipientIds,
+        cohortName: resolvedCohortName,
+        sendFormat: input.format,
+        rendered_at: now.toISOString(),
+        ...(input.steps?.length ? { steps: input.steps } : {}),
+        ...(input.format === 'sequence' ? { exitOnBooking: input.exitOnBooking ?? true } : {}),
+        ...(input.format === 'recurring' && input.cronExpression ? { cronExpression: input.cronExpression.trim() } : {}),
+        ...(input.format === 'recurring' ? { recurringTimezone: input.recurringTimezone ?? 'UTC' } : {}),
+        ...(input.ctaLabel ? { ctaLabel: input.ctaLabel } : {}),
+        ...(input.ctaUrl ? { ctaUrl: input.ctaUrl } : {}),
+      }
 
       const campaign = await ctx.prisma.campaign.create({
+        select: {
+          id: true,
+          status: true,
+        },
         data: {
           clubId: input.clubId,
           cohortId: resolvedCohortId,
@@ -10217,84 +10429,32 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           subject: input.subject,
           body: input.body,
           channels: input.channels,
-          ctaLabel: input.ctaLabel,
-          ctaUrl: input.ctaUrl,
-          format: input.format,
-          // For one_time: persist NULL. For sequence: array of step objects.
-          // The sequence runner reads from this; the cron picks step[log.sequenceStep].
-          steps: input.format === 'sequence' ? (input.steps as any) : undefined,
-          // Mirror Tier 1 conditional follow-up behaviour. Only meaningful
-          // for sequences; harmless for one-time (runner won't read it).
-          exitOnBooking: input.format === 'sequence' ? (input.exitOnBooking ?? true) : true,
-          // Recurring schedule — runner reads these at each tick.
-          cronExpression: input.format === 'recurring' ? input.cronExpression!.trim() : undefined,
-          recurringTimezone: input.format === 'recurring' ? (input.recurringTimezone ?? 'UTC') : undefined,
           status,
           scheduledAt: scheduledDate,
           launchedAt: status === 'running' ? now : null,
           // Frozen audience snapshot — the send queue reads userIds from here,
           // so cohort filter changes after launch don't affect this campaign.
-          cohortSnapshot: {
-            userIds: recipientIds,
-            cohortName: resolvedCohortName,
-            rendered_at: now.toISOString(),
-          } as any,
+          cohortSnapshot: campaignSnapshot as any,
         },
       })
 
-      // P1.2: eager fan-out — one ai_recommendation_logs row per recipient.
-      // Created with status='pending' and sent_at=null; the per-minute
-      // campaign-sends cron claims them in batches via atomic UPDATE
-      // (see app/api/cron/campaign-sends/route.ts).
-      //
-      // We fan out unconditionally — even if status='scheduled' the rows
-      // exist immediately so progress is visible from the moment the
-      // admin clicks Launch. The cron is gated by status='running' AND
-      // scheduledAt <= now, so scheduled campaigns won't dispatch early.
-      //
-      // Picking a primary channel: if 'email' is in channels we use it,
-      // otherwise 'sms'. Multi-channel sends will fan out one log per
-      // (userId × channel) once SMS sender lands — for P1.2 only the
-      // primary channel ships.
-      const primaryChannel = input.channels.includes('email') ? 'email' : 'sms'
-      // For sequence campaigns we only fan out Step 1 (sequenceStep=0) at
-      // launch — the runner will create logs for steps 1+ as each step's
-      // delay elapses for each recipient. This keeps the row count bounded
-      // and lets the runner respect exitOnBooking + survey-response exits.
-      // For one-time campaigns sequenceStep stays NULL (back-compat).
-      // For recurring campaigns we DON'T eager-fan-out — the runner
-      // re-evaluates the cohort on each tick and creates fresh logs then.
-      const isSequence = input.format === 'sequence'
-      const isRecurring = input.format === 'recurring'
-      if (!isRecurring) {
-        await ctx.prisma.aIRecommendationLog.createMany({
-          data: recipientIds.map((userId) => ({
-            clubId: input.clubId,
-            userId,
-            type: 'CAMPAIGN_SEND' as const,
-            channel: primaryChannel,
-            status: 'pending',
-            campaignId: campaign.id,
-            ...(isSequence ? { sequenceStep: 0 } : {}),
-            // Reasoning carries enough context for the webhook ingest /
-            // attribution pipeline to look up the campaign without an extra
-            // join (we already correlate via campaignId, this is for logs).
-            reasoning: {
-              campaignName: input.name,
-              goal: input.goal,
-              ...(isSequence ? { totalSteps: input.steps!.length } : {}),
-            },
-          })),
-          skipDuplicates: true,
-        })
+      // Send-now campaigns should actually dispatch before we return so the
+      // wizard reflects the real status. Future sends stay queued for cron.
+      let finalStatus = campaign.status
+      if (input.format === 'one_time' && !isFuture) {
+        const queueResult = await processCampaignSendQueue(ctx.prisma, { campaignId: campaign.id })
+        const processedCampaign = queueResult.campaigns.find((entry) => entry.id === campaign.id)
+        if (processedCampaign?.status) {
+          finalStatus = processedCampaign.status
+        }
       }
 
       return {
         campaignId: campaign.id,
         recipientCount: recipientIds.length,
-        status: campaign.status,
-        format: campaign.format,
-        totalSteps: isSequence ? input.steps!.length : 1,
+        status: finalStatus,
+        format: input.format,
+        totalSteps: input.format === 'sequence' ? (input.steps?.length ?? 1) : 1,
       }
     }),
 
