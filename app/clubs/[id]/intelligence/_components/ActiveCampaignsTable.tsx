@@ -12,7 +12,7 @@
  * the placeholder so directors see context, not a blank panel.
  */
 
-import { Mail, MessageSquare, Pause, Play, StopCircle } from 'lucide-react'
+import { Mail, MessageSquare, Pause, Play, StopCircle, Layers } from 'lucide-react'
 import { useListActiveCampaigns } from '../_hooks/use-intelligence'
 
 interface ActiveCampaignsTableProps {
@@ -66,7 +66,21 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
             <tbody>
               {(campaigns as any[]).map((c) => (
                 <tr key={c.id} style={{ borderTop: '1px solid var(--divider)' }}>
-                  <td className="py-2.5 pr-3 font-semibold" style={{ color: 'var(--heading)' }}>{c.name}</td>
+                  <td className="py-2.5 pr-3 font-semibold" style={{ color: 'var(--heading)' }}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span>{c.name}</span>
+                      {c.format === 'sequence' && (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider"
+                          style={{ background: 'rgba(139,92,246,0.16)', color: '#A78BFA', fontWeight: 700 }}
+                          title={`Sequence campaign — ${c.totalSteps} steps. "Sent" counts each step delivery, so it can exceed the cohort size.`}
+                        >
+                          <Layers className="w-2.5 h-2.5" />
+                          Sequence · {c.totalSteps} step{c.totalSteps === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="py-2.5 pr-3" style={{ color: 'var(--t3)' }}>{c.cohortName ?? '—'}</td>
                   <td className="py-2.5 pr-3">
                     <span className="inline-flex items-center gap-1" style={{ color: 'var(--t3)' }}>

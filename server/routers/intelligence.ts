@@ -9482,6 +9482,11 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           : channelArr.includes('sms') ? 'sms' : 'email'
         const attribution = (c.attribution as any) || {}
         const openRate = c.deliveredCount > 0 ? c.openedCount / c.deliveredCount : 0
+        // Sequence metadata for the Active Campaigns table:
+        //   - format='sequence' lets the UI render a different progress indicator
+        //   - totalSteps is the length of the steps[] array (1 for one_time)
+        const stepsArr: any[] = Array.isArray(c.steps) ? c.steps : []
+        const totalSteps = c.format === 'sequence' && stepsArr.length > 0 ? stepsArr.length : 1
         return {
           id: c.id,
           name: c.name,
@@ -9496,6 +9501,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           bookedRevenueCents: Number(attribution.booked_revenue_cents ?? 0),
           status: c.status as 'draft' | 'scheduled' | 'running' | 'paused' | 'completed',
           startedAt: c.launchedAt ?? c.scheduledAt,
+          format: (c.format ?? 'one_time') as 'one_time' | 'sequence' | 'recurring',
+          totalSteps,
         }
       })
     }),
