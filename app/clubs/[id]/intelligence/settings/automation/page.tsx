@@ -65,7 +65,8 @@ export default function SettingsAutomationPage() {
 
       <AgentCampaignLayer clubId={clubId} />
 
-      <MicroSurveyResultsCard clubId={clubId} />
+      <MicroSurveyResultsCard clubId={clubId} surveyType="onboarding_day12" />
+      <MicroSurveyResultsCard clubId={clubId} surveyType="declining_reactivation" />
 
       <Card>
         <CardHeader>

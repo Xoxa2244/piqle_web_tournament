@@ -24,7 +24,7 @@ interface OptionLabel {
 }
 
 /** Human-readable labels for the 5 newcomer Day-12 survey options.
- *  Other survey types will have their own dictionaries. */
+ *  Other survey types have their own dictionaries below. */
 const NEWCOMER_DAY12_LABELS: Record<string, OptionLabel> = {
   schedule: {
     label: 'Schedule does not fit',
@@ -48,9 +48,50 @@ const NEWCOMER_DAY12_LABELS: Record<string, OptionLabel> = {
   },
 }
 
+/** Labels for the 4-option Day-1 declining-reactivation survey. Each hint
+ *  suggests a different operator response — the segment exists precisely to
+ *  separate "we can fix this" answers (schedule) from "let it ride" ones
+ *  (injury, busy, pause). */
+const DECLINING_DAY1_LABELS: Record<string, OptionLabel> = {
+  injury: {
+    label: 'Injury or health issue',
+    hint: 'Often = needs a pause, not a churn signal. Soft check-in in 30 days; do not push incentives.',
+  },
+  busy: {
+    label: 'Slammed at work / life',
+    hint: 'Temporary external. A flexible "freeze" plan or short pause-and-resume offer keeps them.',
+  },
+  schedule: {
+    label: 'Schedule does not work',
+    hint: 'Same signal as Newcomer: programming hint — they want different times. Worth a programming review.',
+  },
+  pause: {
+    label: 'Just taking a pause',
+    hint: 'Honest answer — respect it. Soft check-in in 30 days; no escalation needed.',
+  },
+}
+
+const SURVEY_COPY: Record<
+  'onboarding_day12' | 'declining_reactivation',
+  { title: string; description: (windowDays: number) => string; labels: Record<string, OptionLabel> }
+> = {
+  onboarding_day12: {
+    title: 'Newcomer survey — what is holding new members back?',
+    description: (w) =>
+      `Answers from the Day 12 onboarding email sent to members with 0 bookings in their first 12 days. Last ${w} days.`,
+    labels: NEWCOMER_DAY12_LABELS,
+  },
+  declining_reactivation: {
+    title: 'Declining-activity survey — why did regulars drop off?',
+    description: (w) =>
+      `Answers from the Day 1 email sent when a member who was booking ≥3 sessions per month suddenly drops to 0–1. Last ${w} days.`,
+    labels: DECLINING_DAY1_LABELS,
+  },
+}
+
 interface MicroSurveyResultsCardProps {
   clubId: string
-  surveyType?: 'onboarding_day12'
+  surveyType?: 'onboarding_day12' | 'declining_reactivation'
   /** Window in days to look back. Default 90 — wide enough that a small
    *  club still has at least a handful of responses to display. */
   windowDays?: number
@@ -67,7 +108,8 @@ export function MicroSurveyResultsCard({
     windowDays,
   })
 
-  const labels = surveyType === 'onboarding_day12' ? NEWCOMER_DAY12_LABELS : {}
+  const copy = SURVEY_COPY[surveyType]
+  const labels = copy.labels
 
   return (
     <Card>
@@ -75,13 +117,8 @@ export function MicroSurveyResultsCard({
         <div className="flex items-start gap-3">
           <ClipboardList className="h-5 w-5 text-violet-500 mt-0.5" />
           <div className="flex-1">
-            <CardTitle className="text-base">
-              Newcomer survey — what is holding new members back?
-            </CardTitle>
-            <CardDescription>
-              Answers from the Day 12 onboarding email sent to members with 0 bookings in
-              their first 12 days. Last {windowDays} days.
-            </CardDescription>
+            <CardTitle className="text-base">{copy.title}</CardTitle>
+            <CardDescription>{copy.description(windowDays)}</CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -90,7 +127,7 @@ export function MicroSurveyResultsCard({
         {isLoading ? (
           <div className="text-sm text-muted-foreground">Loading…</div>
         ) : !data || data.totalSurveyEmailsSent === 0 ? (
-          <EmptyPanel windowDays={windowDays} />
+          <EmptyPanel windowDays={windowDays} surveyType={surveyType} />
         ) : data.totalResponses === 0 ? (
           <NoResponsesYetPanel
             sentCount={data.totalSurveyEmailsSent}
@@ -104,12 +141,24 @@ export function MicroSurveyResultsCard({
   )
 }
 
-function EmptyPanel({ windowDays }: { windowDays: number }) {
+const EMPTY_COPY: Record<'onboarding_day12' | 'declining_reactivation', (w: number) => string> = {
+  onboarding_day12: (w) =>
+    `No new members have hit Day 12 with zero bookings in the last ${w} days. The survey only goes out to stalled newcomers — engaged ones get a congrats email instead.`,
+  declining_reactivation: (w) =>
+    `No regular members have dropped from ≥3 sessions per month down to 0–1 in the last ${w} days. The survey only goes out when this pattern is detected.`,
+}
+
+function EmptyPanel({
+  windowDays,
+  surveyType,
+}: {
+  windowDays: number
+  surveyType: 'onboarding_day12' | 'declining_reactivation'
+}) {
   return (
     <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
       <div className="font-medium text-slate-700 mb-1">No surveys sent yet</div>
-      No new members have hit Day 12 with zero bookings in the last {windowDays} days.
-      The survey only goes out to stalled newcomers — engaged ones get a congrats email instead.
+      {EMPTY_COPY[surveyType](windowDays)}
     </div>
   )
 }

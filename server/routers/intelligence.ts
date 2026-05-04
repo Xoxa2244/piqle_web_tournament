@@ -9104,7 +9104,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     .input(
       z.object({
         clubId: z.string().uuid(),
-        surveyType: z.enum(['onboarding_day12']).default('onboarding_day12'),
+        // Each new lifecycle segment that ships a survey email adds an enum
+        // here. The procedure derives the email-count denominator differently
+        // per type below — see surveyEmailWhere construction.
+        surveyType: z.enum(['onboarding_day12', 'declining_reactivation']).default('onboarding_day12'),
         windowDays: z.number().int().min(1).max(365).default(90),
       }),
     )
@@ -9134,9 +9137,16 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const totalResponses = breakdown.reduce((sum, r) => sum + r.count, 0)
 
       // 2. Total survey emails sent in the same window — denominator for
-      //    response rate. For onboarding_day12 the emails are AIRecommendationLog
-      //    rows of type NEW_MEMBER_WELCOME at sequenceStep 2 with reasoning
-      //    flagged as the survey variant (vs the congrats variant).
+      //    response rate. The right log filter depends on the survey type:
+      //
+      //    onboarding_day12      → NEW_MEMBER_WELCOME, step 2, reasoning.day12Variant=survey
+      //                            (Day 12 of newcomer chain, only the survey
+      //                            branch — the congrats branch isn't a survey)
+      //
+      //    declining_reactivation → DECLINING_REACTIVATION, step 0
+      //                            (Day 1 of declining chain — that's where
+      //                            the 4-button survey lives. Days 5/12 are
+      //                            schedule + incentive, no survey.)
       const surveyEmailWhere: any = {
         clubId: input.clubId,
         status: { in: ['sent', 'delivered', 'opened', 'clicked'] },
@@ -9148,6 +9158,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         // Prisma JSON path filter — only logs whose reasoning records the
         // survey branch (not the congrats branch, which doesn't have a survey).
         surveyEmailWhere.reasoning = { path: ['day12Variant'], equals: 'survey' }
+      } else if (input.surveyType === 'declining_reactivation') {
+        surveyEmailWhere.type = 'DECLINING_REACTIVATION'
+        surveyEmailWhere.sequenceStep = 0
       }
 
       const totalSurveyEmailsSent = await ctx.prisma.aIRecommendationLog.count({
