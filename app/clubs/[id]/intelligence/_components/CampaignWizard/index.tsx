@@ -189,7 +189,7 @@ export function CampaignWizard({
     if (step === 2) return !!state.goal
     // Step 3 (Schedule): always advanceable — defaults are valid (one_time, send now, email).
     if (step === 3) return true
-    // Step 4 (Message) is final — Launch button is in-step, no Next.
+    // Step 4 (Message) is final — Launch lives in the shared footer.
     return false
   })()
 
@@ -274,6 +274,22 @@ export function CampaignWizard({
       setIsLaunching(false)
     }
   }
+
+  const ctaUrlTrimmed = state.message.ctaUrl?.trim() ?? ''
+  const ctaLabelTrimmed = state.message.ctaLabel?.trim() ?? ''
+  const ctaUrlInvalid = ctaUrlTrimmed.length > 0 && !/^https?:\/\/.+/i.test(ctaUrlTrimmed)
+  const ctaLabelMissing = ctaUrlTrimmed.length > 0 && ctaLabelTrimmed.length === 0
+  const launchDisabled = step !== 4
+    || !state.audience
+    || !state.goal
+    || state.schedule.format !== 'one_time'
+    || liveMode !== 'live'
+    || isLaunching
+    || launchMutation.isPending
+    || state.message.subject.trim().length === 0
+    || state.message.body.trim().length === 0
+    || ctaUrlInvalid
+    || ctaLabelMissing
 
   return (
     <AnimatePresence>
@@ -401,16 +417,14 @@ export function CampaignWizard({
                 schedule={state.schedule}
                 onChange={(message: MessageDraft) => setState((s) => ({ ...s, message }))}
                 liveMode={liveMode}
-                onLaunch={handleLaunch}
-                isLaunching={isLaunching || launchMutation.isPending}
                 launchError={launchError}
               />
             )}
           </div>
 
-          {/* Sticky footer — Back / Next (hidden on Step 4 when launched, since Launch is in-step) */}
+          {/* Sticky footer — Back / Next / Launch */}
           {!launched && (
-            <div className="shrink-0 px-5 pb-5" style={{ background: 'var(--bg, #0B0B14)' }}>
+            <div className="shrink-0 px-5" style={{ background: 'var(--bg, #0B0B14)' }}>
               <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--card-border)' }}>
                 <button
                   onClick={prev}
@@ -431,8 +445,19 @@ export function CampaignWizard({
                     Next
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
-                ) : null}
+                ) : (
+                  <button
+                    onClick={handleLaunch}
+                    disabled={launchDisabled}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
+                  >
+                    {isLaunching || launchMutation.isPending ? 'Launching…' : 'Launch'}
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
+              <div aria-hidden="true" className="h-7" />
             </div>
           )}
         </motion.aside>

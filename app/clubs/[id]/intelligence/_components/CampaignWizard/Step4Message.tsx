@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Wizard Step 4 — Message editor + Launch.
+ * Wizard Step 4 — Message editor.
  *
  * Was Step 3. Moved to last position so the editor can render the right
  * number of message slots based on the SendFormat chosen in Step 3:
@@ -13,8 +13,6 @@
  * (intelligence.generateCampaignMessage) instead of just resetting to
  * the static template — the previous implementation was a fake.
  *
- * Launch button lives here as the natural final action: write copy →
- * click Launch.
  */
 
 import { useEffect, useMemo, useState } from 'react'
@@ -30,8 +28,6 @@ interface Step4Props {
   schedule: ScheduleSettings
   onChange: (next: MessageDraft) => void
   liveMode: 'disabled' | 'shadow' | 'live'
-  onLaunch: () => void
-  isLaunching: boolean
   /** Server error from launchCampaign mutation. Rendered inline above Launch. */
   launchError?: string | null
 }
@@ -97,8 +93,6 @@ export function Step4Message({
   schedule,
   onChange,
   liveMode,
-  onLaunch,
-  isLaunching,
   launchError,
 }: Step4Props) {
   const [aiError, setAiError] = useState<string | null>(null)
@@ -211,10 +205,6 @@ export function Step4Message({
   }
 
   const isLive = liveMode === 'live'
-  const launchDisabled = isLaunching || !isLive || regenerateMutation.isPending
-    || message.subject.trim().length === 0 || message.body.trim().length === 0
-    || ctaInvalid
-
   if (!goal) {
     return (
       <div className="rounded-xl p-4 text-xs text-center" style={{ background: 'var(--subtle)', color: 'var(--t4)' }}>
@@ -419,17 +409,6 @@ export function Step4Message({
           </div>
         </div>
       )}
-
-      <div className="flex justify-end pt-2">
-        <button
-          onClick={onLaunch}
-          disabled={launchDisabled}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm text-white transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
-        >
-          {isLaunching ? '…' : '✅ Launch'}
-        </button>
-      </div>
     </div>
   )
 }
