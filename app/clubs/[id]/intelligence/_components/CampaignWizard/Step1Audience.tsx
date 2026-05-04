@@ -15,8 +15,11 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { Users, Sparkles, Check, Loader2 } from 'lucide-react'
+import { useAudiencePreviewMembers } from '../../_hooks/use-intelligence'
 import { getCampaignGoalLabel } from './audience-utils'
 import type { AudienceSelection, AudienceSourceKind, CampaignGoal } from './types'
+import { CampaignAudiencePreviewList } from '../iq-pages/campaigns/CampaignAudiencePreviewList'
+import type { CampaignAudiencePreviewMember } from '../iq-pages/campaigns/useCampaignCreator'
 
 interface Step1Props {
   clubId: string
@@ -39,6 +42,7 @@ interface Step1Props {
 }
 
 export function Step1Audience({
+  clubId,
   audience,
   goal,
   onChange,
@@ -48,7 +52,7 @@ export function Step1Audience({
   initialUserIds,
 }: Step1Props) {
   const [activeKind, setActiveKind] = useState<AudienceSourceKind>(
-    audience?.kind ?? (goal ? 'ai_suggested' : (initialUserIds?.length ? 'inline_userIds' : 'saved_cohort'))
+    audience?.kind ?? (initialUserIds?.length ? 'inline_userIds' : 'saved_cohort')
   )
 
   useEffect(() => {
@@ -58,6 +62,34 @@ export function Step1Audience({
   }, [audience?.kind])
 
   const visibleSuggestedAudiences = useMemo(() => suggestedAudiences, [suggestedAudiences])
+  const suggestedPreviewUserIds = useMemo(
+    () => activeKind === 'ai_suggested'
+      ? Array.from(new Set(visibleSuggestedAudiences.flatMap((audienceOption) => audienceOption.userIds))).slice(0, 200)
+      : [],
+    [activeKind, visibleSuggestedAudiences],
+  )
+  const { data: previewMembersRaw = [], isLoading: previewMembersLoading } = useAudiencePreviewMembers(
+    clubId,
+    suggestedPreviewUserIds,
+    { enabled: activeKind === 'ai_suggested' && suggestedPreviewUserIds.length > 0 },
+  )
+  const previewMembersById = useMemo(() => {
+    const map = new Map<string, CampaignAudiencePreviewMember>()
+    for (const member of previewMembersRaw as any[]) {
+      const subtitle = typeof member.daysSinceLastVisit === 'number'
+        ? `${member.daysSinceLastVisit}d since last play`
+        : typeof member.joinedDaysAgo === 'number'
+          ? `Joined ${member.joinedDaysAgo}d ago`
+          : member.email || undefined
+      map.set(member.id, {
+        id: member.id,
+        name: member.name || member.email || 'Unknown member',
+        email: member.email || undefined,
+        subtitle,
+      })
+    }
+    return map
+  }, [previewMembersRaw])
 
   const goalLabel = getCampaignGoalLabel(goal)
 
@@ -177,25 +209,48 @@ export function Step1Audience({
             visibleSuggestedAudiences.map((c) => {
               const selected = audience?.cohortId === c.id
                 || (audience?.cohortId == null && c.cohortId == null && audience?.cohortName === c.name)
+              const previewMembers = c.userIds
+                .map((userId) => previewMembersById.get(userId))
+                .filter((member): member is CampaignAudiencePreviewMember => !!member)
               return (
-                <button
+                <div
                   key={c.id}
-                  onClick={() => pickSuggested(c.id, c.name, c.memberCount, c.userIds)}
-                  className="w-full text-left rounded-xl p-3 transition-all flex items-start justify-between gap-3"
+                  className="rounded-xl p-3"
                   style={{
                     background: selected ? 'rgba(139,92,246,0.08)' : 'var(--card-bg)',
                     border: `1px solid ${selected ? '#8B5CF6' : 'var(--card-border)'}`,
                   }}
                 >
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: 'var(--heading)' }}>
-                      {c.emoji ?? '🎯'} {c.name}
+                  <button
+                    onClick={() => pickSuggested(c.id, c.name, c.memberCount, c.userIds)}
+                    className="w-full text-left transition-all flex items-start justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: 'var(--heading)' }}>
+                        {c.emoji ?? '🎯'} {c.name}
+                      </div>
+                      <div className="text-[11px] mt-1 line-clamp-2" style={{ color: 'var(--t4)' }}>{c.description}</div>
+                      <div className="text-[11px] mt-1" style={{ color: '#A78BFA', fontWeight: 600 }}>{c.memberCount} members</div>
                     </div>
-                    <div className="text-[11px] mt-1 line-clamp-2" style={{ color: 'var(--t4)' }}>{c.description}</div>
-                    <div className="text-[11px] mt-1" style={{ color: '#A78BFA', fontWeight: 600 }}>{c.memberCount} members</div>
+                    {selected && <Check className="w-4 h-4 shrink-0" style={{ color: '#8B5CF6' }} />}
+                  </button>
+
+                  <div className="mt-3">
+                    {previewMembersLoading ? (
+                      <div className="flex items-center gap-2 text-xs p-3 rounded-xl" style={{ background: 'var(--subtle)', color: 'var(--t4)' }}>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        Loading suggested members...
+                      </div>
+                    ) : (
+                      <CampaignAudiencePreviewList
+                        members={previewMembers}
+                        title="Suggested members"
+                        emptyText="No member preview available yet"
+                        compact
+                      />
+                    )}
                   </div>
-                  {selected && <Check className="w-4 h-4 shrink-0" style={{ color: '#8B5CF6' }} />}
-                </button>
+                </div>
               )
             })
           )}

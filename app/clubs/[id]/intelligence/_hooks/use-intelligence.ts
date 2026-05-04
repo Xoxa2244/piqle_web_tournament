@@ -366,6 +366,25 @@ export function useSuggestedCohorts(clubId: string, options?: IntelligenceQueryO
   return query
 }
 
+export function useAudiencePreviewMembers(clubId: string, userIds: string[], options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getAudiencePreviewMembers.useQuery(
+    { clubId, userIds },
+    { enabled: !!clubId && userIds.length > 0 && !isDemo && (options?.enabled ?? true), staleTime: 30 * 1000 }
+  )
+
+  if (isDemo) {
+    return {
+      data: [],
+      isLoading: false,
+      error: null,
+    } as any
+  }
+
+  return query
+}
+
 /**
  * P2-T3: List existing user cohorts for bulk-action picker.
  */

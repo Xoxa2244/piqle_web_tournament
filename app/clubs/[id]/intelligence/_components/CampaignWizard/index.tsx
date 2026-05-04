@@ -184,34 +184,6 @@ export function CampaignWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedCohorts.length])
 
-  useEffect(() => {
-    if (state.audience || initialSuggestedCohort || initialCohortId || initialUserIds?.length || !currentGoal) return
-
-    const match = suggestedAudiences[0]
-    if (!match) return
-
-    setState((current) => {
-      if (current.audience) return current
-        return {
-          ...current,
-          audience: {
-            kind: 'ai_suggested',
-            cohortId: match.cohortId ?? null,
-            cohortName: match.name,
-            userIds: match.userIds,
-            memberCount: match.memberCount,
-        },
-      }
-    })
-  }, [
-    currentGoal,
-    initialCohortId,
-    initialSuggestedCohort,
-    initialUserIds,
-    state.audience,
-    suggestedAudiences,
-  ])
-
   const canAdvance = (() => {
     if (step === 1) return !!state.audience
     if (step === 2) return !!state.goal

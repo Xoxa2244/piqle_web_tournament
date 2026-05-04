@@ -6901,6 +6901,72 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       return { cohort, members }
     }),
 
+  getAudiencePreviewMembers: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      userIds: z.array(z.string()).max(200),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const userIds = Array.from(new Set(input.userIds.filter(Boolean))).slice(0, 200)
+      if (userIds.length === 0) return []
+
+      const [followers, bookings] = await Promise.all([
+        ctx.prisma.clubFollower.findMany({
+          where: { clubId: input.clubId, userId: { in: userIds } },
+          select: {
+            userId: true,
+            createdAt: true,
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        }),
+        ctx.prisma.playSessionBooking.findMany({
+          where: {
+            userId: { in: userIds },
+            status: 'CONFIRMED',
+            playSession: { clubId: input.clubId },
+          },
+          select: {
+            userId: true,
+            bookedAt: true,
+          },
+          orderBy: { bookedAt: 'desc' },
+        }),
+      ])
+
+      const latestBookingByUserId = new Map<string, Date>()
+      for (const booking of bookings) {
+        if (!latestBookingByUserId.has(booking.userId)) {
+          latestBookingByUserId.set(booking.userId, booking.bookedAt)
+        }
+      }
+
+      const now = Date.now()
+
+      return followers.map((follower) => {
+        const lastBookedAt = latestBookingByUserId.get(follower.userId) ?? null
+        const joinedDaysAgo = Math.max(0, Math.floor((now - follower.createdAt.getTime()) / 86400000))
+        const daysSinceLastVisit = lastBookedAt
+          ? Math.max(0, Math.floor((now - lastBookedAt.getTime()) / 86400000))
+          : null
+
+        return {
+          id: follower.user.id,
+          name: follower.user.name || follower.user.email || 'Unknown member',
+          email: follower.user.email,
+          joinedDaysAgo,
+          daysSinceLastVisit,
+        }
+      })
+    }),
+
   parseCohortFromText: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
