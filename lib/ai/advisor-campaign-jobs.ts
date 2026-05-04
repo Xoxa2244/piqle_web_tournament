@@ -84,10 +84,31 @@ function getBookingUrl(clubId: string) {
   return buildPlatformUrl(`/clubs/${clubId}/play`)
 }
 
-function interpolateCampaignText(text: string, memberName: string, clubName: string) {
-  return text
-    .replace(/\{\{name\}\}/g, memberName)
-    .replace(/\{\{club\}\}/g, clubName)
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function getCampaignRecipientNameParts(name?: string | null) {
+  const parts = (name || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+
+  return {
+    fullName: parts.join(' ') || 'there',
+    firstName: parts[0] || 'there',
+    lastName: parts.slice(1).join(' '),
+  }
+}
+
+function interpolateCampaignText(
+  text: string,
+  replacements: Record<string, string>,
+) {
+  return Object.entries(replacements).reduce((result, [token, replacement]) => {
+    const pattern = new RegExp(`\\{\\{${escapeRegExp(token)}\\}\\}|\\{${escapeRegExp(token)}\\}`, 'gi')
+    return result.replace(pattern, replacement)
+  }, text)
 }
 
 async function deliverCampaignToUser(opts: {
@@ -100,18 +121,29 @@ async function deliverCampaignToUser(opts: {
   logId?: string
 }) : Promise<DeliveryResult> {
   const { club, user, channel, logId } = opts
-  const memberName = user.name?.split(' ')[0] || 'there'
+  const recipientName = getCampaignRecipientNameParts(user.name)
   const bookingUrl = getBookingUrl(club.id)
   const shouldSendEmail = channel === 'email' || channel === 'both'
   const shouldSendSms = channel === 'sms' || channel === 'both'
+  const templateValues = {
+    name: recipientName.firstName,
+    first_name: recipientName.firstName,
+    full_name: recipientName.fullName,
+    last_name: recipientName.lastName,
+    club: club.name,
+    club_name: club.name,
+    event_name: 'our upcoming event',
+    event_date: 'a date to be confirmed',
+    expires_in_days: 'soon',
+  }
 
   const emailSubject = opts.subject
-    ? interpolateCampaignText(opts.subject, memberName, club.name)
+    ? interpolateCampaignText(opts.subject, templateValues)
     : `Message from ${club.name}`
-  const emailBody = interpolateCampaignText(opts.body, memberName, club.name)
+  const emailBody = interpolateCampaignText(opts.body, templateValues)
   const smsText = opts.smsBody
-    ? interpolateCampaignText(opts.smsBody, memberName, club.name)
-    : (shouldSendSms ? interpolateCampaignText(opts.body, memberName, club.name).slice(0, 300) : undefined)
+    ? interpolateCampaignText(opts.smsBody, templateValues)
+    : (shouldSendSms ? interpolateCampaignText(opts.body, templateValues).slice(0, 300) : undefined)
 
   let externalMessageId: string | null = null
   let emailDelivered = false
