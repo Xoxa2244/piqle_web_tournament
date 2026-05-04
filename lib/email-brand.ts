@@ -52,10 +52,14 @@ export function buildEmailButton(label: string, href: string, tone: 'primary' | 
 }
 
 export function buildEmailPanel(innerHtml: string) {
+  // bgcolor attribute on <td> is legacy HTML, universally respected including
+  // by iOS Mail's dark-mode renderer (which strips many CSS properties). The
+  // CSS `background` property is kept as belt-and-suspenders for clients that
+  // honour it. Border simulated via `border` style (no good legacy fallback).
   return `
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-top:16px;background:#131C31;border:1px solid rgba(148,163,184,0.16);border-radius:16px;overflow:hidden;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#131C31" style="margin-top:16px;background:#131C31;border:1px solid #1F2A44;border-radius:16px;overflow:hidden;">
       <tr>
-        <td style="padding:18px 20px;">
+        <td bgcolor="#131C31" style="background:#131C31;padding:18px 20px;color:#E2E8F0;">
           ${innerHtml}
         </td>
       </tr>
@@ -99,36 +103,24 @@ export function buildIqSportEmail(opts: {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!--
-    color-scheme + supported-color-schemes tell iOS Mail / Apple Mail / Outlook
-    dark-mode renderers that this email is INTENTIONALLY designed for dark
-    backgrounds. Without these hints, iOS aggressively "auto-balances"
-    light text on dark backgrounds, muting any near-white into grey — which
-    made our headings and paragraphs look dim before this fix.
-  -->
-  <meta name="color-scheme" content="dark">
-  <meta name="supported-color-schemes" content="dark">
-  <style>
-    :root { color-scheme: dark; supported-color-schemes: dark; }
-  </style>
   <title>${opts.title}</title>
 </head>
-<body style="margin:0;padding:0;background:#0B1020;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#F8FAFC;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0B1020;">
+<body bgcolor="#0B1020" style="margin:0;padding:0;background:#0B1020;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#F8FAFC;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0B1020" style="background:#0B1020;">
     <tr>
-      <td align="center" style="padding:32px 16px 40px;">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;">
+      <td align="center" bgcolor="#0B1020" style="background:#0B1020;padding:32px 16px 40px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;margin:0 auto;">
           <tr>
             <td align="center" style="padding-bottom:20px;">
               <img src="${logoUrl}" alt="IQSport Intelligence" width="248" style="display:block;width:248px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;margin:0 auto;" />
             </td>
           </tr>
           <tr>
-            <td style="background:linear-gradient(180deg,#121A2B 0%,#0F172A 100%);border:1px solid rgba(148,163,184,0.14);border-radius:24px;overflow:hidden;box-shadow:0 22px 55px rgba(2,6,23,0.45);">
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+            <td bgcolor="#101728" style="background:#101728;border:1px solid #1F2A44;border-radius:24px;overflow:hidden;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                 <tr>
-                  <td style="padding:28px 28px 12px;text-align:center;">
-                    <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:rgba(6,182,212,0.10);border:1px solid rgba(6,182,212,0.20);font-size:11px;font-weight:700;letter-spacing:0.18em;color:#A5F3FC;text-transform:uppercase;">
+                  <td bgcolor="#101728" style="background:#101728;padding:28px 28px 12px;text-align:center;">
+                    <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:#0E3A4A;border:1px solid #155E75;font-size:11px;font-weight:700;letter-spacing:0.18em;color:#A5F3FC;text-transform:uppercase;">
                       ${eyebrow}
                     </div>
                     <h1 style="margin:18px 0 0;font-size:30px;line-height:1.15;font-weight:800;color:#FFFFFF;">
@@ -137,7 +129,7 @@ export function buildIqSportEmail(opts: {
                   </td>
                 </tr>
                 <tr>
-                  <td style="padding:12px 28px 28px;">
+                  <td bgcolor="#101728" style="background:#101728;padding:12px 28px 28px;color:#E2E8F0;">
                     ${opts.bodyHtml}
                   </td>
                 </tr>

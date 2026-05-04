@@ -241,15 +241,18 @@ function renderDay12Html(firstName: string, ctx: DecliningStepContext): string {
   // Day 12: emphasized incentive panel + single prominent CTA. Last try.
   const intro = `Hey ${firstName}! We'd really like to see you back. So here's our offer — and that's it: no follow-up sales pitch, no strings attached.`
 
+  // Use solid hex colors (no rgba — iOS Mail dark-mode strips alpha and
+  // can flip low-contrast backgrounds to white). Pure white heading +
+  // bright body text matched to the rest of the email family.
   const incentivePanel = buildEmailPanel(`
     <div style="text-align:center;padding:8px 0;">
-      <div style="display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.35);font-size:11px;font-weight:700;letter-spacing:0.18em;color:#C4B5FD;text-transform:uppercase;margin-bottom:14px;">
+      <div style="display:inline-block;padding:6px 12px;border-radius:999px;background:#3B2A6B;border:1px solid #6D4FBF;font-size:11px;font-weight:700;letter-spacing:0.18em;color:#DDD6FE;text-transform:uppercase;margin-bottom:14px;">
         On the house
       </div>
-      <div style="font-size:24px;font-weight:800;color:#F8FAFC;line-height:1.25;margin-bottom:8px;">
+      <div style="font-size:24px;font-weight:800;color:#FFFFFF;line-height:1.25;margin-bottom:8px;">
         Free guest pass for your next session
       </div>
-      <div style="font-size:14px;color:#CBD5E1;line-height:1.6;">
+      <div style="font-size:14px;color:#E2E8F0;line-height:1.6;">
         Your pick: any format, any time. The pass is automatically applied when you book.
       </div>
     </div>
