@@ -2143,6 +2143,21 @@ model Campaign {
   ctaLabel        String?  @map("cta_label")
   ctaUrl          String?  @map("cta_url")
 
+  // Send format: 'one_time' (default), 'sequence', 'recurring'.
+  // Drives whether the runner reads campaign.subject/body or steps[].
+  format          String   @default("one_time")
+
+  // Sequence track: ordered list of follow-up steps.
+  //   [{ stepIndex, delayDays, subject, body, ctaLabel?, ctaUrl? }, ...]
+  // NULL for one-time campaigns. MVP caps at 5 entries (validated in
+  // Zod, not the DB). The sequence runner reads this to schedule
+  // step N+1 after step N's delay elapses.
+  steps           Json?
+  // When true, sequence runner stops follow-up steps for a recipient
+  // who books a session between steps. Mirrors Tier 1 conditional
+  // follow-up behaviour (see lib/ai/onboarding-sequence.ts).
+  exitOnBooking   Boolean  @default(true) @map("exit_on_booking")
+
   status          String   @default("draft") // draft|scheduled|running|paused|completed|failed
 
   scheduledAt     DateTime? @map("scheduled_at")
