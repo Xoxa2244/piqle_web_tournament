@@ -14,6 +14,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { X, ChevronRight, ChevronLeft } from 'lucide-react'
+import ConfirmModal from '@/components/ConfirmModal'
 import { trpc } from '@/lib/trpc'
 import { useListCohorts, useSuggestedCohorts, useIntelligenceSettings } from '../../_hooks/use-intelligence'
 import { Step1Audience } from './Step1Audience'
@@ -57,6 +58,7 @@ export function CampaignWizard({
   const [state, setState] = useState<WizardState>(EMPTY_WIZARD_STATE)
   const [isLaunching, setIsLaunching] = useState(false)
   const [launched, setLaunched] = useState(false)
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
 
   // Data needed by Step 1 (audience picker)
   const { data: savedCohortsRaw = [] } = useListCohorts(clubId)
@@ -111,12 +113,18 @@ export function CampaignWizard({
   // Esc closes (with confirm if dirty)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') tryClose()
+      if (e.key === 'Escape') {
+        if (showDiscardConfirm) {
+          setShowDiscardConfirm(false)
+          return
+        }
+        tryClose()
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state])
+  }, [showDiscardConfirm, state])
 
   const isDirty = !!state.audience || !!state.goal || !!state.message.subject || !!state.message.body
   const tryClose = () => {
@@ -124,9 +132,7 @@ export function CampaignWizard({
       onClose()
       return
     }
-    if (typeof window !== 'undefined' && window.confirm('Discard this campaign draft?')) {
-      onClose()
-    }
+    setShowDiscardConfirm(true)
   }
 
   // Launch — Priority-1.1: writes a real Campaign row via launchCampaign
@@ -336,6 +342,20 @@ export function CampaignWizard({
             </div>
           )}
         </motion.aside>
+
+        <ConfirmModal
+          open={showDiscardConfirm}
+          title="Discard campaign draft?"
+          description="Your unsaved audience, goal, schedule, and message changes will be lost."
+          confirmText="Discard draft"
+          cancelText="Keep editing"
+          destructive
+          onClose={() => setShowDiscardConfirm(false)}
+          onConfirm={() => {
+            setShowDiscardConfirm(false)
+            onClose()
+          }}
+        />
       </>
     </AnimatePresence>
   )
