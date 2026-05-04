@@ -625,26 +625,26 @@ function buildCohortFilterClause(f: CohortFilter): string {
         return f.op === 'contains' ? `u.city ILIKE '%' || ${val} || '%'` : `u.city = ${val}`
       case 'sessionFormat':
         // Players who have played in a specific session format
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1::uuid AND ps.format = ${val} AND psb.status = 'CONFIRMED')`
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND ps.format = ${val} AND psb.status = 'CONFIRMED')`
       case 'dayOfWeek': {
         // Players who play on a specific day of week (Monday=1, Sunday=0)
         const dayMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 }
         const dayNum = dayMap[String(f.value)] ?? 0
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1::uuid AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
       }
       case 'frequency': {
         // Sessions per month — players who play at least N times/month
         const freqVal = Number(f.value)
         if (!Number.isFinite(freqVal) || freqVal < 0 || freqVal > 10000) return 'TRUE'
         const freqOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
       }
       case 'recency': {
         // Days since last visit — players who visited within/after N days
         const recVal = Number(f.value)
         if (!Number.isFinite(recVal) || recVal < 0 || recVal > 36500) return 'TRUE'
         const recOp = f.op === 'lte' ? '>=' : f.op === 'gte' ? '<=' : f.op === 'lt' ? '>' : f.op === 'gt' ? '<' : '='
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
+        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
       }
       case 'userId':
         // Direct user ID filter (used for "cohort from session" and bulk-select
@@ -663,7 +663,7 @@ function buildCohortFilterClause(f: CohortFilter): string {
         const hsVal = Number(f.value)
         if (!Number.isFinite(hsVal) || hsVal < 0 || hsVal > 100) return 'TRUE'
         const hsOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
-        return `u.id IN (SELECT DISTINCT ON (mhs.user_id) mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1::uuid ORDER BY mhs.user_id, mhs.date DESC) AND u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1::uuid AND mhs.health_score ${hsOp} ${hsVal} AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+        return `u.id IN (SELECT DISTINCT ON (mhs.user_id) mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1 ORDER BY mhs.user_id, mhs.date DESC) AND u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1 AND mhs.health_score ${hsOp} ${hsVal} AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
       }
       case 'riskLevel': {
         // Latest snapshot per user where risk_level = (string|in array).
@@ -673,11 +673,11 @@ function buildCohortFilterClause(f: CohortFilter): string {
             .filter((v) => ['healthy', 'watch', 'at_risk', 'critical'].includes(v))
           if (safe.length === 0) return 'TRUE'
           const list = safe.map((v) => `'${v}'`).join(',')
-          return `u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1::uuid AND mhs.risk_level IN (${list}) AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+          return `u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1 AND mhs.risk_level IN (${list}) AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
         }
         const safeVal = String(f.value).replace(/'/g, "''")
         if (!['healthy', 'watch', 'at_risk', 'critical'].includes(safeVal)) return 'TRUE'
-        return `u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1::uuid AND mhs.risk_level = '${safeVal}' AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+        return `u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1 AND mhs.risk_level = '${safeVal}' AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
       }
       case 'joinedDaysAgo': {
         // Days since user joined this club (club_followers.created_at).
@@ -730,7 +730,7 @@ const ACTIVE_MEMBER_JOIN = `
     SELECT DISTINCT psb."userId"
     FROM play_session_bookings psb
     JOIN play_sessions ps ON ps.id = psb."sessionId"
-    WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED'
+    WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED'
   ) active ON active."userId" = u.id
 `
 
@@ -774,7 +774,7 @@ async function fetchCohortBaseMembers(
         mhs.health_score,
         mhs.risk_level
       FROM member_health_snapshots mhs
-      WHERE mhs.club_id = $1::uuid
+      WHERE mhs.club_id = $1
         AND mhs.user_id = u.id
       ORDER BY mhs.date DESC
       LIMIT 1
@@ -809,9 +809,9 @@ async function fetchCohortBaseMembers(
       FROM play_session_bookings psb
       JOIN play_sessions ps ON ps.id = psb."sessionId"
       WHERE psb."userId" = u.id
-        AND ps."clubId" = $1::uuid
+        AND ps."clubId" = $1
     ) recent_activity ON TRUE
-    WHERE cf.club_id = $1::uuid AND ${where}
+    WHERE cf.club_id = $1 AND ${where}
     ORDER BY u.name ASC
     ${limitClause}
   `, clubId)
@@ -853,7 +853,7 @@ async function countCohortMembers(prisma: any, clubId: string, filters: CohortFi
       FROM club_followers cf
       JOIN users u ON u.id = cf.user_id
       ${ACTIVE_MEMBER_JOIN}
-      WHERE cf.club_id = $1::uuid AND ${where}
+      WHERE cf.club_id = $1 AND ${where}
     `, clubId)
     return Number(result[0]?.count ?? 0)
   }
@@ -1794,7 +1794,7 @@ export const intelligenceRouter = createTRPCRouter({
       const spendRows = await ctx.prisma.$queryRawUnsafe<SpendRow[]>(
         `SELECT COALESCE(SUM(cost_usd), 0)::float AS total
          FROM ai_usage_logs
-         WHERE club_id = $1::uuid AND created_at >= $2`,
+         WHERE club_id = $1 AND created_at >= $2`,
         input.clubId,
         periodStart,
       )
@@ -3611,7 +3611,7 @@ export const intelligenceRouter = createTRPCRouter({
           FROM ai_recommendation_logs arl
           LEFT JOIN user_play_preferences upp
             ON arl."userId" = upp."userId" AND arl."clubId" = upp."clubId"
-          WHERE arl."clubId" = ${input.clubId}::uuid
+          WHERE arl."clubId" = ${input.clubId}
             AND arl."createdAt" >= ${since}
           GROUP BY upp.detected_persona
           ORDER BY total DESC
@@ -5090,7 +5090,7 @@ export const intelligenceRouter = createTRPCRouter({
             WHERE b."sessionId" = ps.id AND b.status::text = 'CONFIRMED') as registered
         FROM play_sessions ps
         LEFT JOIN club_courts cc ON cc.id = ps."courtId"
-        WHERE ps."clubId" = $1::uuid
+        WHERE ps."clubId" = $1
           AND ps.date >= CURRENT_DATE
           AND ps.date <= CURRENT_DATE + ($2 || ' days')::interval
           AND ps.status::text = 'SCHEDULED'
@@ -5118,10 +5118,10 @@ export const intelligenceRouter = createTRPCRouter({
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE b."userId" = cf.user_id
-            AND ps."clubId" = $1::uuid
+            AND ps."clubId" = $1
             AND b.status::text = 'CONFIRMED'
         ) first_booking ON true
-        WHERE cf.club_id = $1::uuid
+        WHERE cf.club_id = $1
           AND first_booking."firstPlayedAt" >= NOW() - ($2 || ' days')::interval
         ORDER BY first_booking."firstPlayedAt" DESC
       `, input.clubId, String(input.joinedWithinDays))
@@ -6828,7 +6828,7 @@ Spirit: ${guidance.spirit}`
           SELECT DISTINCT psb."userId"
           FROM play_session_bookings psb
           JOIN play_sessions ps ON ps.id = psb."sessionId"
-          WHERE ps."clubId" = $1::uuid AND psb.status = 'CONFIRMED'
+          WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED'
         )
         SELECT
           COUNT(*)::bigint as total,
@@ -7118,7 +7118,7 @@ Spirit: ${guidance.spirit}`
             FROM play_session_bookings b
             JOIN play_sessions ps ON ps.id = b."sessionId"
             WHERE b."userId" IN (${cohortUserList})
-              AND ps."clubId" = $1::uuid
+              AND ps."clubId" = $1
               AND b.status = 'CONFIRMED'
               AND ps.date >= NOW() - INTERVAL '90 days'
               AND ps.date <= NOW()
@@ -7536,7 +7536,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             SUM(CASE WHEN u.dupr_rating_doubles IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dupr
           FROM club_followers cf
           JOIN users u ON u.id = cf.user_id
-          WHERE cf.club_id = $1::uuid
+          WHERE cf.club_id = $1
         `, clubId),
 
         ctx.prisma.$queryRawUnsafe<[{
@@ -7552,7 +7552,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             SUM(CASE WHEN "pricePerSlot" IS NOT NULL AND "pricePerSlot" > 0 THEN 1 ELSE 0 END)::bigint as has_price,
             SUM(CASE WHEN description IS NOT NULL AND description != '' THEN 1 ELSE 0 END)::bigint as has_description
           FROM play_sessions
-          WHERE "clubId" = $1::uuid
+          WHERE "clubId" = $1
         `, clubId),
 
         ctx.prisma.$queryRawUnsafe<[{
@@ -7568,7 +7568,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             SUM(CASE WHEN psb.status = 'NO_SHOW' THEN 1 ELSE 0 END)::bigint as no_show
           FROM play_session_bookings psb
           JOIN play_sessions ps ON ps.id = psb."sessionId"
-          WHERE ps."clubId" = $1::uuid
+          WHERE ps."clubId" = $1
         `, clubId),
 
         ctx.prisma.clubCourt.count({ where: { clubId, isActive: true } }),
@@ -9201,7 +9201,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         latestSnapshots = await ctx.prisma.$queryRaw<LatestRow[]>`
           SELECT DISTINCT ON (user_id) user_id, health_score, risk_level, lifecycle_stage
           FROM member_health_snapshots
-          WHERE club_id = ${input.clubId}::uuid
+          WHERE club_id = ${input.clubId}
           ORDER BY user_id, date DESC
         `
       } catch {
@@ -9220,7 +9220,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         historicalSnapshots = await ctx.prisma.$queryRaw<LatestRow[]>`
           SELECT DISTINCT ON (user_id) user_id, health_score, risk_level, lifecycle_stage
           FROM member_health_snapshots
-          WHERE club_id = ${input.clubId}::uuid
+          WHERE club_id = ${input.clubId}
             AND date <= ${cutoffDate}
           ORDER BY user_id, date DESC
         `
@@ -9640,7 +9640,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         const latest = await ctx.prisma.$queryRaw<Array<{ user_id: string }>>`
           SELECT DISTINCT ON (user_id) user_id
           FROM member_health_snapshots
-          WHERE club_id = ${input.clubId}::uuid
+          WHERE club_id = ${input.clubId}
             AND risk_level IN ('at_risk', 'critical')
           ORDER BY user_id, date DESC
         `
