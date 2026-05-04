@@ -2,20 +2,29 @@
  * Mandrill (Mailchimp Transactional) Webhook Endpoint
  *
  * Receives POST events from Mandrill for email tracking:
- *   - open:         Email opened (tracking pixel loaded) → set openedAt, status 'opened'
- *   - click:        Link clicked in email               → set clickedAt, status 'clicked'
- *   - hard_bounce:  Hard bounce                         → set bouncedAt, bounceType 'hard', status 'bounced'
+ *   - send:         Message handed to receiving SMTP    → set deliveredAt + bump Campaign.deliveredCount
+ *   - open:         Email opened (tracking pixel loaded) → set openedAt, status 'opened' + bump Campaign.openedCount
+ *   - click:        Link clicked in email               → set clickedAt, status 'clicked' + bump Campaign.clickedCount
+ *   - hard_bounce:  Hard bounce                         → set bouncedAt, bounceType 'hard', status 'bounced' + bump Campaign.failedCount
  *   - soft_bounce:  Soft bounce                         → set bouncedAt, bounceType 'soft', status 'bounced'
- *   - reject:       Message rejected by Mandrill        → set bouncedAt, bounceType 'reject', status 'bounced'
+ *   - reject:       Message rejected by Mandrill        → set bouncedAt, bounceType 'reject', status 'bounced' + bump Campaign.failedCount
  *
- * Matching: Mandrill msg._id maps to AIRecommendationLog.externalMessageId.
+ * Matching: Mandrill msg._id maps to AIRecommendationLog.externalMessageId
+ * (or msg.metadata.log_id if set, which is the canonical correlator).
  *
  * Mandrill also sends HEAD requests to verify the webhook URL — we respond 200.
+ *
+ * P1.3: Campaign-level counter rollup.
+ * When a log row has campaignId set (i.e. it's a CAMPAIGN_SEND row, not a
+ * CHECK_IN/REACTIVATION/etc. one-off), we also bump the parent Campaign's
+ * counter columns. Bumps are idempotent: we only increment when the
+ * relevant timestamp on the log row was previously NULL, so duplicate
+ * Mandrill webhooks (which Mandrill is allowed to send) don't double-count.
  *
  * Setup in Mandrill dashboard:
  *   Settings → Webhooks → Add webhook
  *   URL: https://your-domain.com/api/webhooks/mandrill
- *   Events: Message Is Opened, Message Is Clicked, Message Bounced, Message Rejected
+ *   Events: Message Is Sent, Message Is Opened, Message Is Clicked, Message Bounced, Message Rejected
  */
 
 import { NextResponse } from 'next/server'
@@ -151,63 +160,92 @@ async function processMandrillEvent(event: MandrillEvent) {
 
   const eventTime = new Date(event.ts * 1000)
 
+  // Helper — bump a Campaign counter column iff the log belongs to a
+  // campaign AND the relevant log timestamp was null pre-update (i.e.
+  // this is the first webhook for this state, not a duplicate retry).
+  // Mandrill is allowed to deliver webhooks more than once, so all
+  // Campaign-level increments must be idempotent.
+  const bumpCampaignCounter = async (
+    field: 'deliveredCount' | 'openedCount' | 'clickedCount' | 'failedCount',
+  ) => {
+    if (!log.campaignId) return
+    await prisma.campaign.update({
+      where: { id: log.campaignId },
+      data: { [field]: { increment: 1 } },
+    })
+  }
+
   switch (event.event) {
+    case 'send':
+      // Mandrill 'send' = message handed to the receiving SMTP server.
+      // It's the closest signal to "delivered" we get — true inbox
+      // confirmation isn't possible over SMTP.
+      if (log.deliveredAt == null) {
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: { deliveredAt: eventTime },
+        })
+        await bumpCampaignCounter('deliveredCount')
+      }
+      break
+
     case 'open':
-      await prisma.aIRecommendationLog.update({
-        where: { id: log.id },
-        data: {
-          openedAt: log.openedAt ?? eventTime,
-          // Only advance status if it's currently 'sent'
-          status: log.status === 'sent' ? 'opened' : log.status,
-        },
-      })
+      if (log.openedAt == null) {
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: {
+            openedAt: eventTime,
+            // Only advance status if it's currently 'sent'
+            status: log.status === 'sent' ? 'opened' : log.status,
+          },
+        })
+        await bumpCampaignCounter('openedCount')
+      }
       break
 
     case 'click':
-      await prisma.aIRecommendationLog.update({
-        where: { id: log.id },
-        data: {
-          clickedAt: log.clickedAt ?? eventTime,
-          status: 'clicked',
-        },
-      })
+      if (log.clickedAt == null) {
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: { clickedAt: eventTime, status: 'clicked' },
+        })
+        await bumpCampaignCounter('clickedCount')
+      }
       break
 
     case 'hard_bounce':
-      await prisma.aIRecommendationLog.update({
-        where: { id: log.id },
-        data: {
-          bouncedAt: eventTime,
-          bounceType: 'hard',
-          status: 'bounced',
-        },
-      })
+      if (log.bouncedAt == null) {
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: { bouncedAt: eventTime, bounceType: 'hard', status: 'bounced' },
+        })
+        await bumpCampaignCounter('failedCount')
+      }
       break
 
     case 'soft_bounce':
-      await prisma.aIRecommendationLog.update({
-        where: { id: log.id },
-        data: {
-          bouncedAt: eventTime,
-          bounceType: 'soft',
-          status: 'bounced',
-        },
-      })
+      // Soft bounces can recover — don't count toward failedCount yet.
+      // (Cron's retry_count exhaustion path bumps failedCount when truly dead.)
+      if (log.bouncedAt == null) {
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: { bouncedAt: eventTime, bounceType: 'soft', status: 'bounced' },
+        })
+      }
       break
 
     case 'reject':
-      await prisma.aIRecommendationLog.update({
-        where: { id: log.id },
-        data: {
-          bouncedAt: eventTime,
-          bounceType: 'reject',
-          status: 'bounced',
-        },
-      })
+      if (log.bouncedAt == null) {
+        await prisma.aIRecommendationLog.update({
+          where: { id: log.id },
+          data: { bouncedAt: eventTime, bounceType: 'reject', status: 'bounced' },
+        })
+        await bumpCampaignCounter('failedCount')
+      }
       break
 
     default:
-      // Ignore send, deferral, spam, unsub, and other event types
+      // Ignore deferral, spam, unsub, and other event types
       break
   }
 }

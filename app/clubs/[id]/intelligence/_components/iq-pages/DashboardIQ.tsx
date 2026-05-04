@@ -351,6 +351,14 @@ const insightTypeIcon: Record<string, React.ComponentType<{ className?: string; 
 };
 const priorityColor: Record<string, string> = { high: '#EF4444', medium: '#F59E0B', low: '#10B981' };
 
+type InsightRoleFilter = 'all' | 'owner' | 'marketer' | 'ops';
+const ROLE_FILTERS: { key: InsightRoleFilter; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'owner', label: 'Owner' },
+  { key: 'marketer', label: 'Marketer' },
+  { key: 'ops', label: 'Ops' },
+];
+
 function InsightsPanel({ insights, isLoading, router, clubId }: { insights: any[]; isLoading: boolean; router: any; clubId: string }) {
   const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(() => {
@@ -358,6 +366,17 @@ function InsightsPanel({ insights, isLoading, router, clubId }: { insights: any[
     try { return new Set(JSON.parse(localStorage.getItem('iq_dismissed_insights') || '[]')); } catch { return new Set(); }
   });
   const [accepted, setAccepted] = useState<Set<string>>(new Set());
+  // Role filter — persisted so an admin's preferred lens stays on across reloads.
+  const [roleFilter, setRoleFilter] = useState<InsightRoleFilter>(() => {
+    if (typeof window === 'undefined') return 'all';
+    const stored = localStorage.getItem('iq_insights_role_filter');
+    if (stored === 'owner' || stored === 'marketer' || stored === 'ops' || stored === 'all') return stored;
+    return 'all';
+  });
+  const setRoleFilterPersist = (next: InsightRoleFilter) => {
+    setRoleFilter(next);
+    try { localStorage.setItem('iq_insights_role_filter', next); } catch {}
+  };
 
   const dismiss = (id: string) => {
     const next = new Set(dismissed); next.add(id); setDismissed(next);
@@ -388,16 +407,54 @@ function InsightsPanel({ insights, isLoading, router, clubId }: { insights: any[
     );
   }
 
-  const visible = insights.filter(i => !dismissed.has(i.id));
+  const undismissed = insights.filter(i => !dismissed.has(i.id));
+  // Role filter — server returns roles?: string[] per insight. Fallback to
+  // showing the row when roles are absent (older snapshot before tagging
+  // landed) so a stale cache doesn't black out the panel.
+  const visible = roleFilter === 'all'
+    ? undismissed
+    : undismissed.filter(i => !Array.isArray(i.roles) || i.roles.length === 0 || i.roles.includes(roleFilter));
+
+  // Filter chips render even when the visible list is empty — admin needs
+  // a way back to "All" if they filtered themselves into a corner.
+  const filterChips = (
+    <div className="flex items-center gap-1.5 mb-3">
+      {ROLE_FILTERS.map(({ key, label }) => {
+        const active = roleFilter === key;
+        return (
+          <button
+            key={key}
+            onClick={() => setRoleFilterPersist(key)}
+            className="px-2 py-0.5 rounded-md text-[10px] transition-all"
+            style={{
+              background: active ? 'rgba(139,92,246,0.18)' : 'transparent',
+              color: active ? '#A78BFA' : 'var(--t3)',
+              border: `1px solid ${active ? 'rgba(139,92,246,0.35)' : 'var(--card-border)'}`,
+              fontWeight: active ? 600 : 500,
+            }}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
   if (visible.length === 0) {
+    const emptyCopy = roleFilter === 'all'
+      ? 'All good! No actionable insights right now.'
+      : `No insights for ${roleFilter} right now.`;
     return (
-      <div className="flex items-center gap-2 py-4">
-        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-        <p className="text-sm" style={{ color: 'var(--t3)' }}>All good! No actionable insights right now.</p>
-        {dismissed.size > 0 && (
-          <button onClick={() => { setDismissed(new Set()); localStorage.removeItem('iq_dismissed_insights'); }}
-            className="text-[11px] ml-auto" style={{ color: '#8B5CF6' }}>Reset dismissed</button>
-        )}
+      <div>
+        {filterChips}
+        <div className="flex items-center gap-2 py-4">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <p className="text-sm" style={{ color: 'var(--t3)' }}>{emptyCopy}</p>
+          {dismissed.size > 0 && (
+            <button onClick={() => { setDismissed(new Set()); localStorage.removeItem('iq_dismissed_insights'); }}
+              className="text-[11px] ml-auto" style={{ color: '#8B5CF6' }}>Reset dismissed</button>
+          )}
+        </div>
       </div>
     );
   }
@@ -406,7 +463,9 @@ function InsightsPanel({ insights, isLoading, router, clubId }: { insights: any[
   const remaining = visible.length - INSIGHTS_COLLAPSED_COUNT;
 
   return (
-    <div className="space-y-0">
+    <div>
+      {filterChips}
+      <div className="space-y-0">
       {shown.map((insight, idx) => {
         const Icon = insightTypeIcon[insight.type] || Zap;
         const dotColor = priorityColor[insight.priority] || '#10B981';
@@ -458,6 +517,7 @@ function InsightsPanel({ insights, isLoading, router, clubId }: { insights: any[
           {expanded ? 'Show less' : `Show ${remaining} more insight${remaining > 1 ? 's' : ''}`}
         </button>
       )}
+      </div>
     </div>
   );
 }

@@ -1,0 +1,18 @@
+-- ENGAGE Segment #5 "Спящий" — new AIRecommendationType enum value.
+--
+-- Tracks members who haven't booked in 30–90 days but whose subscription
+-- is still active. The next stop on the lifecycle cascade after
+-- DECLINING_REACTIVATION (0–30d window).
+--
+-- 2-step sequence:
+--   Day 1:  "What's new at the club" — re-engagement, no incentive yet
+--   Day 14: "Can we help?" + 4-option micro-survey
+--           (planschanged / time-no-fit / schedule-bad / other)
+--
+-- Distinct from:
+--   - DECLINING_REACTIVATION (still warm, <30d since last booking)
+--   - REACTIVATION (long-term inactive 90+ days, deep winback)
+--   - CHECK_IN/RETENTION_BOOST (health-score worsening triggers)
+--
+-- Applied to both DBs (mwdftgazlvpfyvqicovh prod, angwdmyswzztmlrdzgxm dev).
+ALTER TYPE "AIRecommendationType" ADD VALUE IF NOT EXISTS 'SLEEPING_REACTIVATION';

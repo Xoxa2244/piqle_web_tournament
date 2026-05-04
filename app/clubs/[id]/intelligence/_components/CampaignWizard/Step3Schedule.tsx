@@ -16,7 +16,8 @@
  */
 
 import { Send, Calendar, Zap, Mail, MessageSquare, Layers, Repeat } from 'lucide-react'
-import type { ScheduleSettings, SendFormat } from './types'
+import type { ScheduleSettings, SendFormat, RecurringFrequency } from './types'
+import { buildRecurringCron } from './types'
 
 interface Step3Props {
   schedule: ScheduleSettings
@@ -42,16 +43,12 @@ const FORMAT_OPTIONS: Array<{
     label: 'Sequence',
     hint: 'Drip series — multiple messages with delays (e.g. day 0, +3, +7).',
     icon: Layers,
-    disabled: true,
-    comingSoon: true,
   },
   {
     key: 'recurring',
     label: 'Recurring',
     hint: 'Repeats on a schedule — e.g. every Monday at 9am to whoever matches the cohort.',
     icon: Repeat,
-    disabled: true,
-    comingSoon: true,
   },
 ]
 
@@ -101,7 +98,126 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
         </div>
       </div>
 
+      {/* Recurring schedule editor — visible only when format='recurring'.
+          UI generates a cron expression from a structured frequency
+          selector. Custom cron text input is not in MVP. */}
+      {schedule.format === 'recurring' && (
+        <div className="rounded-xl p-4 space-y-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+          <div className="flex items-center gap-2">
+            <Repeat className="w-4 h-4" style={{ color: '#A78BFA' }} />
+            <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>Recurring schedule</span>
+          </div>
+
+          <div>
+            <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Frequency</label>
+            <div className="grid grid-cols-3 gap-2 mt-1">
+              {(['daily', 'weekly', 'monthly'] as RecurringFrequency[]).map((f) => {
+                const active = (schedule.recurringFrequency ?? 'weekly') === f
+                return (
+                  <button
+                    key={f}
+                    onClick={() => onChange({ ...schedule, recurringFrequency: f })}
+                    className="px-3 py-2 rounded-lg text-xs transition-all"
+                    style={{
+                      background: active ? 'rgba(139,92,246,0.18)' : 'var(--subtle)',
+                      border: `1px solid ${active ? '#8B5CF6' : 'var(--card-border)'}`,
+                      color: active ? '#A78BFA' : 'var(--heading)',
+                      fontWeight: 600,
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {f}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {schedule.recurringFrequency === 'weekly' && (
+            <div>
+              <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Day of week</label>
+              <div className="grid grid-cols-7 gap-1 mt-1">
+                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => {
+                  const active = (schedule.recurringDayOfWeek ?? 1) === i
+                  return (
+                    <button
+                      key={d}
+                      onClick={() => onChange({ ...schedule, recurringDayOfWeek: i })}
+                      className="px-1 py-1.5 rounded-lg text-[11px] transition-all"
+                      style={{
+                        background: active ? 'rgba(139,92,246,0.18)' : 'var(--subtle)',
+                        border: `1px solid ${active ? '#8B5CF6' : 'var(--card-border)'}`,
+                        color: active ? '#A78BFA' : 'var(--heading)',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {d}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {schedule.recurringFrequency === 'monthly' && (
+            <div>
+              <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Day of month (1–28)</label>
+              <input
+                type="number"
+                min={1}
+                max={28}
+                value={schedule.recurringDayOfMonth ?? 1}
+                onChange={(e) => onChange({ ...schedule, recurringDayOfMonth: Math.max(1, Math.min(28, Number(e.target.value) || 1)) })}
+                className="mt-1 w-20 px-3 py-2 rounded-lg text-sm outline-none text-center"
+                style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
+              />
+              <div className="text-[10px] mt-1" style={{ color: 'var(--t4)' }}>
+                Capped at 28 — months with fewer days would otherwise skip a run.
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Hour (24h)</label>
+              <input
+                type="number"
+                min={0}
+                max={23}
+                value={schedule.recurringHour ?? 9}
+                onChange={(e) => onChange({ ...schedule, recurringHour: Math.max(0, Math.min(23, Number(e.target.value) || 0)) })}
+                className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Timezone</label>
+              <input
+                type="text"
+                value={schedule.recurringTimezone ?? 'UTC'}
+                onChange={(e) => onChange({ ...schedule, recurringTimezone: e.target.value })}
+                placeholder="UTC or America/Los_Angeles"
+                className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+                style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-lg p-2 text-[11px]" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
+            <span style={{ color: 'var(--t4)' }}>Cron preview:</span>{' '}
+            <code style={{ color: 'var(--heading)', fontWeight: 600 }}>{buildRecurringCron(schedule) ?? '—'}</code>
+            <span style={{ color: 'var(--t4)' }}> ({schedule.recurringTimezone ?? 'UTC'})</span>
+          </div>
+
+          <div className="text-[11px] leading-relaxed" style={{ color: 'var(--t4)' }}>
+            On each run the cohort is <strong style={{ color: 'var(--heading)' }}>re-evaluated</strong>: only members who match the cohort filters at run time receive the email. Members who don't match are skipped (and re-included on a later run if they qualify again).
+          </div>
+        </div>
+      )}
+
       {/* Send mode (only meaningful for one_time today). */}
+      {schedule.format !== 'recurring' && (
+      <>
       <div className="space-y-2">
         <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>When</label>
         {([
@@ -145,6 +261,28 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
             className="w-full mt-1 px-3 py-2 rounded-lg text-sm outline-none"
             style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
           />
+        </div>
+      )}
+      </>
+      )}
+
+      {/* Sequence-only: exit-on-booking toggle. When ON, the runner stops
+          sending follow-up steps to a recipient who books a session
+          between steps. Mirrors Tier 1 conditional follow-up behaviour. */}
+      {schedule.format === 'sequence' && (
+        <div className="rounded-xl p-3 flex items-start gap-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+          <input
+            type="checkbox"
+            checked={schedule.exitOnBooking}
+            onChange={(e) => onChange({ ...schedule, exitOnBooking: e.target.checked })}
+            className="mt-0.5 w-4 h-4 cursor-pointer"
+          />
+          <label className="text-xs cursor-pointer flex-1" onClick={() => onChange({ ...schedule, exitOnBooking: !schedule.exitOnBooking })}>
+            <span style={{ color: 'var(--heading)', fontWeight: 600 }}>Stop the series if the recipient books a session</span>
+            <span className="block mt-0.5" style={{ color: 'var(--t4)' }}>
+              Recommended on. Avoids nagging members who already responded by booking. Doesn't pause the campaign for everyone — only that one recipient.
+            </span>
+          </label>
         </div>
       )}
 

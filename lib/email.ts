@@ -605,6 +605,10 @@ export async function sendOutreachEmail({
   sessionCard,
   metadata,
   tags,
+  ctaLabel,
+  ctaUrl,
+  bodyHtmlOverride,
+  suppressDefaultCta,
 }: {
   to: string
   subject: string
@@ -616,8 +620,32 @@ export async function sendOutreachEmail({
   metadata?: EmailMetadata
   /** Mandrill tags for dashboard filtering */
   tags?: string[]
+  /** Custom CTA button label. Falls back to "Book a Session" when absent. */
+  ctaLabel?: string | null
+  /** Custom CTA target. Falls back to bookingUrl when absent. */
+  ctaUrl?: string | null
+  /**
+   * Optional fully-formed HTML body. When set, replaces the default
+   * `renderTextParagraphs(body) + sessionCard + bookingButton` layout
+   * entirely. Used by sequences (e.g. declining-reactivation) that need
+   * to embed survey button arrays, multi-session panels, or other rich
+   * structures that don't fit the default text+button mold. The plain
+   * `text` fallback is still derived from `body` so non-HTML email
+   * clients still get a readable copy.
+   */
+  bodyHtmlOverride?: string
+  /**
+   * When `bodyHtmlOverride` is set, the default Book-a-Session CTA at the
+   * bottom would duplicate any CTA already inside the HTML. Pass true to
+   * suppress it. No effect when bodyHtmlOverride is empty.
+   */
+  suppressDefaultCta?: boolean
 }): Promise<{ messageId: string }> {
-  const text = `${body}\n\nBook now: ${bookingUrl}`
+  // Effective CTA — either the campaign-level override or the legacy default.
+  const effectiveCtaLabel = (ctaLabel?.trim() || 'Book a Session')
+  const effectiveCtaUrl = (ctaUrl?.trim() || bookingUrl)
+
+  const text = `${body}\n\n${effectiveCtaLabel}: ${effectiveCtaUrl}`
 
   const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
@@ -646,17 +674,26 @@ export async function sendOutreachEmail({
               </table>`
   }
 
+  // Build body HTML — caller can override the entire layout when they need
+  // structured embedded content (e.g. survey button arrays for declining
+  // sequence). If they didn't override, use the default text+sessionCard
+  // layout that's been the standard for slot-filler / reactivation emails.
+  const defaultBodyHtml = `
+      ${renderTextParagraphs(body)}
+      ${sessionCardHtml ? buildEmailPanel(sessionCardHtml) : ''}
+      ${suppressDefaultCta ? '' : buildEmailButton(effectiveCtaLabel, effectiveCtaUrl)}
+    `
+  const finalBodyHtml = bodyHtmlOverride
+    ? `${bodyHtmlOverride}${suppressDefaultCta ? '' : buildEmailButton(effectiveCtaLabel, effectiveCtaUrl)}`
+    : defaultBodyHtml
+
   const html = buildIqSportEmail({
     title: subject,
     heading: subject,
     eyebrow: 'Campaign Outreach',
     subheading: `Sent by ${clubName}`,
     baseUrl: bookingUrl,
-    bodyHtml: `
-      ${renderTextParagraphs(body)}
-      ${sessionCardHtml ? buildEmailPanel(sessionCardHtml) : ''}
-      ${buildEmailButton('Book a Session', bookingUrl)}
-    `,
+    bodyHtml: finalBodyHtml,
     footerHtml: `
       <p style="margin:0;font-size:12px;color:#94A3B8;">
         Sent by ${clubName} via <a href="${getAppBaseUrl(bookingUrl)}" style="color:#A78BFA;text-decoration:none;">IQSport.ai</a>

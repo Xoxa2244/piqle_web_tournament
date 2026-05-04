@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { ShieldAlert, Bot } from 'lucide-react'
 import { useIntelligenceSettings } from '../../_hooks/use-intelligence'
 import { AgentCampaignLayer } from '../../_components/iq-pages/AgentCampaignLayer'
+import { MicroSurveyResultsCard } from '../../_components/MicroSurveyResultsCard'
+import { BirthdayPendingGiftsCard } from '../../_components/BirthdayPendingGiftsCard'
 
 /**
  * Settings → Automation page
@@ -63,6 +65,15 @@ export default function SettingsAutomationPage() {
       </div>
 
       <AgentCampaignLayer clubId={clubId} />
+
+      {/* Birthday queue lives ABOVE the survey aggregate — admins need to
+          see the action list (whose gift to prepare) first. */}
+      <BirthdayPendingGiftsCard clubId={clubId} />
+
+      <MicroSurveyResultsCard clubId={clubId} surveyType="onboarding_day12" />
+      <MicroSurveyResultsCard clubId={clubId} surveyType="declining_reactivation" />
+      <MicroSurveyResultsCard clubId={clubId} surveyType="sleeping_reactivation" />
+      <MicroSurveyResultsCard clubId={clubId} surveyType="birthday_gift" />
 
       <Card>
         <CardHeader>

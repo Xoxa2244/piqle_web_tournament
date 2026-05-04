@@ -239,14 +239,26 @@ export function useMemberHealth(clubId: string, options?: IntelligenceQueryOptio
 
 /**
  * P4-T6: Active Campaigns (lightweight v1).
- * Wraps `intelligence.listActiveCampaigns` stub. Returns [] until
- * P5-T2 lands the Campaign DB model + real query.
+ * Wraps `intelligence.listActiveCampaigns`. Reads real Campaign rows
+ * once they exist (post-P1.1).
+ *
+ * P1.5: Periodic refresh while user is on Campaigns page so
+ * sparkline metrics (sent_count, opened_count, etc.) tick up
+ * without manual reload as the cron + Mandrill webhooks land
+ * counter bumps. 30s feels right — fast enough to feel live
+ * during a fresh send, slow enough to avoid wasting tRPC budget
+ * on idle dashboards. refetchOnWindowFocus left at default so
+ * tab switches don't fire extra requests.
  */
 export function useListActiveCampaigns(clubId: string, options?: IntelligenceQueryOptions) {
   const isDemo = useIsDemo()
   const query = trpc.intelligence.listActiveCampaigns.useQuery(
     { clubId },
-    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 60_000 }
+    {
+      enabled: !!clubId && !isDemo && (options?.enabled ?? true),
+      staleTime: 30_000,
+      refetchInterval: options?.enabled === false ? false : 30_000,
+    }
   )
   if (isDemo) {
     return {
