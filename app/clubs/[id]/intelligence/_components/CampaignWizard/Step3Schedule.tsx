@@ -19,6 +19,32 @@ import { Send, Calendar, Zap, Mail, MessageSquare, Layers, Repeat } from 'lucide
 import type { ScheduleSettings, SendFormat, RecurringFrequency } from './types'
 import { buildRecurringCron } from './types'
 
+/** Curated dropdown of timezones admins are likely to need. UTC at the
+ *  top, then North America (clubs are mostly there), then Europe and
+ *  Asia/Pacific. "Use browser timezone" reads Intl at click time so
+ *  it always reflects the current setup, not the SSR default. */
+const TIMEZONE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'UTC', label: 'UTC' },
+  { value: 'America/Los_Angeles', label: 'Pacific (Los Angeles)' },
+  { value: 'America/Denver', label: 'Mountain (Denver)' },
+  { value: 'America/Chicago', label: 'Central (Chicago)' },
+  { value: 'America/New_York', label: 'Eastern (New York)' },
+  { value: 'America/Toronto', label: 'Eastern (Toronto)' },
+  { value: 'America/Vancouver', label: 'Pacific (Vancouver)' },
+  { value: 'America/Mexico_City', label: 'Mexico City' },
+  { value: 'America/Sao_Paulo', label: 'São Paulo' },
+  { value: 'Europe/London', label: 'London' },
+  { value: 'Europe/Paris', label: 'Paris' },
+  { value: 'Europe/Berlin', label: 'Berlin' },
+  { value: 'Europe/Moscow', label: 'Moscow' },
+  { value: 'Asia/Dubai', label: 'Dubai' },
+  { value: 'Asia/Singapore', label: 'Singapore' },
+  { value: 'Asia/Tokyo', label: 'Tokyo' },
+  { value: 'Asia/Shanghai', label: 'Shanghai' },
+  { value: 'Australia/Sydney', label: 'Sydney' },
+  { value: 'Pacific/Auckland', label: 'Auckland' },
+]
+
 interface Step3Props {
   schedule: ScheduleSettings
   onChange: (next: ScheduleSettings) => void
@@ -192,14 +218,31 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
             </div>
             <div>
               <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Timezone</label>
-              <input
-                type="text"
-                value={schedule.recurringTimezone ?? 'UTC'}
-                onChange={(e) => onChange({ ...schedule, recurringTimezone: e.target.value })}
-                placeholder="UTC or America/Los_Angeles"
+              <select
+                value={(() => {
+                  const cur = schedule.recurringTimezone ?? 'UTC'
+                  return TIMEZONE_OPTIONS.some((o) => o.value === cur) ? cur : 'UTC'
+                })()}
+                onChange={(e) => {
+                  if (e.target.value === '__browser__') {
+                    try {
+                      const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+                      onChange({ ...schedule, recurringTimezone: browserTz || 'UTC' })
+                    } catch {
+                      onChange({ ...schedule, recurringTimezone: 'UTC' })
+                    }
+                  } else {
+                    onChange({ ...schedule, recurringTimezone: e.target.value })
+                  }
+                }}
                 className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
                 style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
-              />
+              >
+                {TIMEZONE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+                <option value="__browser__">— Use browser timezone —</option>
+              </select>
             </div>
           </div>
 
