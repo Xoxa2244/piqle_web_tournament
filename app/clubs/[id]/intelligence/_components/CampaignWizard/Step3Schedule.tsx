@@ -210,7 +210,7 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
           </div>
 
           <div className="text-[11px] leading-relaxed" style={{ color: 'var(--t4)' }}>
-            On each run the cohort is <strong style={{ color: 'var(--heading)' }}>re-evaluated</strong>: only members who match the cohort filters at run time receive the email. Members who don't match are skipped (and re-included on a later run if they qualify again).
+            On each run the cohort is <strong style={{ color: 'var(--heading)' }}>re-evaluated</strong>: only members who match the cohort filters at run time receive the email. Members who don&apos;t match are skipped (and re-included on a later run if they qualify again).
           </div>
         </div>
       )}
@@ -280,7 +280,7 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
           <label className="text-xs cursor-pointer flex-1" onClick={() => onChange({ ...schedule, exitOnBooking: !schedule.exitOnBooking })}>
             <span style={{ color: 'var(--heading)', fontWeight: 600 }}>Stop the series if the recipient books a session</span>
             <span className="block mt-0.5" style={{ color: 'var(--t4)' }}>
-              Recommended on. Avoids nagging members who already responded by booking. Doesn't pause the campaign for everyone — only that one recipient.
+              Recommended on. Avoids nagging members who already responded by booking. Doesn&apos;t pause the campaign for everyone — only that one recipient.
             </span>
           </label>
         </div>

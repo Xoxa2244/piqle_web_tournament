@@ -221,7 +221,7 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
                 <h3 className="text-base font-bold" style={{ color: 'var(--heading)' }}>Stop campaign?</h3>
                 <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
                   &ldquo;{stopTarget.name}&rdquo; will be marked completed. Pending recipients will <strong>not</strong> receive any further emails.
-                  This cannot be undone — you'd have to launch a new campaign.
+                  This cannot be undone — you&apos;d have to launch a new campaign.
                 </p>
               </div>
             </div>
