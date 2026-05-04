@@ -61,9 +61,19 @@ interface ClaimedRow {
   id: string
   userId: string
   retry_count: number
+  sequence_step: number | null
 }
 
-async function processCampaign(campaign: {
+interface SequenceStepData {
+  stepIndex: number
+  delayDays: number
+  subject: string
+  body: string
+  ctaLabel?: string | null
+  ctaUrl?: string | null
+}
+
+interface CampaignForCron {
   id: string
   clubId: string
   name: string
@@ -72,7 +82,170 @@ async function processCampaign(campaign: {
   cohortSnapshot: any
   ctaLabel: string | null
   ctaUrl: string | null
-}): Promise<{ sent: number; failed: number; skipped: number }> {
+  format: string
+  steps: any
+  exitOnBooking: boolean
+}
+
+/** Resolves the per-step content to render for a given log row.
+ *  For one_time campaigns: returns campaign-level subject/body/cta.
+ *  For sequence campaigns: pulls from `campaign.steps[log.sequenceStep]`. */
+function resolveContentForLog(
+  campaign: CampaignForCron,
+  sequenceStep: number | null,
+): { subject: string | null; body: string | null; ctaLabel: string | null; ctaUrl: string | null } {
+  if (campaign.format === 'sequence') {
+    const steps: SequenceStepData[] = Array.isArray(campaign.steps) ? campaign.steps : []
+    const idx = sequenceStep ?? 0
+    const step = steps[idx]
+    if (!step) {
+      // Defensive — shouldn't happen, but fall back to top-level so we
+      // don't lose the recipient if a steps[] mutation went wrong.
+      return {
+        subject: campaign.subject,
+        body: campaign.body,
+        ctaLabel: campaign.ctaLabel,
+        ctaUrl: campaign.ctaUrl,
+      }
+    }
+    return {
+      subject: step.subject,
+      body: step.body,
+      ctaLabel: step.ctaLabel ?? null,
+      ctaUrl: step.ctaUrl ?? null,
+    }
+  }
+  return {
+    subject: campaign.subject,
+    body: campaign.body,
+    ctaLabel: campaign.ctaLabel,
+    ctaUrl: campaign.ctaUrl,
+  }
+}
+
+/**
+ * Sequence fan-out: for each Step N log that's been sent and whose
+ * delayDays for Step N+1 have elapsed, create a Step N+1 log if one
+ * doesn't already exist. exit_on_booking: skip recipients who booked
+ * a session since their previous step was sent.
+ *
+ * Runs once per campaign per tick before the send claim/dispatch
+ * pass. Bounded to FAN_OUT_LIMIT candidates per campaign per tick to
+ * keep the cron predictable on large sequences.
+ */
+const FAN_OUT_LIMIT = 200
+
+async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: number; exited: number }> {
+  if (campaign.format !== 'sequence') return { created: 0, exited: 0 }
+  const steps: SequenceStepData[] = Array.isArray(campaign.steps) ? campaign.steps : []
+  if (steps.length <= 1) return { created: 0, exited: 0 }
+
+  // For each non-final source step N, find logs at sequence_step=N whose
+  // delay to step N+1 has elapsed and have no follow-up log yet.
+  // Bounded loop — at most steps.length-1 queries per campaign per tick.
+  const candidates: Array<{
+    logId: string
+    userId: string
+    sequenceStep: number
+    sentAt: Date
+  }> = []
+
+  for (let n = 0; n < steps.length - 1; n++) {
+    const delayDays = steps[n + 1].delayDays | 0
+    const rows = await prisma.$queryRaw<Array<{
+      logId: string
+      userId: string
+      sequenceStep: number
+      sentAt: Date
+    }>>`
+      SELECT
+        log.id            AS "logId",
+        log."userId"      AS "userId",
+        log.sequence_step AS "sequenceStep",
+        log.sent_at       AS "sentAt"
+      FROM ai_recommendation_logs log
+      WHERE log.campaign_id = ${campaign.id}::uuid
+        AND log.type = 'CAMPAIGN_SEND'
+        AND log.sent_at IS NOT NULL
+        AND log.sequence_step = ${n}
+        AND log.sent_at <= NOW() - (${delayDays} * INTERVAL '1 day')
+        AND NOT EXISTS (
+          SELECT 1 FROM ai_recommendation_logs nl
+          WHERE nl.campaign_id = log.campaign_id
+            AND nl."userId" = log."userId"
+            AND nl.sequence_step = ${n + 1}
+        )
+      ORDER BY log.sent_at ASC
+      LIMIT ${FAN_OUT_LIMIT}
+    `
+    candidates.push(...rows)
+  }
+
+  if (candidates.length === 0) return { created: 0, exited: 0 }
+
+  // exit_on_booking: bulk-fetch booking activity since each candidate's
+  // sent_at. Doing one big query per (userId, since) pair is awkward in
+  // SQL, so we batch by min(sent_at) — gives a few false positives that
+  // we filter in JS. Acceptable: a positive book is still a real signal
+  // even if it happened slightly before the prior step's exact send time.
+  let exited = 0
+  let toCreate = candidates
+  if (campaign.exitOnBooking) {
+    const userIds = Array.from(new Set(candidates.map((c) => c.userId)))
+    const minSentAt = candidates.reduce<Date>((min, c) => (c.sentAt < min ? c.sentAt : min), candidates[0].sentAt)
+
+    const bookings = await prisma.$queryRaw<Array<{ userId: string; bookedAt: Date }>>`
+      SELECT b."userId" AS "userId", b."bookedAt" AS "bookedAt"
+      FROM play_session_bookings b
+      WHERE b."userId" = ANY(${userIds})
+        AND b."bookedAt" >= ${minSentAt}
+        AND b.status = 'CONFIRMED'
+    `
+
+    // Build per-user latest booking time
+    const latestBookingByUser = new Map<string, Date>()
+    for (const b of bookings) {
+      const cur = latestBookingByUser.get(b.userId)
+      if (!cur || b.bookedAt > cur) latestBookingByUser.set(b.userId, b.bookedAt)
+    }
+
+    toCreate = candidates.filter((c) => {
+      const last = latestBookingByUser.get(c.userId)
+      if (last && last >= c.sentAt) {
+        exited++
+        return false
+      }
+      return true
+    })
+  }
+
+  if (toCreate.length === 0) return { created: 0, exited }
+
+  // Create the next-step logs. We tag each with parent_log_id pointing
+  // to the previous step's log so analytics can walk the chain.
+  // primary channel: best-effort match the launchCampaign convention
+  // (email if 'email' is in campaign.channels, else sms).
+  // We don't know channels here without re-fetching; default to 'email'
+  // which is what the Wizard ships today.
+  await prisma.aIRecommendationLog.createMany({
+    data: toCreate.map((c) => ({
+      clubId: campaign.clubId,
+      userId: c.userId,
+      type: 'CAMPAIGN_SEND' as const,
+      channel: 'email',
+      status: 'pending',
+      campaignId: campaign.id,
+      sequenceStep: c.sequenceStep + 1,
+      parentLogId: c.logId,
+      reasoning: { campaignName: campaign.name, totalSteps: steps.length },
+    })),
+    skipDuplicates: true,
+  })
+
+  return { created: toCreate.length, exited }
+}
+
+async function processCampaign(campaign: CampaignForCron): Promise<{ sent: number; failed: number; skipped: number }> {
   // Atomically claim up to MAX_BATCH pending logs for this campaign.
   // FOR UPDATE SKIP LOCKED prevents two concurrent ticks from racing
   // on the same row; sent_at=NOW() is the optimistic claim marker.
@@ -89,7 +262,7 @@ async function processCampaign(campaign: {
         LIMIT $2
         FOR UPDATE SKIP LOCKED
      )
-     RETURNING id, "userId", retry_count
+     RETURNING id, "userId", retry_count, sequence_step
     `,
     campaign.id,
     MAX_BATCH,
@@ -134,10 +307,16 @@ async function processCampaign(campaign: {
       continue
     }
 
+    // For sequence campaigns, pick the right step's content based on the
+    // log's sequence_step. For one_time, this returns campaign-level fields.
+    const content = resolveContentForLog(campaign, row.sequence_step)
+
     // Substitute {{name}} placeholder. More substitutions can land later.
     const firstName = (user.name ?? '').trim().split(/\s+/)[0] || 'there'
-    const subject = (campaign.subject ?? campaign.name).replace(/\{\{\s*name\s*\}\}/gi, firstName)
-    const body = (campaign.body ?? '').replace(/\{\{\s*name\s*\}\}/gi, firstName)
+    const subject = (content.subject ?? campaign.name).replace(/\{\{\s*name\s*\}\}/gi, firstName)
+    const body = (content.body ?? '').replace(/\{\{\s*name\s*\}\}/gi, firstName)
+    const stepCtaLabel = content.ctaLabel
+    const stepCtaUrl = content.ctaUrl
 
     // Pre-flight blocked-domain check — counts as failed_count, NOT silent.
     if (isBlockedEmail(user.email)) {
@@ -156,14 +335,16 @@ async function processCampaign(campaign: {
         body,
         clubName,
         bookingUrl,
-        ctaLabel: campaign.ctaLabel,
-        ctaUrl: campaign.ctaUrl,
+        ctaLabel: stepCtaLabel,
+        ctaUrl: stepCtaUrl,
         metadata: {
           logId: row.id,
           clubId: campaign.clubId,
           userId: user.id,
         },
-        tags: ['campaign', `campaign:${campaign.id}`],
+        tags: campaign.format === 'sequence'
+          ? ['campaign', `campaign:${campaign.id}`, `step:${row.sequence_step ?? 0}`]
+          : ['campaign', `campaign:${campaign.id}`],
       })
 
       await prisma.aIRecommendationLog.update({
@@ -254,6 +435,7 @@ async function run(request: Request) {
         id: true, clubId: true, name: true, subject: true, body: true,
         cohortSnapshot: true,
         ctaLabel: true, ctaUrl: true,
+        format: true, steps: true, exitOnBooking: true,
         club: { select: { id: true, automationSettings: true } },
       },
     })
@@ -271,6 +453,8 @@ async function run(request: Request) {
     let totalFailed = 0
     let totalSkipped = 0
     let totalCompleted = 0
+    let totalFannedOut = 0
+    let totalExited = 0
     const liveModeSkips: string[] = []
 
     for (const campaign of campaigns) {
@@ -285,13 +469,27 @@ async function run(request: Request) {
       }
 
       try {
-        const result = await processCampaign(campaign)
+        // S4: Sequence fan-out — for sequence campaigns, create logs for
+        // recipients whose previous step delay has elapsed. No-op for
+        // one_time campaigns.
+        const fanOut = await fanOutNextSteps(campaign as CampaignForCron)
+        totalFannedOut += fanOut.created
+        totalExited += fanOut.exited
+
+        const result = await processCampaign(campaign as CampaignForCron)
         totalSent += result.sent
         totalFailed += result.failed
         totalSkipped += result.skipped
 
-        const completed = await maybeCompleteCampaign(campaign.id)
-        if (completed) totalCompleted++
+        // Skip auto-complete for sequence campaigns — total expected
+        // sends depends on exit-on-booking outcomes which we don't track
+        // explicitly. Admin can mark complete manually (UI follow-up) or
+        // a separate sweeper finalises after a quiescence window. For
+        // one_time the existing recipient-count check fires.
+        if (campaign.format !== 'sequence') {
+          const completed = await maybeCompleteCampaign(campaign.id)
+          if (completed) totalCompleted++
+        }
       } catch (err: any) {
         log.error?.(`[campaign-sends] processCampaign failed for ${campaign.id}: ${String(err?.message ?? err).slice(0, 200)}`)
       }
@@ -306,6 +504,8 @@ async function run(request: Request) {
         totalFailed,
         totalRetried: totalSkipped,
         completed: totalCompleted,
+        sequenceFannedOut: totalFannedOut,
+        sequenceExited: totalExited,
         durationMs: Date.now() - startedAt.getTime(),
       },
       'campaign-sends tick complete',
@@ -322,6 +522,8 @@ async function run(request: Request) {
       totalFailed,
       totalRetried: totalSkipped,
       completed: totalCompleted,
+      sequenceFannedOut: totalFannedOut,
+      sequenceExited: totalExited,
     })
   } catch (error: any) {
     log.error?.(`[Cron campaign-sends] Failed: ${String(error?.message ?? error).slice(0, 200)}`)
