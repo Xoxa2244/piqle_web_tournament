@@ -25,6 +25,9 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
   const { data: campaigns = [] } = useListActiveCampaigns(clubId)
   const utils = trpc.useUtils()
   const [pendingId, setPendingId] = useState<string | null>(null)
+  // Stop confirmation: { id, name } when admin clicked Stop, null otherwise.
+  // Two-step: first click opens this modal, second click in modal fires.
+  const [stopTarget, setStopTarget] = useState<{ id: string; name: string } | null>(null)
 
   const pauseMutation = trpc.intelligence.pauseCampaign.useMutation({
     onSettled: () => {
@@ -38,6 +41,13 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
       utils.intelligence.listActiveCampaigns.invalidate({ clubId }).catch(() => {})
     },
   })
+  const stopMutation = trpc.intelligence.stopCampaign.useMutation({
+    onSettled: () => {
+      setPendingId(null)
+      setStopTarget(null)
+      utils.intelligence.listActiveCampaigns.invalidate({ clubId }).catch(() => {})
+    },
+  })
 
   const togglePause = (id: string, status: string) => {
     if (pendingId) return
@@ -47,6 +57,12 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
     } else {
       pauseMutation.mutate({ clubId, campaignId: id })
     }
+  }
+
+  const confirmStop = () => {
+    if (!stopTarget) return
+    setPendingId(stopTarget.id)
+    stopMutation.mutate({ clubId, campaignId: stopTarget.id })
   }
 
   return (
@@ -167,7 +183,13 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
                           <Pause className="w-3.5 h-3.5" />
                         )}
                       </button>
-                      <button title="Stop (coming soon)" className="p-1 rounded transition-colors hover:bg-[var(--hover)] opacity-40 cursor-not-allowed" style={{ color: '#EF4444' }} disabled>
+                      <button
+                        title="Stop campaign permanently"
+                        onClick={() => setStopTarget({ id: c.id, name: c.name })}
+                        disabled={pendingId === c.id || c.status === 'completed' || c.status === 'failed'}
+                        className="p-1 rounded transition-colors hover:bg-[var(--hover)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        style={{ color: '#EF4444' }}
+                      >
                         <StopCircle className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -176,6 +198,59 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Stop confirmation modal — irreversible action, so we ask twice. */}
+      {stopTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)' }}
+          onClick={() => !pendingId && setStopTarget(null)}
+        >
+          <div
+            className="rounded-2xl p-5 max-w-md w-full"
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.4)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'rgba(239,68,68,0.16)' }}>
+                <StopCircle className="w-5 h-5" style={{ color: '#EF4444' }} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold" style={{ color: 'var(--heading)' }}>Stop campaign?</h3>
+                <p className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                  &ldquo;{stopTarget.name}&rdquo; will be marked completed. Pending recipients will <strong>not</strong> receive any further emails.
+                  This cannot be undone — you'd have to launch a new campaign.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setStopTarget(null)}
+                disabled={pendingId === stopTarget.id}
+                className="px-3 py-1.5 rounded-lg text-xs disabled:opacity-50"
+                style={{ background: 'var(--subtle)', color: 'var(--heading)', fontWeight: 600, border: '1px solid var(--card-border)' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmStop}
+                disabled={pendingId === stopTarget.id}
+                className="px-3 py-1.5 rounded-lg text-xs text-white flex items-center gap-1.5 disabled:opacity-50"
+                style={{ background: '#EF4444', fontWeight: 600 }}
+              >
+                {pendingId === stopTarget.id ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Stopping…
+                  </>
+                ) : (
+                  'Stop campaign'
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

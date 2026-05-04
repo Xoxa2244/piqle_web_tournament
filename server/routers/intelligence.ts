@@ -9867,6 +9867,42 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     }),
 
   /**
+   * Stop a campaign permanently — admin clicked the red Stop button after
+   * confirming. Unlike pause, this is a one-way trip: status='completed'
+   * and completedAt=now. The cron's status filter (`'running'`) means
+   * stopped campaigns no longer dispatch, no longer fan out next steps
+   * (sequence) or recurring ticks.
+   *
+   * Pending logs stay in the table with sent_at=NULL — they're orphaned
+   * but harmless. A future cleanup pass can mark them bouncedAt with
+   * bounceType='campaign_stopped' for accounting clarity. For MVP we
+   * leave them as-is.
+   *
+   * Idempotent: stopping an already-completed campaign returns unchanged.
+   */
+  stopCampaign: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), campaignId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const c = await ctx.prisma.campaign.findUnique({
+        where: { id: input.campaignId },
+        select: { id: true, clubId: true, status: true },
+      })
+      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
+      if (c.clubId !== input.clubId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Campaign does not belong to this club' })
+      }
+      if (c.status === 'completed' || c.status === 'failed') {
+        return { id: c.id, status: c.status, changed: false }
+      }
+      const updated = await ctx.prisma.campaign.update({
+        where: { id: input.campaignId },
+        data: { status: 'completed', completedAt: new Date() },
+      })
+      return { id: updated.id, status: updated.status, changed: true }
+    }),
+
+  /**
    * Engage P1.6 — Test send (single-recipient preview).
    *
    * Sends one preview email to the admin (or an explicit override
