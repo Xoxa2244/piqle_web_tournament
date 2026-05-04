@@ -39,6 +39,7 @@ import {
   withAdvisorDraftMetadata,
 } from '@/lib/ai/advisor-drafts'
 import {
+  processCampaignSendQueue,
   scheduleCampaignSend,
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
@@ -9822,11 +9823,11 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      // P2-T9: real Campaign query (was stubbed return []). Active = anything
-      // that isn't `draft` or `completed` — the surface admins want to see
-      // before/while campaigns are doing work.
+      // P2-T9: real Campaign query (was stubbed return []). Keep completed and
+      // failed rows visible too, otherwise "send now" campaigns disappear from
+      // the table immediately after dispatch.
       const rows = await ctx.prisma.campaign.findMany({
-        where: { clubId: input.clubId, status: { in: ['running', 'scheduled', 'paused'] } },
+        where: { clubId: input.clubId, status: { in: ['running', 'scheduled', 'paused', 'completed', 'failed'] } },
         orderBy: { createdAt: 'desc' },
         include: { cohort: { select: { name: true } } },
       })
@@ -9849,7 +9850,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           openRate,
           bookedCount: Number(attribution.booked_count ?? 0),
           bookedRevenueCents: Number(attribution.booked_revenue_cents ?? 0),
-          status: c.status as 'draft' | 'scheduled' | 'running' | 'paused' | 'completed',
+          status: c.status as 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed',
           startedAt: c.launchedAt ?? c.scheduledAt,
         }
       })
@@ -9860,9 +9861,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
    *
    * Resolves the audience to a frozen list of userIds (either from a saved
    * cohort's filters, an AI-suggested cohort's userIds payload, or hand-picked
-   * inline ids), creates a Campaign row, and returns its id. The actual
-   * outbound sends are performed by the campaign-sends cron in Priority-1.2;
-   * this mutation only persists intent.
+   * inline ids), creates a Campaign row, and returns its id. "Send now"
+   * campaigns are dispatched immediately after the row is created; scheduled
+   * campaigns are picked up later by the campaign-sends cron.
    *
    * Status logic:
    *   - scheduledAt in the future → status='scheduled'
@@ -9951,10 +9952,19 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         },
       })
 
+      let finalStatus = campaign.status
+      if (!isFuture) {
+        const queueResult = await processCampaignSendQueue(ctx.prisma, { campaignId: campaign.id })
+        const processedCampaign = queueResult.campaigns.find((entry) => entry.id === campaign.id)
+        if (processedCampaign?.status) {
+          finalStatus = processedCampaign.status
+        }
+      }
+
       return {
         campaignId: campaign.id,
         recipientCount: recipientIds.length,
-        status: campaign.status,
+        status: finalStatus,
       }
     }),
 })

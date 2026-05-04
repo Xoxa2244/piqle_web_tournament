@@ -32,7 +32,7 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
           Active Campaigns
         </h2>
         <span className="text-[11px]" style={{ color: 'var(--t4)' }}>
-          {(campaigns as any[]).length} running
+          {(campaigns as any[]).length} total
         </span>
       </div>
 
@@ -91,8 +91,22 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
                     <span
                       className="px-2 py-0.5 rounded-full text-[10px]"
                       style={{
-                        background: c.status === 'running' ? 'rgba(16,185,129,0.14)' : c.status === 'paused' ? 'rgba(245,158,11,0.14)' : 'rgba(148,163,184,0.14)',
-                        color: c.status === 'running' ? '#10B981' : c.status === 'paused' ? '#F59E0B' : '#94A3B8',
+                        background:
+                          c.status === 'running'
+                            ? 'rgba(16,185,129,0.14)'
+                            : c.status === 'paused'
+                              ? 'rgba(245,158,11,0.14)'
+                              : c.status === 'failed'
+                                ? 'rgba(239,68,68,0.14)'
+                                : 'rgba(148,163,184,0.14)',
+                        color:
+                          c.status === 'running'
+                            ? '#10B981'
+                            : c.status === 'paused'
+                              ? '#F59E0B'
+                              : c.status === 'failed'
+                                ? '#EF4444'
+                                : '#94A3B8',
                         fontWeight: 600,
                       }}
                     >
