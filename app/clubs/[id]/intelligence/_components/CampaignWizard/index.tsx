@@ -13,8 +13,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { X, ChevronRight, ChevronLeft } from 'lucide-react'
-import ConfirmModal from '@/components/ConfirmModal'
+import { X, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 import { useListCohorts, useSuggestedCohorts, useIntelligenceSettings } from '../../_hooks/use-intelligence'
 import { Step1Audience } from './Step1Audience'
@@ -343,19 +342,102 @@ export function CampaignWizard({
           )}
         </motion.aside>
 
-        <ConfirmModal
-          open={showDiscardConfirm}
-          title="Discard campaign draft?"
-          description="Your unsaved audience, goal, schedule, and message changes will be lost."
-          confirmText="Discard draft"
-          cancelText="Keep editing"
-          destructive
-          onClose={() => setShowDiscardConfirm(false)}
-          onConfirm={() => {
-            setShowDiscardConfirm(false)
-            onClose()
-          }}
-        />
+        <AnimatePresence>
+          {showDiscardConfirm && (
+            <motion.div
+              key="cw-discard-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.16 }}
+              className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+              style={{ background: 'rgba(5, 8, 20, 0.58)', backdropFilter: 'blur(8px)' }}
+              onClick={() => setShowDiscardConfirm(false)}
+            >
+              <motion.div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="discard-campaign-title"
+                initial={{ opacity: 0, y: 12, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.98 }}
+                transition={{ type: 'spring', damping: 24, stiffness: 280 }}
+                className="w-full max-w-[540px] rounded-[28px] p-5 sm:p-6"
+                style={{
+                  background: 'linear-gradient(180deg, rgba(17,24,39,0.98), rgba(11,11,20,0.98))',
+                  border: '1px solid rgba(139,92,246,0.18)',
+                  boxShadow: '0 28px 80px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.04)',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-start gap-4">
+                  <div
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+                    style={{
+                      background: 'linear-gradient(135deg, rgba(248,113,113,0.20), rgba(239,68,68,0.10))',
+                      border: '1px solid rgba(248,113,113,0.28)',
+                    }}
+                  >
+                    <AlertTriangle className="h-5 w-5" style={{ color: '#F87171' }} />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.18em]"
+                      style={{
+                        background: 'rgba(248,113,113,0.10)',
+                        color: '#FCA5A5',
+                        border: '1px solid rgba(248,113,113,0.18)',
+                        fontWeight: 700,
+                      }}
+                    >
+                      Leave wizard
+                    </div>
+                    <h3
+                      id="discard-campaign-title"
+                      className="mt-3 text-[24px] leading-tight font-semibold"
+                      style={{ color: 'var(--heading)' }}
+                    >
+                      Discard this campaign draft?
+                    </h3>
+                    <p className="mt-2 max-w-[420px] text-sm leading-6" style={{ color: 'var(--t3)' }}>
+                      Your audience, goal, schedule, and message edits haven&apos;t been launched yet. If you close now, those changes will be lost.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    onClick={() => setShowDiscardConfirm(false)}
+                    className="rounded-2xl px-4 py-3 text-sm transition-all"
+                    style={{
+                      background: 'var(--subtle)',
+                      border: '1px solid var(--card-border)',
+                      color: 'var(--heading)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Keep editing
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowDiscardConfirm(false)
+                      onClose()
+                    }}
+                    className="rounded-2xl px-4 py-3 text-sm text-white transition-all"
+                    style={{
+                      background: 'linear-gradient(135deg, #EF4444, #F97316)',
+                      boxShadow: '0 10px 30px rgba(239,68,68,0.28)',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Discard draft
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </>
     </AnimatePresence>
   )
