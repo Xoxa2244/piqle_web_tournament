@@ -16,7 +16,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Wand2, Loader2, AlertTriangle } from 'lucide-react'
+import { Wand2, Loader2, AlertTriangle, HelpCircle } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 import type { AudienceSelection, CampaignGoal, MessageDraft, ScheduleSettings } from './types'
 
@@ -112,6 +112,7 @@ export function Step4Message({
   launchError,
 }: Step4Props) {
   const [aiError, setAiError] = useState<string | null>(null)
+  const [showVariableHelp, setShowVariableHelp] = useState(false)
   const [testEmail, setTestEmail] = useState('')
   const [testSendError, setTestSendError] = useState<string | null>(null)
   const [testSendOk, setTestSendOk] = useState<string | null>(null)
@@ -267,7 +268,25 @@ export function Step4Message({
       </div>
 
       <div>
-        <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Body</label>
+        <div className="flex items-center justify-between gap-3">
+          <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+            Body
+          </label>
+          <button
+            type="button"
+            onClick={() => setShowVariableHelp((current) => !current)}
+            className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] transition-all"
+            style={{
+              background: showVariableHelp ? 'rgba(139,92,246,0.14)' : 'var(--subtle)',
+              border: `1px solid ${showVariableHelp ? 'rgba(139,92,246,0.32)' : 'var(--card-border)'}`,
+              color: showVariableHelp ? '#C4B5FD' : 'var(--t3)',
+              fontWeight: 600,
+            }}
+          >
+            <HelpCircle className="h-3.5 w-3.5" />
+            Personalization tags
+          </button>
+        </div>
         <textarea
           value={message.body}
           onChange={(e) => onChange({ ...message, body: e.target.value })}
@@ -276,6 +295,30 @@ export function Step4Message({
           className="w-full mt-1 px-3 py-2 rounded-lg text-sm outline-none resize-y"
           style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)', minHeight: 200 }}
         />
+        {showVariableHelp && (
+          <div
+            className="mt-2 rounded-xl p-3 text-[11px]"
+            style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.22)' }}
+          >
+            <div style={{ color: 'var(--heading)', fontWeight: 600 }}>
+              Use tags to personalize the message automatically.
+            </div>
+            <div className="mt-1 leading-5" style={{ color: 'var(--t3)' }}>
+              Example: <code>Hi {`{first_name}`}, your package expires in {`{expires_in_days}`}</code>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {[ '{first_name}', '{last_name}', '{event_name}', '{event_date}', '{expires_in_days}' ].map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full px-2 py-1 text-[11px]"
+                  style={{ background: 'rgba(255,255,255,0.04)', color: '#C4B5FD', border: '1px solid rgba(139,92,246,0.18)' }}
+                >
+                  <code>{tag}</code>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -312,24 +355,19 @@ export function Step4Message({
         </div>
       )}
 
-      {/* Variables hint */}
-      <div className="rounded-xl p-3 text-[11px]" style={{ background: 'var(--subtle)', color: 'var(--t4)' }}>
-        Variables available: <code>{`{first_name}`}</code> · <code>{`{last_name}`}</code> · <code>{`{event_name}`}</code> · <code>{`{event_date}`}</code> · <code>{`{expires_in_days}`}</code>
-      </div>
-
       {/* Call to action — optional override for the email button.
           When both fields are empty the email shows the default
           "Book a Session" button linking to the club page. */}
       <div>
         <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
-          Call to action <span style={{ textTransform: 'none', color: 'var(--t4)', fontWeight: 400 }}>— leave blank for default &ldquo;Book a Session&rdquo; button</span>
+          Email button <span style={{ textTransform: 'none', color: 'var(--t4)', fontWeight: 400 }}>— optional, leave blank to keep the default &ldquo;Book a Session&rdquo; button</span>
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-2 mt-1">
           <input
             type="text"
             value={message.ctaLabel ?? ''}
             onChange={(e) => onChange({ ...message, ctaLabel: e.target.value })}
-            placeholder="Button label (e.g. Renew now)"
+            placeholder="Button text (e.g. Renew now)"
             maxLength={100}
             className="px-3 py-2 rounded-lg text-sm outline-none"
             style={{
@@ -342,7 +380,7 @@ export function Step4Message({
             type="url"
             value={message.ctaUrl ?? ''}
             onChange={(e) => onChange({ ...message, ctaUrl: e.target.value })}
-            placeholder="https://yourclub.com/renew"
+            placeholder="Button link (https://yourclub.com/renew)"
             maxLength={500}
             className="px-3 py-2 rounded-lg text-sm outline-none"
             style={{
