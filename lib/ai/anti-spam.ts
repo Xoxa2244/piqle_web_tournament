@@ -16,6 +16,9 @@ type InviteType =
   | 'CHECK_IN'
   | 'RETENTION_BOOST'
   | 'NEW_MEMBER_WELCOME'
+  | 'DECLINING_REACTIVATION'  // ENGAGE Segment #4 — fresh activity drop sequence
+  | 'SLEEPING_REACTIVATION'   // ENGAGE Segment #5 — 30–90d inactive, sub still active
+  | 'BIRTHDAY_GIFT_OFFER'     // ENGAGE Segment #8 — fires 7d before birthday, single email
 type PlayerPersona = 'COMPETITIVE' | 'SOCIAL' | 'IMPROVER' | 'CASUAL' | 'TEAM_PLAYER'
 
 interface SpamCheckInput {

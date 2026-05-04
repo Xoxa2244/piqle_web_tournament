@@ -9311,6 +9311,293 @@ Generate 3 campaign strategies with different goals and timings based on the dat
   // `truncated` fields, and may add an alternative `conditions+logic` input
   // shape if the new Cohort Builder needs richer expressions.
 
+  /**
+   * ENGAGE Phase 2 — aggregated micro-survey results for a single survey type.
+   *
+   * Currently consumed by the dashboard widget on Settings → Automation that
+   * shows the Newcomer Day-12 survey breakdown ("what's holding new members
+   * back?"). Returns counts per option + total responses + total emails sent
+   * (so the UI can render a response rate). Bounded by date range.
+   *
+   * Default range: last 90 days. Caller can override via `windowDays`.
+   *
+   * Why a single procedure shape across survey types: per ENGAGE_MVP doc,
+   * 6 of 10 segments will produce a survey response. Each will use the same
+   * MicroSurveyResponse table with a different surveyType. The dashboard
+   * pattern (counts per option + response rate) is identical for all of them
+   * — we just parameterise on surveyType + the parent log type.
+   */
+  getMicroSurveyResults: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        // Each new lifecycle segment that ships a survey email adds an enum
+        // here. The procedure derives the email-count denominator differently
+        // per type below — see surveyEmailWhere construction.
+        surveyType: z.enum(['onboarding_day12', 'declining_reactivation', 'sleeping_reactivation', 'birthday_gift']).default('onboarding_day12'),
+        windowDays: z.number().int().min(1).max(365).default(90),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const since = new Date(Date.now() - input.windowDays * 86400000)
+
+      // 1. Counts per option (the dashboard breakdown chart). Use raw SQL —
+      //    Prisma groupBy's generated types here demand orderBy and don't
+      //    surface a `_count._all` shape cleanly. Raw is simpler + explicit.
+      const responsesByOption = await ctx.prisma.$queryRaw<Array<{ option: string; count: bigint }>>`
+        SELECT option, COUNT(*)::bigint AS count
+        FROM micro_survey_responses
+        WHERE club_id = ${input.clubId}
+          AND survey_type = ${input.surveyType}
+          AND responded_at >= ${since}
+        GROUP BY option
+        ORDER BY count DESC
+      `
+
+      const breakdown = responsesByOption.map((r) => ({
+        option: r.option,
+        count: Number(r.count),
+      }))
+
+      const totalResponses = breakdown.reduce((sum, r) => sum + r.count, 0)
+
+      // 2. Total survey emails sent in the same window — denominator for
+      //    response rate. The right log filter depends on the survey type:
+      //
+      //    onboarding_day12      → NEW_MEMBER_WELCOME, step 2, reasoning.day12Variant=survey
+      //                            (Day 12 of newcomer chain, only the survey
+      //                            branch — the congrats branch isn't a survey)
+      //
+      //    declining_reactivation → DECLINING_REACTIVATION, step 0
+      //                            (Day 1 of declining chain — that's where
+      //                            the 4-button survey lives. Days 5/12 are
+      //                            schedule + incentive, no survey.)
+      const surveyEmailWhere: any = {
+        clubId: input.clubId,
+        status: { in: ['sent', 'delivered', 'opened', 'clicked'] },
+        createdAt: { gte: since },
+      }
+      if (input.surveyType === 'onboarding_day12') {
+        surveyEmailWhere.type = 'NEW_MEMBER_WELCOME'
+        surveyEmailWhere.sequenceStep = 2
+        // Prisma JSON path filter — only logs whose reasoning records the
+        // survey branch (not the congrats branch, which doesn't have a survey).
+        surveyEmailWhere.reasoning = { path: ['day12Variant'], equals: 'survey' }
+      } else if (input.surveyType === 'declining_reactivation') {
+        surveyEmailWhere.type = 'DECLINING_REACTIVATION'
+        surveyEmailWhere.sequenceStep = 0
+      } else if (input.surveyType === 'sleeping_reactivation') {
+        // Sleeping puts the survey on Day 14 (step 1), not Day 1.
+        surveyEmailWhere.type = 'SLEEPING_REACTIVATION'
+        surveyEmailWhere.sequenceStep = 1
+      } else if (input.surveyType === 'birthday_gift') {
+        // Birthday is single-step (D-7). Step 0 holds the survey.
+        surveyEmailWhere.type = 'BIRTHDAY_GIFT_OFFER'
+        surveyEmailWhere.sequenceStep = 0
+      }
+
+      const totalSurveyEmailsSent = await ctx.prisma.aIRecommendationLog.count({
+        where: surveyEmailWhere,
+      })
+
+      const responseRate = totalSurveyEmailsSent > 0
+        ? Math.round((totalResponses / totalSurveyEmailsSent) * 1000) / 10 // 1 decimal place
+        : 0
+
+      return {
+        surveyType: input.surveyType,
+        windowDays: input.windowDays,
+        totalSurveyEmailsSent,
+        totalResponses,
+        responseRatePct: responseRate,
+        breakdown,
+      }
+    }),
+
+  /**
+   * Per-member drill-down for any survey type — Tier B of the dashboard
+   * gap fix. Powers the "View N responses" expander on each
+   * MicroSurveyResultsCard. Returns recent rows with member name + email
+   * so admin can act on individual answers (e.g. apply discount when a
+   * Newcomer says "price").
+   *
+   * Ordered most-recent first; capped at 100 rows. The widget shows the
+   * full list in a scrollable inline section, not a paginated view —
+   * volumes are low enough (typical week: <50 across all surveys for a
+   * single club).
+   */
+  getMicroSurveyResponseDetails: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        surveyType: z.enum(['onboarding_day12', 'declining_reactivation', 'sleeping_reactivation', 'birthday_gift']),
+        windowDays: z.number().int().min(1).max(365).default(90),
+        limit: z.number().int().min(1).max(500).default(100),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const since = new Date(Date.now() - input.windowDays * 86400000)
+
+      const rows = await ctx.prisma.$queryRaw<Array<{
+        responseId: string
+        userId: string
+        userName: string | null
+        userEmail: string | null
+        option: string
+        respondedAt: Date
+        logId: string
+      }>>`
+        SELECT
+          msr.id          AS "responseId",
+          msr.user_id     AS "userId",
+          u.name          AS "userName",
+          u.email         AS "userEmail",
+          msr.option      AS "option",
+          msr.responded_at AS "respondedAt",
+          msr.log_id      AS "logId"
+        FROM micro_survey_responses msr
+        JOIN users u ON u.id = msr.user_id
+        WHERE msr.club_id = ${input.clubId}
+          AND msr.survey_type = ${input.surveyType}
+          AND msr.responded_at >= ${since}
+        ORDER BY msr.responded_at DESC
+        LIMIT ${input.limit}
+      `
+
+      return rows
+    }),
+
+  /**
+   * Birthday gift fulfillment queue — Tier A of the dashboard gap fix.
+   * The Birthday segment is unique among Tier 1 in that every email REQUIRES
+   * a physical action (prepare gift). Without this view the segment promises
+   * gifts but admins have no list of what to prepare.
+   *
+   * Returns members whose birthday is in the future (or yesterday — grace
+   * period for late delivery) and who got a BIRTHDAY_GIFT_OFFER email,
+   * grouped by status:
+   *
+   *   - chosen_pending  → member picked a gift, no fulfillment marker yet
+   *   - chosen_fulfilled → admin marked gift delivered (reasoning.fulfilledAt set)
+   *   - awaiting_choice → email sent but no MicroSurveyResponse yet
+   *
+   * The widget shows pending items at the top so admin sees "Anna chose
+   * Guest Pass — prepare invite by May 10".
+   */
+  getBirthdayGiftQueue: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Look back 7 days (in case admin is catching up on missed fulfillment)
+      // and ahead 14 days (the next 2 weeks of birthdays). Anything outside
+      // that range is irrelevant for action.
+      const rows = await ctx.prisma.$queryRaw<Array<{
+        logId: string
+        userId: string
+        userName: string | null
+        userEmail: string | null
+        birthdayThisYear: string
+        chosenGift: string | null
+        respondedAt: Date | null
+        fulfilledAt: string | null
+        emailSentAt: Date
+      }>>`
+        SELECT
+          arl.id AS "logId",
+          arl."userId" AS "userId",
+          u.name AS "userName",
+          u.email AS "userEmail",
+          arl.reasoning->>'birthdayThisYear' AS "birthdayThisYear",
+          msr.option AS "chosenGift",
+          msr.responded_at AS "respondedAt",
+          arl.reasoning->>'fulfilledAt' AS "fulfilledAt",
+          arl."createdAt" AS "emailSentAt"
+        FROM ai_recommendation_logs arl
+        JOIN users u ON u.id = arl."userId"
+        LEFT JOIN micro_survey_responses msr ON msr.log_id = arl.id
+        WHERE arl."clubId" = ${input.clubId}
+          AND arl.type = 'BIRTHDAY_GIFT_OFFER'
+          AND arl.reasoning->>'birthdayThisYear' IS NOT NULL
+          AND (arl.reasoning->>'birthdayThisYear')::date >= (CURRENT_DATE - INTERVAL '7 days')::date
+          AND (arl.reasoning->>'birthdayThisYear')::date <= (CURRENT_DATE + INTERVAL '14 days')::date
+        ORDER BY (arl.reasoning->>'birthdayThisYear')::date ASC
+        LIMIT 200
+      `
+
+      // Derive status + days_until for each row in JS — clearer than
+      // expressing it in SQL across the JSON path filters.
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      return rows.map((r) => {
+        const bday = new Date(r.birthdayThisYear)
+        const daysUntilBirthday = Math.floor((bday.getTime() - today.getTime()) / 86400000)
+        let status: 'awaiting_choice' | 'chosen_pending' | 'chosen_fulfilled' | 'past'
+        if (daysUntilBirthday < 0) {
+          status = 'past'
+        } else if (!r.chosenGift) {
+          status = 'awaiting_choice'
+        } else if (r.fulfilledAt) {
+          status = 'chosen_fulfilled'
+        } else {
+          status = 'chosen_pending'
+        }
+        return {
+          logId: r.logId,
+          userId: r.userId,
+          userName: r.userName,
+          userEmail: r.userEmail,
+          birthdayThisYear: r.birthdayThisYear,
+          daysUntilBirthday,
+          chosenGift: r.chosenGift, // null if awaiting_choice
+          respondedAt: r.respondedAt,
+          fulfilledAt: r.fulfilledAt,
+          emailSentAt: r.emailSentAt,
+          status,
+        }
+      })
+    }),
+
+  /**
+   * Mark a birthday gift as fulfilled — admin clicks the button in the
+   * Pending Gifts widget after preparing the gift. Stamps
+   * reasoning.fulfilledAt + reasoning.fulfilledBy on the original
+   * BIRTHDAY_GIFT_OFFER log so the queue view filters it out next refresh.
+   *
+   * Idempotent — safe to call twice; second call just bumps timestamp.
+   */
+  markBirthdayGiftFulfilled: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), logId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const existing = await ctx.prisma.aIRecommendationLog.findFirst({
+        where: { id: input.logId, clubId: input.clubId, type: 'BIRTHDAY_GIFT_OFFER' },
+        select: { id: true, reasoning: true },
+      })
+      if (!existing) {
+        throw new Error('Birthday gift log not found for this club')
+      }
+
+      const merged = {
+        ...((existing.reasoning as any) || {}),
+        fulfilledAt: new Date().toISOString(),
+        fulfilledBy: ctx.session.user.id,
+      }
+
+      await ctx.prisma.aIRecommendationLog.update({
+        where: { id: existing.id },
+        data: { reasoning: merged },
+      })
+
+      return { ok: true, fulfilledAt: merged.fulfilledAt }
+    }),
+
   // P2-T5 — Members AI Insight ribbon (rules-based v1).
   //
   // Returns at most one insight ranked by confidence/$-impact.
@@ -9467,6 +9754,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       audienceLabel: z.string().max(120).optional(), // for cohortName when inline
       scheduledAt: z.string().optional(), // ISO; absent or past → run now
       format: z.enum(['one_time', 'sequence', 'recurring']).default('one_time'),
+      // Optional CTA override. When absent, sendOutreachEmail falls back
+      // to the legacy "Book a Session" button → club page.
+      ctaLabel: z.string().min(1).max(100).optional(),
+      ctaUrl: z.string().url().max(500).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
@@ -9523,6 +9814,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           subject: input.subject,
           body: input.body,
           channels: input.channels,
+          ctaLabel: input.ctaLabel,
+          ctaUrl: input.ctaUrl,
           status,
           scheduledAt: scheduledDate,
           launchedAt: status === 'running' ? now : null,
@@ -9536,10 +9829,129 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         },
       })
 
+      // P1.2: eager fan-out — one ai_recommendation_logs row per recipient.
+      // Created with status='pending' and sent_at=null; the per-minute
+      // campaign-sends cron claims them in batches via atomic UPDATE
+      // (see app/api/cron/campaign-sends/route.ts).
+      //
+      // We fan out unconditionally — even if status='scheduled' the rows
+      // exist immediately so progress is visible from the moment the
+      // admin clicks Launch. The cron is gated by status='running' AND
+      // scheduledAt <= now, so scheduled campaigns won't dispatch early.
+      //
+      // Picking a primary channel: if 'email' is in channels we use it,
+      // otherwise 'sms'. Multi-channel sends will fan out one log per
+      // (userId × channel) once SMS sender lands — for P1.2 only the
+      // primary channel ships.
+      const primaryChannel = input.channels.includes('email') ? 'email' : 'sms'
+      await ctx.prisma.aIRecommendationLog.createMany({
+        data: recipientIds.map((userId) => ({
+          clubId: input.clubId,
+          userId,
+          type: 'CAMPAIGN_SEND' as const,
+          channel: primaryChannel,
+          status: 'pending',
+          campaignId: campaign.id,
+          // Reasoning carries enough context for the webhook ingest /
+          // attribution pipeline to look up the campaign without an extra
+          // join (we already correlate via campaignId, this is for logs).
+          reasoning: { campaignName: input.name, goal: input.goal },
+        })),
+        skipDuplicates: true,
+      })
+
       return {
         campaignId: campaign.id,
         recipientCount: recipientIds.length,
         status: campaign.status,
+      }
+    }),
+
+  /**
+   * Engage P1.6 — Test send (single-recipient preview).
+   *
+   * Sends one preview email to the admin (or an explicit override
+   * address) using the same `sendOutreachEmail` template as the cron,
+   * so what the admin sees in their inbox matches what real recipients
+   * would see when the campaign launches.
+   *
+   * Critically does NOT:
+   *   - Create a Campaign row
+   *   - Create an AIRecommendationLog row
+   *   - Bump any counters
+   *   - Care about Live Mode (this is an internal QA tool, not member outreach)
+   *
+   * Live Mode is bypassed because the test send doesn't ship to the
+   * cohort — it goes only to the admin who clicked the button. If they
+   * type a member's email in the override field, we trust them; the
+   * isBlockedEmail guard inside lib/email still prevents sends to
+   * placeholder/demo/test domains.
+   */
+  testSendCampaign: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      subject: z.string().min(1).max(200),
+      body: z.string().min(1).max(5000),
+      channels: z.array(z.enum(['email', 'sms'])).min(1),
+      // Optional override — if absent, we send to the logged-in admin's email.
+      to: z.string().email().optional(),
+      // Optional CTA override — same shape as launchCampaign so previews
+      // render exactly the same button as the real send.
+      ctaLabel: z.string().min(1).max(100).optional(),
+      ctaUrl: z.string().url().max(500).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Resolve recipient: explicit override → caller's session email
+      // → error. We don't fall back to anything DB-side.
+      const recipientEmail = input.to ?? ctx.session.user.email
+      if (!recipientEmail) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: 'No recipient — either pass `to` or sign in with an email.',
+        })
+      }
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true },
+      })
+      const clubName = club?.name ?? 'Your Club'
+
+      // Match the cron's bookingUrl pattern so the preview reads exactly
+      // like a real send.
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+      const bookingUrl = `${baseUrl}/clubs/${input.clubId}`
+
+      // {{name}} substitution: for previews we plug in the recipient's
+      // display name from session, falling back to "there".
+      const firstName = (ctx.session.user.name ?? '').trim().split(/\s+/)[0] || 'there'
+      const subject = input.subject.replace(/\{\{\s*name\s*\}\}/gi, firstName)
+      const body = input.body.replace(/\{\{\s*name\s*\}\}/gi, firstName)
+
+      try {
+        const { sendOutreachEmail } = await import('@/lib/email')
+        const { messageId } = await sendOutreachEmail({
+          to: recipientEmail,
+          subject: `[TEST] ${subject}`,
+          body,
+          clubName,
+          bookingUrl,
+          ctaLabel: input.ctaLabel,
+          ctaUrl: input.ctaUrl,
+          metadata: { clubId: input.clubId, userId: ctx.session.user.id },
+          tags: ['campaign-test-send'],
+        })
+        return { sentTo: recipientEmail, messageId }
+      } catch (err: any) {
+        // sendOutreachEmail throws on blocked domains and SMTP failures.
+        // Surface a concise message — the wizard renders this inline.
+        const message = String(err?.message ?? err).slice(0, 200)
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Test send failed: ${message}`,
+        })
       }
     }),
 })

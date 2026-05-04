@@ -1591,6 +1591,24 @@ enum AIRecommendationType {
   CHECK_IN
   RETENTION_BOOST
   NEW_MEMBER_WELCOME
+  CAMPAIGN_SEND
+  // ENGAGE Segment #4 "Снижение активности": member who was booking ≥3/mo for 3+
+  // months, then dropped to 0–1 booking in last 30 days but last booking is
+  // still <30d ago (i.e. fresh decline — distinct from REACTIVATION which
+  // covers long-term inactive 90+ days). Triggers a 3-step recovery
+  // sequence (Day 1 survey, Day 5 schedule snapshot, Day 12 incentive).
+  DECLINING_REACTIVATION
+  // ENGAGE Segment #5 "Спящий": last booking 30–90 days ago, subscription
+  // still active. The next stop on the cascade after DECLINING_REACTIVATION
+  // (which covers 0–30 day window). 2-step sequence: Day 1 "what's new at
+  // the club", Day 14 "can we help?" + survey if still no booking.
+  SLEEPING_REACTIVATION
+  // ENGAGE Segment #8 "День рождения": fired 7 days before a member's
+  // birthday. Single email with 3 gift-choice buttons (week of free play /
+  // guest pass for a friend / merch). Member's choice is captured via
+  // MicroSurveyResponse and acted on by the club on the actual birthday.
+  // One per member per calendar year (cooldown logic in detector).
+  BIRTHDAY_GIFT_OFFER
 }
 
 // ── Intelligence Module: Models ──
@@ -1725,6 +1743,16 @@ model AIRecommendationLog {
   parentLog          AIRecommendationLog?    @relation("SequenceChain", fields: [parentLogId], references: [id], onDelete: SetNull)
   childLogs          AIRecommendationLog[]   @relation("SequenceChain")
 
+  // ── Campaign Send Queue (Engage P1.2) ──
+  // Set by launchCampaign for each recipient when type=CAMPAIGN_SEND.
+  // The campaign-sends cron claims pending rows (sent_at IS NULL) and
+  // dispatches mail. retry_count caps at 3 before being moved to
+  // failed_count on the parent Campaign.
+  campaignId         String?                 @map("campaign_id")  @db.Uuid
+  campaign           Campaign?               @relation("CampaignRecipientLogs", fields: [campaignId], references: [id], onDelete: SetNull)
+  sentAt             DateTime?               @map("sent_at")      @db.Timestamptz()
+  retryCount         Int                     @default(0) @map("retry_count")
+
   // ── Attribution Tracking (AI-revenue dashboard) ──
   // Populated by the attribution service when a booking is linked to this
   // recommendation. Value is snapshotted at link time so historical ROI
@@ -1735,13 +1763,44 @@ model AIRecommendationLog {
   linkedAt           DateTime?               @map("linked_at")            @db.Timestamptz()
   attributionMethod  String?                 @map("attribution_method")   // deep_link | direct_session_match | time_window
 
+  // ── Micro-survey response (ENGAGE Phase 2) ──
+  // Set when the recipient clicks one of the option links in a survey-style
+  // email (e.g. NEW_MEMBER_WELCOME Day 12 stalled-newcomer survey).
+  // One-to-zero-or-one — most logs have no survey response.
+  microSurveyResponse MicroSurveyResponse?
+
   @@index([userId, clubId, createdAt])
   @@index([userId, sessionId, type])
   @@index([externalMessageId])
   @@index([variantId, type])
   @@index([clubId, type, status])
   @@index([parentLogId])
+  @@index([campaignId, createdAt])
   @@map("ai_recommendation_logs")
+}
+
+// ── Micro-Survey Responses (ENGAGE Phase 2) ──
+// One row per click on a survey-style email link. The link looks like
+// /api/surveys/respond?logId=<AIRecommendationLog.id>&option=<choice>.
+// Currently produced by the Newcomer Day-12 stalled survey — surveyType is
+// generic so the same table will hold "Снижение активности", "Спящий",
+// "Trial не конвертировался" etc. without another migration.
+//
+// Idempotency: log_id is UNIQUE so a second click on the same email overwrites
+// the prior choice (handled by upsert in the endpoint).
+model MicroSurveyResponse {
+  id          String              @id @default(uuid())
+  logId       String              @unique @map("log_id")
+  log         AIRecommendationLog @relation(fields: [logId], references: [id], onDelete: Cascade)
+  userId      String              @map("user_id")
+  clubId      String              @map("club_id")
+  surveyType  String              @map("survey_type")  // "onboarding_day12" | future: "winback" | "sleeping" | etc
+  option      String                                    // "schedule" | "level" | "partners" | "price" | "other"
+  freeText    String?             @map("free_text")     // populated by future "other → tell us more" follow-up
+  respondedAt DateTime            @default(now()) @map("responded_at")
+
+  @@index([clubId, surveyType, respondedAt])
+  @@map("micro_survey_responses")
 }
 
 // ── Club Launch Audits ──
@@ -2079,6 +2138,11 @@ model Campaign {
 
   channels        String[] @default([]) // ['email','sms']
 
+  // Optional CTA override. When null, sendOutreachEmail falls back to
+  // the legacy "Book a Session" button linking to the club page.
+  ctaLabel        String?  @map("cta_label")
+  ctaUrl          String?  @map("cta_url")
+
   status          String   @default("draft") // draft|scheduled|running|paused|completed|failed
 
   scheduledAt     DateTime? @map("scheduled_at")
@@ -2088,6 +2152,7 @@ model Campaign {
   sentCount       Int      @default(0) @map("sent_count")
   deliveredCount  Int      @default(0) @map("delivered_count")
   openedCount     Int      @default(0) @map("opened_count")
+  clickedCount    Int      @default(0) @map("clicked_count")
   failedCount     Int      @default(0) @map("failed_count")
 
   // Frozen view of cohort membership at send time:
@@ -2103,6 +2168,7 @@ model Campaign {
   club            Club        @relation("ClubCampaigns", fields: [clubId], references: [id], onDelete: Cascade)
   cohort          ClubCohort? @relation("CohortCampaigns", fields: [cohortId], references: [id], onDelete: SetNull)
   creator         User?       @relation("UserCampaigns", fields: [createdByUser], references: [id], onDelete: SetNull)
+  recipientLogs   AIRecommendationLog[] @relation("CampaignRecipientLogs")
 
   @@index([clubId, status])
   @@index([clubId, createdAt(sort: Desc)])

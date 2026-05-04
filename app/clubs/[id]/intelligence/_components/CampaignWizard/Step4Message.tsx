@@ -103,11 +103,64 @@ export function Step4Message({
 }: Step4Props) {
   const [aiError, setAiError] = useState<string | null>(null)
   const [testEmail, setTestEmail] = useState('')
+  const [testSendError, setTestSendError] = useState<string | null>(null)
+  const [testSendOk, setTestSendOk] = useState<string | null>(null)
 
   const autoPersonalise = useMemo(
     () => (audience?.memberCount ?? 999) <= 50,
     [audience?.memberCount],
   )
+
+  // CTA validation — URL must be empty (use default) or a valid http(s) URL.
+  // Label is optional but required if URL is set.
+  const ctaUrlTrimmed = (message.ctaUrl ?? '').trim()
+  const ctaLabelTrimmed = (message.ctaLabel ?? '').trim()
+  const ctaUrlInvalid = ctaUrlTrimmed.length > 0 && !/^https?:\/\/.+/i.test(ctaUrlTrimmed)
+  const ctaLabelMissing = ctaUrlTrimmed.length > 0 && ctaLabelTrimmed.length === 0
+  const ctaInvalid = ctaUrlInvalid || ctaLabelMissing
+
+  // P1.6: test send (single-recipient preview). Does not create a
+  // Campaign row, does not bypass nor honor Live Mode — it's a QA
+  // tool that ships exactly the same template the cron does.
+  const testSendMutation = trpc.intelligence.testSendCampaign.useMutation({
+    onSuccess: (res: any) => {
+      setTestSendError(null)
+      setTestSendOk(`Sent to ${res?.sentTo ?? 'inbox'} — check it in a minute.`)
+    },
+    onError: (err: any) => {
+      setTestSendOk(null)
+      setTestSendError(err?.message || 'Test send failed.')
+    },
+  })
+
+  const handleTestSend = () => {
+    if (!message.subject || !message.body) {
+      setTestSendError('Subject and body are required for a preview.')
+      return
+    }
+    setTestSendError(null)
+    setTestSendOk(null)
+    const channels: ('email' | 'sms')[] = []
+    if (schedule.channels.email) channels.push('email')
+    if (schedule.channels.sms) channels.push('sms')
+    if (channels.length === 0) {
+      setTestSendError('Pick at least one channel in Step 3 to test.')
+      return
+    }
+    if (ctaInvalid) {
+      setTestSendError(ctaUrlInvalid ? 'CTA URL must start with http:// or https://' : 'CTA label is required when a URL is set.')
+      return
+    }
+    testSendMutation.mutate({
+      clubId,
+      subject: message.subject,
+      body: message.body,
+      channels,
+      ...(testEmail.trim() ? { to: testEmail.trim() } : {}),
+      ...(ctaLabelTrimmed ? { ctaLabel: ctaLabelTrimmed } : {}),
+      ...(ctaUrlTrimmed ? { ctaUrl: ctaUrlTrimmed } : {}),
+    })
+  }
 
   // Real LLM regenerate. Direct call (no `?.useMutation?.()` form — that
   // pattern crashes through the tRPC react-query proxy; same TypeError we
@@ -160,6 +213,7 @@ export function Step4Message({
   const isLive = liveMode === 'live'
   const launchDisabled = isLaunching || !isLive || regenerateMutation.isPending
     || message.subject.trim().length === 0 || message.body.trim().length === 0
+    || ctaInvalid
 
   if (!goal) {
     return (
@@ -257,27 +311,94 @@ export function Step4Message({
         Variables available: <code>{`{first_name}`}</code> · <code>{`{last_name}`}</code> · <code>{`{event_name}`}</code> · <code>{`{event_date}`}</code> · <code>{`{expires_in_days}`}</code>
       </div>
 
-      {/* Test send */}
+      {/* Call to action — optional override for the email button.
+          When both fields are empty the email shows the default
+          "Book a Session" button linking to the club page. */}
       <div>
-        <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Send test to</label>
+        <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+          Call to action <span style={{ textTransform: 'none', color: 'var(--t4)', fontWeight: 400 }}>— leave blank for default &ldquo;Book a Session&rdquo; button</span>
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-2 mt-1">
+          <input
+            type="text"
+            value={message.ctaLabel ?? ''}
+            onChange={(e) => onChange({ ...message, ctaLabel: e.target.value })}
+            placeholder="Button label (e.g. Renew now)"
+            maxLength={100}
+            className="px-3 py-2 rounded-lg text-sm outline-none"
+            style={{
+              background: 'var(--subtle)',
+              border: `1px solid ${ctaLabelMissing ? 'rgba(239,68,68,0.5)' : 'var(--card-border)'}`,
+              color: 'var(--heading)',
+            }}
+          />
+          <input
+            type="url"
+            value={message.ctaUrl ?? ''}
+            onChange={(e) => onChange({ ...message, ctaUrl: e.target.value })}
+            placeholder="https://yourclub.com/renew"
+            maxLength={500}
+            className="px-3 py-2 rounded-lg text-sm outline-none"
+            style={{
+              background: 'var(--subtle)',
+              border: `1px solid ${ctaUrlInvalid ? 'rgba(239,68,68,0.5)' : 'var(--card-border)'}`,
+              color: 'var(--heading)',
+            }}
+          />
+        </div>
+        {ctaUrlInvalid && (
+          <div className="mt-1 text-[11px]" style={{ color: '#F87171' }}>
+            URL must start with http:// or https://
+          </div>
+        )}
+        {ctaLabelMissing && (
+          <div className="mt-1 text-[11px]" style={{ color: '#F87171' }}>
+            Add a button label or clear the URL.
+          </div>
+        )}
+      </div>
+
+      {/* Test send (P1.6) — single-recipient preview, no Campaign/log row created */}
+      <div>
+        <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+          Send test to {testEmail.trim() ? '' : '(blank → your own inbox)'}
+        </label>
         <div className="flex gap-2 mt-1">
           <input
             type="email"
             value={testEmail}
             onChange={(e) => setTestEmail(e.target.value)}
             placeholder="admin@yourclub.com"
-            className="flex-1 px-3 py-2 rounded-lg text-sm outline-none"
+            disabled={testSendMutation.isPending}
+            className="flex-1 px-3 py-2 rounded-lg text-sm outline-none disabled:opacity-50"
             style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
           />
           <button
-            disabled
-            title="Test-send wires up alongside real Launch"
-            className="px-3 py-2 rounded-lg text-xs opacity-50 cursor-not-allowed"
-            style={{ background: 'var(--subtle)', color: 'var(--t3)', fontWeight: 600 }}
+            onClick={handleTestSend}
+            disabled={testSendMutation.isPending}
+            className="px-3 py-2 rounded-lg text-xs flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: 'var(--subtle)', color: 'var(--heading)', fontWeight: 600, border: '1px solid var(--card-border)' }}
           >
-            Send test
+            {testSendMutation.isPending ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Sending…
+              </>
+            ) : (
+              'Send test'
+            )}
           </button>
         </div>
+        {testSendOk && (
+          <div className="mt-2 text-[11px]" style={{ color: '#10B981' }}>
+            ✓ {testSendOk}
+          </div>
+        )}
+        {testSendError && (
+          <div className="mt-2 text-[11px]" style={{ color: '#F87171' }}>
+            ✗ {testSendError}
+          </div>
+        )}
       </div>
 
       {/* Server error from launch */}

@@ -7,10 +7,25 @@
 
 // ── Types ──
 
+/**
+ * Persona role(s) an insight is most relevant to. From persona research
+ * (Marketer / Ops / Owner agents, Apr 2026 session): admins complained
+ * that insights weren't role-tagged, so half of each persona's view was
+ * irrelevant — an owner doesn't care about "underutilized courts" (ops
+ * problem), a marketer can't act on "VIP at risk" without ops backup.
+ *
+ * Multi-role is the default: most current insights serve at least two
+ * roles. The Dashboard filter UI lets the admin pick the role they
+ * currently identify with; insights tagged with that role stay visible.
+ */
+export type InsightRole = 'owner' | 'marketer' | 'ops'
+
 export interface Insight {
   id: string
   type: 'court_optimization' | 'member_retention' | 'growth' | 'alert' | 'schedule'
   priority: 'high' | 'medium' | 'low'
+  /** Roles this insight is most relevant to. At least one entry. */
+  roles: InsightRole[]
   title: string
   description: string
   action: string
@@ -85,6 +100,7 @@ async function underutilizedCourts(prisma: any, clubId: string): Promise<Insight
   const worst = underused[0] as any
   return {
     id: insightId('underutilized_courts'),
+    roles: ['ops', 'owner'] as InsightRole[],
     type: 'court_optimization',
     priority: 'medium',
     title: `${underused.length} court${underused.length > 1 ? 's' : ''} under 25% occupancy`,
@@ -129,6 +145,7 @@ async function peakHourOverflow(prisma: any, clubId: string): Promise<Insight | 
 
   return {
     id: insightId('peak_overflow'),
+    roles: ['ops', 'owner'] as InsightRole[],
     type: 'schedule',
     priority: 'high',
     title: `${overflow.length} time slot${overflow.length > 1 ? 's' : ''} over 80% capacity`,
@@ -196,6 +213,7 @@ async function vipMembersAtRisk(prisma: any, clubId: string): Promise<Insight | 
 
   return {
     id: insightId('vip_at_risk'),
+    roles: ['marketer', 'owner'] as InsightRole[],
     type: 'member_retention',
     priority: 'high',
     title: `${rows.length} VIP member${rows.length > 1 ? 's' : ''} at risk`,
@@ -257,6 +275,7 @@ async function guestPassUpsell(prisma: any, clubId: string): Promise<Insight | n
 
   return {
     id: insightId('guest_upsell'),
+    roles: ['marketer', 'owner'] as InsightRole[],
     type: 'growth',
     priority: 'high',
     title: `${rows.length} guest${rows.length > 1 ? 's' : ''} ready for membership`,
@@ -307,6 +326,7 @@ async function suspendedWinback(prisma: any, clubId: string): Promise<Insight | 
 
   return {
     id: insightId('suspended_winback'),
+    roles: ['marketer', 'owner'] as InsightRole[],
     type: 'member_retention',
     priority: recentlyActive > 0 ? 'medium' : 'low',
     title: `${rows.length} suspended member${rows.length > 1 ? 's' : ''} — ${recentlyActive} were recently active`,
@@ -350,6 +370,7 @@ async function formatMismatch(prisma: any, clubId: string): Promise<Insight | nu
 
   return {
     id: insightId('format_mismatch'),
+    roles: ['owner', 'ops'] as InsightRole[],
     type: 'schedule',
     priority: 'medium',
     title: `Format imbalance: ${emptyLabel} underbooked`,
@@ -395,6 +416,7 @@ async function dayOfWeekGap(prisma: any, clubId: string): Promise<Insight | null
 
   return {
     id: insightId('dow_gap'),
+    roles: ['ops', 'marketer'] as InsightRole[],
     type: 'schedule',
     priority: gap > 40 ? 'high' : 'medium',
     title: `${quietest.dayName.trim()} is ${Math.round(gap)}pp behind ${busiest.dayName.trim()}`,
@@ -446,6 +468,7 @@ async function newMemberOnboarding(prisma: any, clubId: string): Promise<Insight
 
   return {
     id: insightId('new_member_onboarding'),
+    roles: ['marketer'] as InsightRole[],
     type: 'member_retention',
     priority: rows.length >= 5 ? 'high' : 'medium',
     title: `${rows.length} new member${rows.length > 1 ? 's' : ''} need onboarding follow-up`,
@@ -496,6 +519,7 @@ async function skillProgression(prisma: any, clubId: string): Promise<Insight | 
 
   return {
     id: insightId('skill_progression'),
+    roles: ['owner', 'marketer'] as InsightRole[],
     type: 'growth',
     priority: 'low',
     title: `${rows.length} member${rows.length > 1 ? 's' : ''} leveled up from Beginner`,
@@ -536,6 +560,7 @@ async function emptyEveningSlots(prisma: any, clubId: string): Promise<Insight |
 
   return {
     id: insightId('empty_evenings'),
+    roles: ['ops', 'marketer'] as InsightRole[],
     type: 'schedule',
     priority: emptySlots > 50 ? 'medium' : 'low',
     title: `Evening sessions averaging ${Math.round(avgOcc)}% occupancy`,

@@ -1,0 +1,19 @@
+-- ENGAGE Segment #4 "Снижение активности" — new AIRecommendationType enum value.
+--
+-- Tracks fresh activity drop:
+--   - was booking ≥3/mo for 3+ consecutive months
+--   - last 30 days: 0–1 booking
+--   - last booking still <30 days ago (warm — not yet "Спящий")
+--   - subscription active
+--
+-- Triggers a 3-step recovery sequence:
+--   Day 1: "Anything we can help with?" + 4-button micro-survey
+--          (injury / busy / schedule / pause)
+--   Day 5: Personalised schedule (top 3 sessions matching their pattern)
+--   Day 12: Incentive (guest pass / discount) — only if still silent
+--
+-- Distinct from REACTIVATION (which covers 90+ day inactive deep reactivation)
+-- and from CHECK_IN/RETENTION_BOOST (which are health-score worsening triggers).
+--
+-- Applied to both DBs (mwdftgazlvpfyvqicovh prod, angwdmyswzztmlrdzgxm dev).
+ALTER TYPE "AIRecommendationType" ADD VALUE IF NOT EXISTS 'DECLINING_REACTIVATION';
