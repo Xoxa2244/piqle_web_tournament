@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Wand2, Loader2, AlertTriangle, Plus, X } from 'lucide-react'
+import { Wand2, Loader2, AlertTriangle, Plus, X, Sparkles } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 import { MAX_SEQUENCE_STEPS } from './types'
 import type { AudienceSelection, CampaignGoal, MessageDraft, ScheduleSettings, SequenceStep } from './types'
@@ -106,6 +106,7 @@ export function Step4Message({
   launchError,
 }: Step4Props) {
   const [aiError, setAiError] = useState<string | null>(null)
+  const [suggestError, setSuggestError] = useState<string | null>(null)
   const [testEmail, setTestEmail] = useState('')
   const [testSendError, setTestSendError] = useState<string | null>(null)
   const [testSendOk, setTestSendOk] = useState<string | null>(null)
@@ -261,6 +262,43 @@ export function Step4Message({
     })
   }
 
+  // Sequence-only: ask the LLM to design the entire sequence (step
+  // count + delays + subject/body for each step) based on goal +
+  // audience. Replaces `message.steps` wholesale on success.
+  const suggestSequenceMutation = trpc.intelligence.suggestSequenceSteps.useMutation({
+    onSuccess: (res: any) => {
+      setSuggestError(null)
+      const incoming = Array.isArray(res?.steps) ? res.steps : []
+      if (incoming.length < 1) {
+        setSuggestError('AI returned no steps — try again or edit manually.')
+        return
+      }
+      const newSteps: SequenceStep[] = incoming.map((s: any, idx: number) => ({
+        stepIndex: idx,
+        delayDays: idx === 0 ? 0 : Math.max(1, Math.min(60, Number(s.delayDays) || 3)),
+        subject: String(s.subject ?? ''),
+        body: String(s.body ?? ''),
+      }))
+      onChange({ ...message, steps: newSteps })
+      setEditingStepIndex(0)
+    },
+    onError: (err: any) => {
+      setSuggestError(err?.message || 'Could not suggest a sequence — try again or edit manually.')
+    },
+  })
+
+  const handleSuggestSequence = () => {
+    if (!goal) return
+    if (suggestSequenceMutation.isPending) return
+    setSuggestError(null)
+    suggestSequenceMutation.mutate({
+      clubId,
+      campaignType: GOAL_TO_CAMPAIGN_TYPE[goal],
+      audienceCount: audience?.memberCount ?? 0,
+      ...(audience?.cohortName ? { audienceLabel: audience.cohortName } : {}),
+    })
+  }
+
   // Real LLM regenerate. Direct call (no `?.useMutation?.()` form — that
   // pattern crashes through the tRPC react-query proxy; same TypeError we
   // hit on Members AI Insight & bulk Add-to-existing).
@@ -404,6 +442,43 @@ export function Step4Message({
               Add step
             </button>
           )}
+
+          {/* AI sequence designer — replaces all steps with an LLM-generated
+              series tuned to the goal. Always available; admin can click
+              again to get a different variant. */}
+          <button
+            onClick={handleSuggestSequence}
+            disabled={suggestSequenceMutation.isPending || !goal}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs transition-all hover:scale-[1.02] disabled:opacity-50"
+            style={{
+              background: 'rgba(139,92,246,0.16)',
+              border: '1px solid rgba(139,92,246,0.35)',
+              color: '#A78BFA',
+              fontWeight: 600,
+            }}
+            title="Replace all steps with an AI-generated sequence tuned to your goal."
+          >
+            {suggestSequenceMutation.isPending ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Designing…
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3 h-3" />
+                Suggest steps with AI
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
+      {/* Sequence-suggester error banner — separate from the per-step
+          regenerate error so admins know which one failed. */}
+      {suggestError && isSequence && (
+        <div className="rounded-xl p-3 text-xs flex items-start gap-2" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', color: '#F87171' }}>
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>{suggestError}</span>
         </div>
       )}
 

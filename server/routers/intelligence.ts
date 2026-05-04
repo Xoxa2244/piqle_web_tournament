@@ -5350,6 +5350,186 @@ ${contextLines.length > 0 ? '\nContext:\n' + contextLines.join('\n') : ''}`
       }
     }),
 
+  /**
+   * Suggest a full Sequence (2–5 steps) with AI for the Sequence editor.
+   *
+   * Used by the "✨ Suggest steps with AI" button in Step 4 of the
+   * Campaign Wizard when format='sequence'. The LLM picks the right
+   * number of steps for the goal (e.g. 3 for win-back, 5 for nurture)
+   * and writes coherent subject/body for each, with reasonable delays.
+   *
+   * Output shape matches the Wizard's SequenceStep[] so the frontend
+   * can splice it directly into message.steps.
+   */
+  suggestSequenceSteps: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      campaignType: z.enum(['CHECK_IN', 'RETENTION_BOOST', 'REACTIVATION', 'SLOT_FILLER', 'EVENT_INVITE', 'NEW_MEMBER_WELCOME']),
+      audienceCount: z.number().min(0).max(50000),
+      audienceLabel: z.string().max(120).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true, voiceSettings: true },
+      })
+      const clubName = club?.name || 'Your Club'
+
+      // Recommended step counts per goal — LLM is guided but can deviate.
+      // Based on Patch Retention playbooks + our Tier 1 sequences.
+      const goalGuidance: Record<string, { suggested: number; rhythm: string; spirit: string }> = {
+        CHECK_IN: {
+          suggested: 2,
+          rhythm: '0d, +5d',
+          spirit: 'Soft check-in, then a friendly nudge with a fresh schedule.',
+        },
+        RETENTION_BOOST: {
+          suggested: 3,
+          rhythm: '0d, +5d, +7d',
+          spirit: 'Acknowledge slip → make returning easy → escalate with a small incentive on the final step.',
+        },
+        REACTIVATION: {
+          suggested: 3,
+          rhythm: '0d, +5d, +7d',
+          spirit: 'Caring "are you ok" first, fresh schedule second, escalate to a comeback offer (free guest pass / discount) on the third.',
+        },
+        SLOT_FILLER: {
+          suggested: 2,
+          rhythm: '0d, +2d',
+          spirit: 'Time-sensitive: opening reminder → urgency reminder. Keep both short.',
+        },
+        EVENT_INVITE: {
+          suggested: 3,
+          rhythm: '0d, +5d, +7d',
+          spirit: 'Invitation → reminder with details → final call before signups close.',
+        },
+        NEW_MEMBER_WELCOME: {
+          suggested: 3,
+          rhythm: '0d, +5d, +7d',
+          spirit: 'Day 0 explains the club + first step. Day 5 nudges first booking with social proof. Day 12 asks "what is blocking you" if they have not played.',
+        },
+      }
+
+      const guidance = goalGuidance[input.campaignType] || goalGuidance.CHECK_IN
+
+      // Voice injection — same pattern as generateCampaignMessage.
+      const { composeSystem, parseVoiceSettings } = await import('@/lib/ai/voice-profile')
+      const voice = parseVoiceSettings(club?.voiceSettings)
+
+      const baseSystemPrompt = `You are a campaign sequence designer for racquet sports clubs (pickleball, padel, tennis).
+You design a multi-step email sequence that flows narratively from step to step.
+
+RULES:
+- Pick a step count between 2 and 5. Do NOT exceed 5.
+- Step 1 always has delayDays=0 (sent at launch).
+- Subsequent steps have delayDays >= 1 and <= 14.
+- Use template variables: {{name}} = recipient's first name, {{club}} = club name.
+- subject: max 60 characters, compelling, personal, varies between steps.
+- body: max 600 characters, warm and conversational, ends with a clear call-to-action line. Sign off as "{{club}} Team".
+- Each step must build on the previous one — do not repeat the same message with minor wording changes.
+- Final step may include a small incentive (free guest pass, comeback discount) when the goal supports it (REACTIVATION, RETENTION_BOOST, EVENT_INVITE).
+- Never use ALL CAPS for emphasis.
+- Return ONLY valid JSON, no markdown.
+
+OUTPUT FORMAT:
+{
+  "steps": [
+    {"delayDays": 0, "subject": "...", "body": "..."},
+    {"delayDays": 5, "subject": "...", "body": "..."}
+  ]
+}`
+
+      const systemPrompt = composeSystem(baseSystemPrompt, voice)
+
+      const userPrompt = `Design a ${input.campaignType} email sequence.
+Club: "${clubName}".
+Audience: ${input.audienceCount} members${input.audienceLabel ? ` (${input.audienceLabel})` : ''}.
+Suggested rhythm: ${guidance.rhythm}.
+Suggested step count: ${guidance.suggested} (deviate up to 5 if the spirit calls for it).
+Spirit: ${guidance.spirit}`
+
+      try {
+        const { generateWithFallback } = await import('@/lib/ai/llm/provider')
+        const result = await generateWithFallback({
+          system: systemPrompt,
+          prompt: userPrompt,
+          tier: 'fast',
+          // Higher cap than single-message regen — N steps × N tokens.
+          maxTokens: 1800,
+          timeoutMs: 12000,
+          maxPrimaryRetries: 0,
+          clubId: input.clubId,
+          operation: 'suggestSequenceSteps',
+        })
+
+        let jsonStr = result.text.trim()
+        const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/)
+        if (jsonMatch) jsonStr = jsonMatch[1].trim()
+        const objStart = jsonStr.indexOf('{')
+        const objEnd = jsonStr.lastIndexOf('}')
+        if (objStart !== -1 && objEnd !== -1) jsonStr = jsonStr.slice(objStart, objEnd + 1)
+
+        const parsed = JSON.parse(jsonStr)
+        const rawSteps = Array.isArray(parsed.steps) ? parsed.steps : []
+
+        // Sanity-pass: clamp count, force step 0 delay=0, clamp delays,
+        // truncate strings, drop empties.
+        const cleaned: Array<{ stepIndex: number; delayDays: number; subject: string; body: string }> = []
+        for (let i = 0; i < Math.min(rawSteps.length, 5); i++) {
+          const s = rawSteps[i] || {}
+          const subject = String(s.subject || '').slice(0, 200).trim()
+          const body = String(s.body || '').slice(0, 5000).trim()
+          if (!subject || !body) continue
+          let delayDays = i === 0 ? 0 : Math.max(1, Math.min(14, parseInt(String(s.delayDays), 10) || 3))
+          cleaned.push({ stepIndex: cleaned.length, delayDays, subject, body })
+        }
+        if (cleaned.length < 2) {
+          // LLM returned garbage — caller will see a generic error and
+          // the wizard keeps the previous draft.
+          throw new Error('AI returned fewer than 2 valid steps')
+        }
+        return { steps: cleaned }
+      } catch (err) {
+        log.warn('[suggestSequenceSteps] LLM failed, using fallback:', (err as Error).message?.slice(0, 100))
+        // Static fallback per goal — same shape as a successful return so
+        // the UI doesn't have to differentiate. Keeps the button useful
+        // even when LLM is down or the response is malformed.
+        const fallbacks: Record<string, Array<{ stepIndex: number; delayDays: number; subject: string; body: string }>> = {
+          CHECK_IN: [
+            { stepIndex: 0, delayDays: 0, subject: `Quick check-in from {{club}}, {{name}}`, body: `Hi {{name}},\n\nJust checking in — we'd love to see you back at {{club}} soon. There are some good sessions this week if you want to jump in.\n\n— {{club}} Team` },
+            { stepIndex: 1, delayDays: 5, subject: `A few sessions you'd enjoy this week, {{name}}`, body: `Hi {{name}},\n\nWe pulled together a couple of sessions that match how you usually play at {{club}}. Want to grab one?\n\n— {{club}} Team` },
+          ],
+          RETENTION_BOOST: [
+            { stepIndex: 0, delayDays: 0, subject: `{{name}}, your spot at {{club}} is still here`, body: `Hi {{name}},\n\nYou're an important part of the {{club}} community. There are good options this week if you want to ease back into a regular rhythm.\n\n— {{club}} Team` },
+            { stepIndex: 1, delayDays: 5, subject: `Sessions at your level, {{name}}`, body: `Hi {{name}},\n\nWe found a few sessions that fit your level and the times you usually played. Picking one is a low-pressure way back in.\n\n— {{club}} Team` },
+            { stepIndex: 2, delayDays: 7, subject: `Last small nudge from {{club}}, {{name}}`, body: `Hi {{name}},\n\nA small thank-you for coming back: book any session this week and your next visit is on us.\n\n— {{club}} Team` },
+          ],
+          REACTIVATION: [
+            { stepIndex: 0, delayDays: 0, subject: `We miss you on the courts, {{name}}`, body: `Hey {{name}},\n\nNoticed you haven't played at {{club}} in a while — just wanted to check in. No pressure, your spot is here when you're ready.\n\n— {{club}} Team` },
+            { stepIndex: 1, delayDays: 5, subject: `Fresh sessions at your level this week, {{name}}`, body: `Hi {{name}},\n\nA few open sessions came up that match how you used to play. Easier to scan than the full calendar.\n\n— {{club}} Team` },
+            { stepIndex: 2, delayDays: 7, subject: `A small thank-you for coming back, {{name}}`, body: `Hi {{name}},\n\nLast nudge from us — and this one comes with something on the house. Book any session this week and your next visit is on us.\n\n— {{club}} Team` },
+          ],
+          SLOT_FILLER: [
+            { stepIndex: 0, delayDays: 0, subject: `An open spot at {{club}}, {{name}}`, body: `Hi {{name}},\n\nA spot just opened up in an upcoming session at {{club}}. Looked like a fit for you — want it?\n\n— {{club}} Team` },
+            { stepIndex: 1, delayDays: 2, subject: `Last call before this fills, {{name}}`, body: `Hi {{name}},\n\nQuick reminder — that open spot is still here for now. If you'd like it, grab it before the list fills.\n\n— {{club}} Team` },
+          ],
+          EVENT_INVITE: [
+            { stepIndex: 0, delayDays: 0, subject: `{{name}}, you're invited to {{event_name}}`, body: `Hi {{name}},\n\nWe're running {{event_name}} on {{event_date}} and would love for you to be part of it. Spots are limited and we think you'd enjoy this one.\n\n— {{club}} Team` },
+            { stepIndex: 1, delayDays: 5, subject: `Quick reminder — {{event_name}}, {{name}}`, body: `Hi {{name}},\n\nJust a friendly reminder about {{event_name}} on {{event_date}}. If you want a spot, now's a good time to grab one.\n\n— {{club}} Team` },
+            { stepIndex: 2, delayDays: 7, subject: `Final call for {{event_name}}, {{name}}`, body: `Hi {{name}},\n\nLast call — signups for {{event_name}} close soon. If you're in, click below.\n\n— {{club}} Team` },
+          ],
+          NEW_MEMBER_WELCOME: [
+            { stepIndex: 0, delayDays: 0, subject: `Welcome to {{club}}, {{name}} 👋`, body: `Hi {{name}},\n\nGlad you're with us. A great first step is booking 3 sessions this month — we'll match you with players at your level. Reply if anything's unclear.\n\n— {{club}} Team` },
+            { stepIndex: 1, delayDays: 5, subject: `Sessions popular with new members, {{name}}`, body: `Hi {{name}},\n\nA few sessions other newcomers love: Open Play (friendly mix), Skills Clinic (60-min coached). Either is an easy first booking.\n\n— {{club}} Team` },
+            { stepIndex: 2, delayDays: 7, subject: `Anything we can help with, {{name}}?`, body: `Hi {{name}},\n\nNoticed you haven't booked yet. If something specific is in the way (schedule, level, partner) reply to this email — we'd like to help.\n\n— {{club}} Team` },
+          ],
+        }
+        return { steps: fallbacks[input.campaignType] || fallbacks.CHECK_IN }
+      }
+    }),
+
   // ── Create Campaign (send messages to selected members) ──
   // ── Usage Summary (for billing UI) ──
   getUsageSummary: protectedProcedure
