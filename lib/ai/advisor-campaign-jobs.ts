@@ -57,6 +57,8 @@ type CampaignDraftInput = {
   subject?: string
   body: string
   smsBody?: string
+  ctaLabel?: string
+  ctaUrl?: string
   sessionId?: string
   source?: string
   actionKind?: AgentOutreachRolloutActionKind
@@ -118,6 +120,8 @@ async function deliverCampaignToUser(opts: {
   subject?: string
   body: string
   smsBody?: string
+  ctaLabel?: string
+  ctaUrl?: string
   logId?: string
 }) : Promise<DeliveryResult> {
   const { club, user, channel, logId } = opts
@@ -160,6 +164,8 @@ async function deliverCampaignToUser(opts: {
           body: emailBody,
           clubName: club.name,
           bookingUrl,
+          ctaLabel: opts.ctaLabel,
+          ctaUrl: opts.ctaUrl,
         })
         emailDelivered = true
         externalMessageId = result.messageId || null
@@ -304,6 +310,8 @@ export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
       subject: input.subject,
       body: input.body,
       smsBody: input.smsBody,
+      ctaLabel: input.ctaLabel,
+      ctaUrl: input.ctaUrl,
     })
 
     await prisma.aIRecommendationLog.create({
@@ -396,6 +404,18 @@ function extractCampaignSnapshotUserIds(snapshot: unknown): string[] {
   )
 }
 
+function extractCampaignSnapshotCta(snapshot: unknown) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    return { ctaLabel: undefined, ctaUrl: undefined }
+  }
+
+  const record = snapshot as Record<string, unknown>
+  return {
+    ctaLabel: typeof record.ctaLabel === 'string' && record.ctaLabel.trim().length > 0 ? record.ctaLabel.trim() : undefined,
+    ctaUrl: typeof record.ctaUrl === 'string' && record.ctaUrl.trim().length > 0 ? record.ctaUrl.trim() : undefined,
+  }
+}
+
 export async function processCampaignSendQueue(prisma: any, opts?: { limit?: number; campaignId?: string }) {
   const limit = Math.max(1, Math.min(opts?.limit || 50, 200))
   const now = new Date()
@@ -414,6 +434,22 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
   const campaigns = await prisma.campaign.findMany({
     where,
     orderBy: { createdAt: 'asc' },
+    select: {
+      id: true,
+      clubId: true,
+      goal: true,
+      subject: true,
+      body: true,
+      channels: true,
+      status: true,
+      scheduledAt: true,
+      launchedAt: true,
+      createdAt: true,
+      sentCount: true,
+      deliveredCount: true,
+      failedCount: true,
+      cohortSnapshot: true,
+    },
     ...(opts?.campaignId ? {} : { take: limit }),
   })
 
@@ -455,6 +491,7 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
 
   for (const campaign of campaigns) {
     const snapshot = (campaign.cohortSnapshot || {}) as Record<string, unknown>
+    const campaignCta = extractCampaignSnapshotCta(snapshot)
     const memberIds = extractCampaignSnapshotUserIds(snapshot)
     const processedAt = new Date()
     const processedAtIso = processedAt.toISOString()
@@ -462,6 +499,7 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
     if (memberIds.length === 0) {
       await prisma.campaign.update({
         where: { id: campaign.id },
+        select: { id: true },
         data: {
           status: 'failed',
           completedAt: processedAt,
@@ -491,6 +529,7 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
     if (!body) {
       await prisma.campaign.update({
         where: { id: campaign.id },
+        select: { id: true },
         data: {
           status: 'failed',
           completedAt: processedAt,
@@ -523,6 +562,8 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
       memberIds,
       subject: typeof campaign.subject === 'string' ? campaign.subject : undefined,
       body,
+      ctaLabel: campaignCta.ctaLabel,
+      ctaUrl: campaignCta.ctaUrl,
       source: 'campaign_wizard',
       actionKind: 'create_campaign',
     })
@@ -531,6 +572,7 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
 
     await prisma.campaign.update({
       where: { id: campaign.id },
+      select: { id: true },
       data: {
         status: nextStatus,
         launchedAt: campaign.launchedAt || processedAt,

@@ -10031,7 +10031,20 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const rows = await ctx.prisma.campaign.findMany({
         where: { clubId: input.clubId, status: { in: ['running', 'scheduled', 'paused', 'completed', 'failed'] } },
         orderBy: { createdAt: 'desc' },
-        include: { cohort: { select: { name: true } } },
+        select: {
+          id: true,
+          name: true,
+          cohortId: true,
+          channels: true,
+          sentCount: true,
+          deliveredCount: true,
+          openedCount: true,
+          attribution: true,
+          status: true,
+          launchedAt: true,
+          scheduledAt: true,
+          cohort: { select: { name: true } },
+        },
       })
       return rows.map((c: any) => {
         const channelArr = Array.isArray(c.channels) ? c.channels : []
@@ -10134,8 +10147,19 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const scheduledDate = input.scheduledAt ? new Date(input.scheduledAt) : null
       const isFuture = scheduledDate ? scheduledDate.getTime() > now.getTime() : false
       const status = isFuture ? 'scheduled' : 'running'
+      const campaignSnapshot = {
+        userIds: recipientIds,
+        cohortName: resolvedCohortName,
+        rendered_at: now.toISOString(),
+        ...(input.ctaLabel ? { ctaLabel: input.ctaLabel } : {}),
+        ...(input.ctaUrl ? { ctaUrl: input.ctaUrl } : {}),
+      }
 
       const campaign = await ctx.prisma.campaign.create({
+        select: {
+          id: true,
+          status: true,
+        },
         data: {
           clubId: input.clubId,
           cohortId: resolvedCohortId,
@@ -10145,18 +10169,12 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           subject: input.subject,
           body: input.body,
           channels: input.channels,
-          ctaLabel: input.ctaLabel,
-          ctaUrl: input.ctaUrl,
           status,
           scheduledAt: scheduledDate,
           launchedAt: status === 'running' ? now : null,
           // Frozen audience snapshot — the send queue reads userIds from here,
           // so cohort filter changes after launch don't affect this campaign.
-          cohortSnapshot: {
-            userIds: recipientIds,
-            cohortName: resolvedCohortName,
-            rendered_at: now.toISOString(),
-          } as any,
+          cohortSnapshot: campaignSnapshot as any,
         },
       })
 

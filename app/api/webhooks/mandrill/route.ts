@@ -171,6 +171,7 @@ async function processMandrillEvent(event: MandrillEvent) {
     if (!log.campaignId) return
     await prisma.campaign.update({
       where: { id: log.campaignId },
+      select: { id: true },
       data: { [field]: { increment: 1 } },
     })
   }

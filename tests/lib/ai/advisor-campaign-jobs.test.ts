@@ -119,6 +119,28 @@ describe('advisor campaign jobs', () => {
     }))
   })
 
+  it('passes custom CTA overrides through to outreach email sends', async () => {
+    mockPrisma.user.findMany.mockResolvedValue([
+      { id: 'member-1', email: 'alex@example.com', name: 'Alex Stone', phone: null, smsOptIn: false },
+    ])
+
+    await sendCampaignNow(mockPrisma, {
+      clubId: 'club-1',
+      type: 'REACTIVATION',
+      channel: 'email',
+      memberIds: ['member-1'],
+      subject: 'Come back',
+      body: 'See you soon',
+      ctaLabel: 'Click here',
+      ctaUrl: 'https://vk.com/id327829473',
+    })
+
+    expect(sendOutreachEmail).toHaveBeenCalledWith(expect.objectContaining({
+      ctaLabel: 'Click here',
+      ctaUrl: 'https://vk.com/id327829473',
+    }))
+  })
+
   it('re-checks guardrails before scheduled campaign delivery', async () => {
     mockPrisma.$queryRaw.mockResolvedValue([{ id: 'log-1' }])
     mockPrisma.aIRecommendationLog.findMany.mockResolvedValue([

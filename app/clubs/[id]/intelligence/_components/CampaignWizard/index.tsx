@@ -410,27 +410,29 @@ export function CampaignWizard({
 
           {/* Sticky footer — Back / Next (hidden on Step 4 when launched, since Launch is in-step) */}
           {!launched && (
-            <div className="shrink-0 px-5 pt-3 pb-5 flex items-center justify-between" style={{ background: 'var(--bg, #0B0B14)', borderTop: '1px solid var(--card-border)' }}>
-              <button
-                onClick={prev}
-                disabled={step === 1}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs disabled:opacity-30"
-                style={{ background: 'var(--subtle)', color: 'var(--t2)' }}
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                Back
-              </button>
-              {step < 4 ? (
+            <div className="shrink-0 px-5 pb-5" style={{ background: 'var(--bg, #0B0B14)' }}>
+              <div className="flex items-center justify-between pt-3" style={{ borderTop: '1px solid var(--card-border)' }}>
                 <button
-                  onClick={next}
-                  disabled={!canAdvance}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
+                  onClick={prev}
+                  disabled={step === 1}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs disabled:opacity-30"
+                  style={{ background: 'var(--subtle)', color: 'var(--t2)' }}
                 >
-                  Next
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Back
                 </button>
-              ) : null}
+                {step < 4 ? (
+                  <button
+                    onClick={next}
+                    disabled={!canAdvance}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 600 }}
+                  >
+                    Next
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                ) : null}
+              </div>
             </div>
           )}
         </motion.aside>
