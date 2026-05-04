@@ -37,6 +37,22 @@ export interface AudienceSelection {
   memberCount: number                // approximate
 }
 
+/** A single step inside a sequence campaign. */
+export interface SequenceStep {
+  /** 0-based position within `MessageDraft.steps`. */
+  stepIndex: number
+  /** Days to wait after the previous step was sent. Always 0 for stepIndex=0. */
+  delayDays: number
+  subject: string
+  body: string
+  /** Optional CTA per step (overrides campaign-level ctaLabel/ctaUrl). */
+  ctaLabel?: string
+  ctaUrl?: string
+}
+
+/** MVP cap for steps in a single sequence — keeps the editor sane. */
+export const MAX_SEQUENCE_STEPS = 5
+
 export interface MessageDraft {
   subject: string
   body: string
@@ -48,6 +64,11 @@ export interface MessageDraft {
   ctaLabel?: string
   /** Optional CTA URL override. Empty → email uses club page (bookingUrl). */
   ctaUrl?: string
+  /** Sequence steps. Populated when ScheduleSettings.format === 'sequence'.
+   *  When format=one_time the editor uses subject + body directly (above);
+   *  this array stays untouched so toggling format back and forth doesn't
+   *  lose the sequence draft. */
+  steps?: SequenceStep[]
 }
 
 export interface ScheduleSettings {
@@ -57,6 +78,9 @@ export interface ScheduleSettings {
   /** ISO datetime; populated when mode='scheduled'. */
   scheduledAt: string | null
   channels: { email: boolean; sms: boolean }
+  /** Sequence: stop sending follow-up steps to a recipient who books
+   *  between steps. Default true. Only meaningful when format='sequence'. */
+  exitOnBooking: boolean
 }
 
 export interface WizardState {
@@ -75,5 +99,6 @@ export const EMPTY_WIZARD_STATE: WizardState = {
     mode: 'now',
     scheduledAt: null,
     channels: { email: true, sms: false },
+    exitOnBooking: true,
   },
 }

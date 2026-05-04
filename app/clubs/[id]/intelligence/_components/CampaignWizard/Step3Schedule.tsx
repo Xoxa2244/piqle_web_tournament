@@ -42,8 +42,6 @@ const FORMAT_OPTIONS: Array<{
     label: 'Sequence',
     hint: 'Drip series — multiple messages with delays (e.g. day 0, +3, +7).',
     icon: Layers,
-    disabled: true,
-    comingSoon: true,
   },
   {
     key: 'recurring',
@@ -145,6 +143,26 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
             className="w-full mt-1 px-3 py-2 rounded-lg text-sm outline-none"
             style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
           />
+        </div>
+      )}
+
+      {/* Sequence-only: exit-on-booking toggle. When ON, the runner stops
+          sending follow-up steps to a recipient who books a session
+          between steps. Mirrors Tier 1 conditional follow-up behaviour. */}
+      {schedule.format === 'sequence' && (
+        <div className="rounded-xl p-3 flex items-start gap-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+          <input
+            type="checkbox"
+            checked={schedule.exitOnBooking}
+            onChange={(e) => onChange({ ...schedule, exitOnBooking: e.target.checked })}
+            className="mt-0.5 w-4 h-4 cursor-pointer"
+          />
+          <label className="text-xs cursor-pointer flex-1" onClick={() => onChange({ ...schedule, exitOnBooking: !schedule.exitOnBooking })}>
+            <span style={{ color: 'var(--heading)', fontWeight: 600 }}>Stop the series if the recipient books a session</span>
+            <span className="block mt-0.5" style={{ color: 'var(--t4)' }}>
+              Recommended on. Avoids nagging members who already responded by booking. Doesn't pause the campaign for everyone — only that one recipient.
+            </span>
+          </label>
         </div>
       )}
 

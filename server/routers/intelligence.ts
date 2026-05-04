@@ -10214,6 +10214,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       clubId: z.string().uuid(),
       name: z.string().min(1).max(100),
       goal: z.string().min(1).max(64),
+      // For one_time: the email subject + body. For sequence: still required
+      // (wizard echoes steps[0].subject + body) so list/display surfaces have
+      // something to show. The cron reads from `steps[stepIndex]` for
+      // sequence sends.
       subject: z.string().min(1).max(200),
       body: z.string().min(1).max(5000),
       channels: z.array(z.enum(['email', 'sms'])).min(1),
@@ -10227,17 +10231,64 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       // to the legacy "Book a Session" button → club page.
       ctaLabel: z.string().min(1).max(100).optional(),
       ctaUrl: z.string().url().max(500).optional(),
+      // Sequence track. Required when format='sequence'. MVP cap is 5 steps.
+      // step[0].delayDays must be 0 (sent at launch); step[N].delayDays for
+      // N≥1 means "wait this many days after step N-1 was sent for the
+      // recipient before sending step N".
+      steps: z.array(z.object({
+        stepIndex: z.number().int().min(0).max(4),
+        delayDays: z.number().int().min(0).max(60),
+        subject: z.string().min(1).max(200),
+        body: z.string().min(1).max(5000),
+        ctaLabel: z.string().min(1).max(100).optional(),
+        ctaUrl: z.string().url().max(500).optional(),
+      })).max(5).optional(),
+      // Sequence: stop sending follow-up steps to a recipient who books a
+      // session between steps. Default true — matches Tier 1 conditional
+      // follow-up behaviour and is what admins almost always want.
+      exitOnBooking: z.boolean().optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      // Phase-1 only ships one_time. Sequence/Recurring will refuse explicitly
-      // until the multi-step runner ships — better than silently dropping.
-      if (input.format !== 'one_time') {
+      // Recurring is still pending the R-track (separate runner needed —
+      // requires re-evaluating cohort each tick + cron expression parser).
+      if (input.format === 'recurring') {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: `Send format "${input.format}" is not yet supported. Switch to One-time in Step 3.`,
+          message: 'Recurring sends are not yet supported. Switch to One-time or Sequence in Step 3.',
         })
+      }
+
+      // Sequence-specific validation.
+      if (input.format === 'sequence') {
+        if (!input.steps || input.steps.length === 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Sequence campaigns require at least one step.',
+          })
+        }
+        if (input.steps[0].stepIndex !== 0 || input.steps[0].delayDays !== 0) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Step 1 must have stepIndex 0 and delayDays 0 (sent at launch).',
+          })
+        }
+        // Verify stepIndexes are 0-based contiguous.
+        for (let i = 0; i < input.steps.length; i++) {
+          if (input.steps[i].stepIndex !== i) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Step indexes must be contiguous starting at 0 (got ${input.steps[i].stepIndex} at position ${i}).`,
+            })
+          }
+          if (i > 0 && input.steps[i].delayDays < 1) {
+            throw new TRPCError({
+              code: 'BAD_REQUEST',
+              message: `Step ${i + 1} must have a delay ≥ 1 day after the previous step.`,
+            })
+          }
+        }
       }
 
       // Resolve recipient userIds. Cohort takes priority over inline userIds
@@ -10277,6 +10328,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         cohortName: resolvedCohortName,
         sendFormat: input.format,
         rendered_at: now.toISOString(),
+        ...(input.steps?.length ? { steps: input.steps } : {}),
+        ...(input.format === 'sequence' ? { exitOnBooking: input.exitOnBooking ?? true } : {}),
         ...(input.ctaLabel ? { ctaLabel: input.ctaLabel } : {}),
         ...(input.ctaUrl ? { ctaUrl: input.ctaUrl } : {}),
       }
@@ -10319,6 +10372,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         campaignId: campaign.id,
         recipientCount: recipientIds.length,
         status: finalStatus,
+        format: input.format,
+        totalSteps: input.format === 'sequence' ? (input.steps?.length ?? 1) : 1,
       }
     }),
 

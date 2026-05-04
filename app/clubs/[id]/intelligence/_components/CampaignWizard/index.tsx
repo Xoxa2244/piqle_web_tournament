@@ -282,14 +282,33 @@ export function CampaignWizard({
       // hand-picked userIds list.
       const cohortId = state.audience.cohortId
       const userIds = !cohortId ? state.audience.userIds : undefined
-      const ctaLabel = state.message.ctaLabel?.trim()
-      const ctaUrl = state.message.ctaUrl?.trim()
+
+      const isSequence = state.schedule.format === 'sequence'
+      const sequenceSteps = state.message.steps ?? []
+
+      // For sequence launches, top-level subject/body/ctaLabel/ctaUrl mirror
+      // step 0 — backend's listing surfaces still need a single subject/body
+      // to display. The runner reads from `steps[stepIndex]` for actual
+      // sending, not from the top-level fields.
+      const topLevelSubject = isSequence
+        ? (sequenceSteps[0]?.subject ?? '').trim()
+        : state.message.subject.trim()
+      const topLevelBody = isSequence
+        ? (sequenceSteps[0]?.body ?? '').trim()
+        : state.message.body.trim()
+      const topLevelCtaLabel = isSequence
+        ? (sequenceSteps[0]?.ctaLabel ?? '').trim()
+        : (state.message.ctaLabel ?? '').trim()
+      const topLevelCtaUrl = isSequence
+        ? (sequenceSteps[0]?.ctaUrl ?? '').trim()
+        : (state.message.ctaUrl ?? '').trim()
+
       launchMutation.mutate({
         clubId,
         name: `${state.goal.replace(/_/g, ' ')} · ${new Date().toLocaleDateString()}`,
         goal: state.goal,
-        subject: state.message.subject.trim(),
-        body: state.message.body.trim(),
+        subject: topLevelSubject,
+        body: topLevelBody,
         channels: [
           ...(state.schedule.channels.email ? ['email' as const] : []),
           ...(state.schedule.channels.sms ? ['sms' as const] : []),
@@ -301,8 +320,21 @@ export function CampaignWizard({
           ? new Date(state.schedule.scheduledAt).toISOString()
           : undefined,
         format: state.schedule.format,
-        ...(ctaLabel ? { ctaLabel } : {}),
-        ...(ctaUrl ? { ctaUrl } : {}),
+        ...(topLevelCtaLabel ? { ctaLabel: topLevelCtaLabel } : {}),
+        ...(topLevelCtaUrl ? { ctaUrl: topLevelCtaUrl } : {}),
+        ...(isSequence
+          ? {
+              steps: sequenceSteps.map((s) => ({
+                stepIndex: s.stepIndex,
+                delayDays: s.delayDays,
+                subject: s.subject.trim(),
+                body: s.body.trim(),
+                ...(s.ctaLabel?.trim() ? { ctaLabel: s.ctaLabel.trim() } : {}),
+                ...(s.ctaUrl?.trim() ? { ctaUrl: s.ctaUrl.trim() } : {}),
+              })),
+              exitOnBooking: state.schedule.exitOnBooking,
+            }
+          : {}),
       })
     } finally {
       setIsLaunching(false)
