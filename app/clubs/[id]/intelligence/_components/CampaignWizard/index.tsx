@@ -32,6 +32,9 @@ interface CampaignWizardProps {
   initialSuggestedCohort?: AudienceSelection | null
   /** Pre-fill the Goal step (e.g. AI-Recommended card → reactivate_dormant). */
   initialGoal?: CampaignGoal | null
+  /** Open from a Playbook card with goal/format/schedule/message pre-filled.
+   *  Audience is intentionally not seeded — admin still picks. */
+  initialPlaybook?: import('./playbooks').Playbook | null
   onClose: () => void
 }
 
@@ -51,10 +54,24 @@ export function CampaignWizard({
   initialCohortId,
   initialSuggestedCohort,
   initialGoal,
+  initialPlaybook,
   onClose,
 }: CampaignWizardProps) {
   const [step, setStep] = useState<WizardStep>(1)
-  const [state, setState] = useState<WizardState>(EMPTY_WIZARD_STATE)
+  const [state, setState] = useState<WizardState>(() => {
+    // Seed from a playbook when opened from the PlaybookGrid. Audience
+    // stays null — admin picks. Other fields merge over the empty
+    // defaults so we get a fully-formed initial state.
+    if (initialPlaybook) {
+      return {
+        ...EMPTY_WIZARD_STATE,
+        goal: initialPlaybook.goal,
+        schedule: { ...EMPTY_WIZARD_STATE.schedule, ...initialPlaybook.schedule },
+        message: { ...EMPTY_WIZARD_STATE.message, ...initialPlaybook.message },
+      }
+    }
+    return EMPTY_WIZARD_STATE
+  })
   const [isLaunching, setIsLaunching] = useState(false)
   const [launched, setLaunched] = useState(false)
 

@@ -15,6 +15,8 @@ import { CampaignList } from './campaigns/CampaignList'
 // P2-T9: CampaignCreator removed — replaced everywhere by CampaignWizard.
 // P4-T1: New 4-step Campaign Wizard
 import { CampaignWizard } from '../CampaignWizard'
+import { PlaybookGrid } from '../PlaybookGrid'
+import type { Playbook } from '../CampaignWizard/playbooks'
 // P4-T6: Active Campaigns table (lightweight)
 import { ActiveCampaignsTable } from '../ActiveCampaignsTable'
 import { CampaignsInsightsDrawer } from '../CampaignsInsightsDrawer'
@@ -311,6 +313,10 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
   // P2-T9: pre-fill the wizard's Goal step when launched from an
   // AI-Recommended card. Mapped from the legacy CHECK_IN/etc enum.
   const [wizardInitialGoal, setWizardInitialGoal] = useState<'reactivate_dormant' | 'onboard_new' | 'promote_event' | 'upsell_tier' | 'renewal_reminder' | 'custom' | null>(null)
+  // Playbook pre-fill: when admin clicks a card in PlaybookGrid we open
+  // the wizard with the playbook's goal / format / schedule / message
+  // already populated. Audience is left null — admin picks.
+  const [wizardInitialPlaybook, setWizardInitialPlaybook] = useState<Playbook | null>(null)
   // P2-T9: Insights drawer hosts Send Volume + legacy by-type event log,
   // moved off the main page.
   const [showInsights, setShowInsights] = useState(false)
@@ -777,19 +783,33 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
 
       {/* P4-T1: Campaign Wizard drawer.
           P5-T5 fix #5: initialCohortId wired from ?cohortId= URL param
-          (set by Cohort Builder's "Save + Create Campaign →"). */}
+          (set by Cohort Builder's "Save + Create Campaign →").
+          B-track: initialPlaybook from PlaybookGrid card click. */}
       {showWizard && (
         <CampaignWizard
           clubId={clubId}
           initialCohortId={wizardInitialCohortId}
           initialGoal={wizardInitialGoal}
+          initialPlaybook={wizardInitialPlaybook}
           onClose={() => {
             setShowWizard(false)
             setWizardInitialCohortId(null)
             setWizardInitialGoal(null)
+            setWizardInitialPlaybook(null)
           }}
         />
       )}
+
+      {/* B-track: ready-made campaign templates. Card click opens the
+          Wizard with format/goal/message pre-filled — admin only picks
+          the audience. Distinct from AI-Recommended Campaigns below
+          (which propose specific real audiences). */}
+      <PlaybookGrid
+        onSelect={(playbook) => {
+          setWizardInitialPlaybook(playbook)
+          setShowWizard(true)
+        }}
+      />
 
       {/* P1-T4: AI-Recommended Campaigns lifted to top — first content block.
           P2-T9: "Preview & Launch" now opens the new CampaignWizard with the
