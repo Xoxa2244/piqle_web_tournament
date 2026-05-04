@@ -47,6 +47,7 @@ type CampaignClub = {
 
 type CampaignDraftInput = {
   clubId: string
+  campaignId?: string
   type: CampaignType
   channel: CampaignChannel
   memberIds: string[]
@@ -317,6 +318,7 @@ export async function sendCampaignNow(prisma: any, input: CampaignDraftInput) {
     await prisma.aIRecommendationLog.create({
       data: {
         clubId: input.clubId,
+        campaignId: input.campaignId || null,
         userId: user.id,
         type: input.type,
         channel: resolvedChannel,
@@ -367,6 +369,10 @@ function mapWizardGoalToCampaignType(goal: string | null | undefined): CampaignT
   switch (goal) {
     case 'reactivate_dormant':
       return 'REACTIVATION'
+    case 'check_in':
+      return 'CHECK_IN'
+    case 'retention_boost':
+      return 'RETENTION_BOOST'
     case 'onboard_new':
       return 'NEW_MEMBER_WELCOME'
     case 'promote_event':
@@ -556,6 +562,7 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
     }
 
     const delivery = await sendCampaignNow(prisma, {
+      campaignId: campaign.id,
       clubId: campaign.clubId,
       type: mapWizardGoalToCampaignType(campaign.goal),
       channel: mapCampaignChannelsToDraftChannel(campaign.channels),

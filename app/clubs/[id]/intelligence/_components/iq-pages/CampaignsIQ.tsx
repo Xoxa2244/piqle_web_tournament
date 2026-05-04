@@ -17,6 +17,7 @@ import { CampaignList } from './campaigns/CampaignList'
 import { CampaignWizard } from '../CampaignWizard'
 // P4-T6: Active Campaigns table (lightweight)
 import { ActiveCampaignsTable } from '../ActiveCampaignsTable'
+import { CampaignHistorySection } from '../CampaignHistorySection'
 import { CampaignsInsightsDrawer } from '../CampaignsInsightsDrawer'
 import { CampaignSuggestions } from './campaigns/CampaignSuggestions'
 import {
@@ -816,20 +817,7 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
           backend lands in P5-T2). See SPEC §6 P4-T6. */}
       <ActiveCampaignsTable clubId={clubId} />
 
-      {/* P5-T5: Campaign History collapsed accordion. Empty state until
-          Campaign model is live (P5-T2 deploy); keeps the UX shape so
-          directors know where past campaigns will appear. */}
-      <details className="rounded-2xl px-5 py-3 transition-all" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-        <summary className="cursor-pointer flex items-center justify-between text-sm" style={{ color: 'var(--heading)', fontWeight: 600 }}>
-          <span>Campaign History</span>
-          <span className="text-[11px]" style={{ color: 'var(--t4)' }}>0 past campaigns · $0 attributed (v1 — populates after Phase 5 launch)</span>
-        </summary>
-        <div className="mt-3 text-xs" style={{ color: 'var(--t3)' }}>
-          Past campaigns will appear here, sorted by recency, with attributed revenue
-          per row. Open rate and conversion rolled up to the Money Story widget on
-          the Dashboard (deferred to Dashboard redesign — see PLAN §11).
-        </div>
-      </details>
+      <CampaignHistorySection clubId={clubId} />
 
 
       {/* P2-T9: Insights drawer — Send Volume + legacy by-type event log

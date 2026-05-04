@@ -10025,9 +10025,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      // P2-T9: real Campaign query (was stubbed return []). Keep completed and
-      // failed rows visible too, otherwise "send now" campaigns disappear from
-      // the table immediately after dispatch.
+      // Return both active and finished rows; the frontend splits them into
+      // "Active Campaigns" and expandable "Campaign History".
       const rows = await ctx.prisma.campaign.findMany({
         where: { clubId: input.clubId, status: { in: ['running', 'scheduled', 'paused', 'completed', 'failed'] } },
         orderBy: { createdAt: 'desc' },
@@ -10043,21 +10042,26 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           status: true,
           launchedAt: true,
           scheduledAt: true,
+          completedAt: true,
+          createdAt: true,
+          cohortSnapshot: true,
           cohort: { select: { name: true } },
         },
       })
       return rows.map((c: any) => {
+        const snapshot = (c.cohortSnapshot as Record<string, unknown> | null) || {}
         const channelArr = Array.isArray(c.channels) ? c.channels : []
         const channel: 'email' | 'sms' | 'email+sms' = channelArr.includes('email') && channelArr.includes('sms')
           ? 'email+sms'
           : channelArr.includes('sms') ? 'sms' : 'email'
         const attribution = (c.attribution as any) || {}
         const openRate = c.deliveredCount > 0 ? c.openedCount / c.deliveredCount : 0
+        const sendFormat = typeof snapshot.sendFormat === 'string' ? snapshot.sendFormat : 'one_time'
         return {
           id: c.id,
           name: c.name,
           cohortId: c.cohortId,
-          cohortName: c.cohort?.name ?? null,
+          cohortName: c.cohort?.name ?? (typeof snapshot.cohortName === 'string' ? snapshot.cohortName : null),
           channel,
           sentCount: c.sentCount,
           deliveredCount: c.deliveredCount,
@@ -10066,9 +10070,130 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           bookedCount: Number(attribution.booked_count ?? 0),
           bookedRevenueCents: Number(attribution.booked_revenue_cents ?? 0),
           status: c.status as 'draft' | 'scheduled' | 'running' | 'paused' | 'completed' | 'failed',
+          sendFormat: sendFormat as 'one_time' | 'sequence' | 'recurring',
+          createdAt: c.createdAt,
           startedAt: c.launchedAt ?? c.scheduledAt,
+          completedAt: c.completedAt,
         }
       })
+    }),
+
+  toggleCampaignPause: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      campaignId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const campaign = await ctx.prisma.campaign.findFirst({
+        where: { id: input.campaignId, clubId: input.clubId },
+        select: {
+          id: true,
+          status: true,
+          scheduledAt: true,
+          cohortSnapshot: true,
+        },
+      })
+
+      if (!campaign) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
+      }
+
+      const snapshot = (campaign.cohortSnapshot as Record<string, unknown> | null) || {}
+      const sendFormat = typeof snapshot.sendFormat === 'string' ? snapshot.sendFormat : 'one_time'
+      if (sendFormat === 'one_time') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only repeating campaigns can be paused.' })
+      }
+
+      const now = new Date()
+      if (campaign.status === 'paused') {
+        const rawResumeStatus = typeof snapshot.pauseResumeStatus === 'string' ? snapshot.pauseResumeStatus : null
+        const computedResumeStatus = rawResumeStatus === 'scheduled' || rawResumeStatus === 'running'
+          ? rawResumeStatus
+          : (campaign.scheduledAt && campaign.scheduledAt.getTime() > now.getTime() ? 'scheduled' : 'running')
+        const nextStatus = computedResumeStatus === 'scheduled' && campaign.scheduledAt && campaign.scheduledAt.getTime() <= now.getTime()
+          ? 'running'
+          : computedResumeStatus
+
+        const updated = await ctx.prisma.campaign.update({
+          where: { id: campaign.id },
+          select: { id: true, status: true },
+          data: {
+            status: nextStatus,
+            cohortSnapshot: {
+              ...snapshot,
+              pauseResumeStatus: null,
+              resumedAt: now.toISOString(),
+            } as any,
+          },
+        })
+
+        return { id: updated.id, status: updated.status }
+      }
+
+      if (campaign.status !== 'running' && campaign.status !== 'scheduled') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only running or scheduled campaigns can be paused.' })
+      }
+
+      const updated = await ctx.prisma.campaign.update({
+        where: { id: campaign.id },
+        select: { id: true, status: true },
+        data: {
+          status: 'paused',
+          cohortSnapshot: {
+            ...snapshot,
+            pauseResumeStatus: campaign.status,
+            pausedAt: now.toISOString(),
+          } as any,
+        },
+      })
+
+      return { id: updated.id, status: updated.status }
+    }),
+
+  stopCampaign: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      campaignId: z.string().uuid(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const campaign = await ctx.prisma.campaign.findFirst({
+        where: { id: input.campaignId, clubId: input.clubId },
+        select: {
+          id: true,
+          status: true,
+          cohortSnapshot: true,
+        },
+      })
+
+      if (!campaign) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
+      }
+
+      if (!['running', 'scheduled', 'paused'].includes(campaign.status)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Only active campaigns can be stopped.' })
+      }
+
+      const now = new Date()
+      const snapshot = (campaign.cohortSnapshot as Record<string, unknown> | null) || {}
+      const updated = await ctx.prisma.campaign.update({
+        where: { id: campaign.id },
+        select: { id: true, status: true },
+        data: {
+          status: 'completed',
+          completedAt: now,
+          cohortSnapshot: {
+            ...snapshot,
+            stoppedAt: now.toISOString(),
+            stoppedByUserId: ctx.session.user.id,
+          } as any,
+        },
+      })
+
+      return { id: updated.id, status: updated.status }
     }),
 
   /**
@@ -10150,6 +10275,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const campaignSnapshot = {
         userIds: recipientIds,
         cohortName: resolvedCohortName,
+        sendFormat: input.format,
         rendered_at: now.toISOString(),
         ...(input.ctaLabel ? { ctaLabel: input.ctaLabel } : {}),
         ...(input.ctaUrl ? { ctaUrl: input.ctaUrl } : {}),
