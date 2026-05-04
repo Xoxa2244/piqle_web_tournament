@@ -85,6 +85,164 @@ interface CampaignForCron {
   format: string
   steps: any
   exitOnBooking: boolean
+  cohortId: string | null
+  cronExpression: string | null
+  recurringTimezone: string | null
+  lastRecurringRun: Date | null
+  channels: string[]
+}
+
+// ── Recurring runner — minimal in-tree cron matcher ────────────────────────
+// Supports the small set of patterns the Wizard generates:
+//   "0 H * * *"  — daily at H:00 (in tz)
+//   "0 H * * D"  — weekly at H:00 on day-of-week D (0=Sun .. 6=Sat)
+//   "0 H D * *"  — monthly at H:00 on day-of-month D (1..31)
+// Custom cron text input is a v2 feature — we'll wire `cron-parser` then.
+
+interface SimpleCron {
+  hour: number
+  dayOfWeek: number | null
+  dayOfMonth: number | null
+}
+
+function parseSimpleCron(expr: string): SimpleCron | null {
+  const parts = expr.trim().split(/\s+/)
+  if (parts.length !== 5) return null
+  const [m, h, dom, mon, dow] = parts
+  if (m !== '0') return null
+  const hour = parseInt(h, 10)
+  if (Number.isNaN(hour) || hour < 0 || hour > 23) return null
+  // Daily
+  if (dom === '*' && mon === '*' && dow === '*') {
+    return { hour, dayOfWeek: null, dayOfMonth: null }
+  }
+  // Weekly: dow set, dom + mon stars
+  if (dow !== '*' && dom === '*' && mon === '*') {
+    const dayOfWeek = parseInt(dow, 10)
+    if (Number.isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) return null
+    return { hour, dayOfWeek, dayOfMonth: null }
+  }
+  // Monthly: dom set, dow + mon stars
+  if (dom !== '*' && dow === '*' && mon === '*') {
+    const dayOfMonth = parseInt(dom, 10)
+    if (Number.isNaN(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) return null
+    return { hour, dayOfWeek: null, dayOfMonth }
+  }
+  return null
+}
+
+/** Returns true if the campaign's cron expression matches "now" in the
+ *  campaign's timezone AND we haven't run within the last 22 hours.
+ *  22h is a coarse but effective de-dup that survives DST jumps. */
+function shouldFireRecurringNow(
+  cron: SimpleCron,
+  tz: string,
+  now: Date,
+  lastRun: Date | null,
+): boolean {
+  // Extract current local hour / weekday / day-of-month in `tz`.
+  let hour = -1
+  let weekdayShort = ''
+  let day = -1
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour12: false,
+      hour: 'numeric',
+      weekday: 'short',
+      day: 'numeric',
+    })
+    for (const p of fmt.formatToParts(now)) {
+      if (p.type === 'hour') hour = parseInt(p.value, 10)
+      else if (p.type === 'weekday') weekdayShort = p.value
+      else if (p.type === 'day') day = parseInt(p.value, 10)
+    }
+  } catch {
+    // Bad timezone string — fall back to UTC parts
+    hour = now.getUTCHours()
+    day = now.getUTCDate()
+    weekdayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][now.getUTCDay()]
+  }
+  if (hour === 24) hour = 0
+
+  const dowMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
+  const dayOfWeek = dowMap[weekdayShort] ?? -1
+
+  // Day match
+  if (cron.dayOfMonth !== null && cron.dayOfMonth !== day) return false
+  if (cron.dayOfWeek !== null && cron.dayOfWeek !== dayOfWeek) return false
+
+  // Hour reached (allow firing any time at-or-after the scheduled hour
+  // until the next day, to be resilient to skipped cron ticks).
+  if (hour < cron.hour) return false
+
+  // De-dup: if we already ran within the last ~day, skip.
+  if (lastRun) {
+    const hoursAgo = (now.getTime() - lastRun.getTime()) / (1000 * 60 * 60)
+    if (hoursAgo < 22) return false
+  }
+
+  return true
+}
+
+/** Recurring fan-out: re-evaluate the cohort and create fresh recipient
+ *  logs for this tick. Updates Campaign.lastRecurringRun on success
+ *  (and on no-recipients) so we don't re-check every minute.
+ *  Returns the number of logs created. */
+async function fanOutRecurring(campaign: CampaignForCron): Promise<{ created: number }> {
+  if (campaign.format !== 'recurring') return { created: 0 }
+  if (!campaign.cronExpression) return { created: 0 }
+  const cron = parseSimpleCron(campaign.cronExpression)
+  if (!cron) return { created: 0 }
+  const tz = campaign.recurringTimezone || 'UTC'
+  const now = new Date()
+  if (!shouldFireRecurringNow(cron, tz, now, campaign.lastRecurringRun)) {
+    return { created: 0 }
+  }
+
+  // Re-evaluate the cohort. Recurring requires a cohortId (validated at
+  // launch); guard defensively in case of orphaned data.
+  if (!campaign.cohortId) {
+    await prisma.campaign.update({ where: { id: campaign.id }, data: { lastRecurringRun: now } })
+    return { created: 0 }
+  }
+  const cohort = await prisma.clubCohort.findUnique({ where: { id: campaign.cohortId } })
+  if (!cohort || cohort.clubId !== campaign.clubId) {
+    await prisma.campaign.update({ where: { id: campaign.id }, data: { lastRecurringRun: now } })
+    return { created: 0 }
+  }
+  const filters = (cohort.filters as any) || []
+  const { resolveCohortMembersForCron } = await import('@/server/routers/intelligence')
+  const rows = await resolveCohortMembersForCron(prisma, campaign.clubId, filters, 2000)
+  const userIds = rows.map((r) => r.id).filter((id): id is string => typeof id === 'string')
+
+  if (userIds.length === 0) {
+    // No recipients this tick — still bump lastRecurringRun so we don't
+    // re-check every minute for the rest of the day.
+    await prisma.campaign.update({ where: { id: campaign.id }, data: { lastRecurringRun: now } })
+    return { created: 0 }
+  }
+
+  const primaryChannel = campaign.channels.includes('email') ? 'email' : 'sms'
+  await prisma.aIRecommendationLog.createMany({
+    data: userIds.map((userId) => ({
+      clubId: campaign.clubId,
+      userId,
+      type: 'CAMPAIGN_SEND' as const,
+      channel: primaryChannel,
+      status: 'pending',
+      campaignId: campaign.id,
+      reasoning: {
+        campaignName: campaign.name,
+        recurringTickAt: now.toISOString(),
+      },
+    })),
+    skipDuplicates: true,
+  })
+
+  await prisma.campaign.update({ where: { id: campaign.id }, data: { lastRecurringRun: now } })
+
+  return { created: userIds.length }
 }
 
 /** Resolves the per-step content to render for a given log row.
@@ -436,6 +594,9 @@ async function run(request: Request) {
         cohortSnapshot: true,
         ctaLabel: true, ctaUrl: true,
         format: true, steps: true, exitOnBooking: true,
+        cohortId: true,
+        cronExpression: true, recurringTimezone: true, lastRecurringRun: true,
+        channels: true,
         club: { select: { id: true, automationSettings: true } },
       },
     })
@@ -455,6 +616,7 @@ async function run(request: Request) {
     let totalCompleted = 0
     let totalFannedOut = 0
     let totalExited = 0
+    let totalRecurringFanOut = 0
     const liveModeSkips: string[] = []
 
     for (const campaign of campaigns) {
@@ -469,9 +631,15 @@ async function run(request: Request) {
       }
 
       try {
+        // R4: Recurring fan-out — re-evaluate cohort and create fresh
+        // recipient logs if the cron expression matches now. No-op for
+        // one_time / sequence.
+        const recurringResult = await fanOutRecurring(campaign as CampaignForCron)
+        totalRecurringFanOut += recurringResult.created
+
         // S4: Sequence fan-out — for sequence campaigns, create logs for
         // recipients whose previous step delay has elapsed. No-op for
-        // one_time campaigns.
+        // one_time / recurring.
         const fanOut = await fanOutNextSteps(campaign as CampaignForCron)
         totalFannedOut += fanOut.created
         totalExited += fanOut.exited
@@ -481,12 +649,10 @@ async function run(request: Request) {
         totalFailed += result.failed
         totalSkipped += result.skipped
 
-        // Skip auto-complete for sequence campaigns — total expected
-        // sends depends on exit-on-booking outcomes which we don't track
-        // explicitly. Admin can mark complete manually (UI follow-up) or
-        // a separate sweeper finalises after a quiescence window. For
-        // one_time the existing recipient-count check fires.
-        if (campaign.format !== 'sequence') {
+        // Auto-complete is meaningful only for one_time. Sequence keeps
+        // running until admin marks complete (or a future sweeper does);
+        // recurring is open-ended by definition.
+        if (campaign.format === 'one_time') {
           const completed = await maybeCompleteCampaign(campaign.id)
           if (completed) totalCompleted++
         }
@@ -506,6 +672,7 @@ async function run(request: Request) {
         completed: totalCompleted,
         sequenceFannedOut: totalFannedOut,
         sequenceExited: totalExited,
+        recurringFannedOut: totalRecurringFanOut,
         durationMs: Date.now() - startedAt.getTime(),
       },
       'campaign-sends tick complete',
@@ -524,6 +691,7 @@ async function run(request: Request) {
       completed: totalCompleted,
       sequenceFannedOut: totalFannedOut,
       sequenceExited: totalExited,
+      recurringFannedOut: totalRecurringFanOut,
     })
   } catch (error: any) {
     log.error?.(`[Cron campaign-sends] Failed: ${String(error?.message ?? error).slice(0, 200)}`)

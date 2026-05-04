@@ -871,6 +871,18 @@ async function queryCohortMembers(
   return resolveCohortMembers(prisma, clubId, filters, limit)
 }
 
+/** Public alias of queryCohortMembers for use outside the router (e.g.
+ *  the recurring runner in app/api/cron/campaign-sends). The signature
+ *  is intentionally `any` for prisma so this stays a thin wrapper. */
+export async function resolveCohortMembersForCron(
+  prisma: any,
+  clubId: string,
+  filters: any[],
+  limit: number | null = 2000,
+): Promise<Array<{ id: string }>> {
+  return resolveCohortMembers(prisma, clubId, filters as CohortFilter[], limit)
+}
+
 function applyAdvisorRecipientRules(
   members: Array<{ id: string; email?: string | null; phone?: string | null; smsOptIn?: boolean | null }>,
   rules?: {
