@@ -12,7 +12,9 @@
  * the placeholder so directors see context, not a blank panel.
  */
 
-import { Mail, MessageSquare, Pause, Play, StopCircle, Layers } from 'lucide-react'
+import { useState } from 'react'
+import { Mail, MessageSquare, Pause, Play, StopCircle, Layers, Repeat, Loader2 } from 'lucide-react'
+import { trpc } from '@/lib/trpc'
 import { useListActiveCampaigns } from '../_hooks/use-intelligence'
 
 interface ActiveCampaignsTableProps {
@@ -21,6 +23,31 @@ interface ActiveCampaignsTableProps {
 
 export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
   const { data: campaigns = [] } = useListActiveCampaigns(clubId)
+  const utils = trpc.useUtils()
+  const [pendingId, setPendingId] = useState<string | null>(null)
+
+  const pauseMutation = trpc.intelligence.pauseCampaign.useMutation({
+    onSettled: () => {
+      setPendingId(null)
+      utils.intelligence.listActiveCampaigns.invalidate({ clubId }).catch(() => {})
+    },
+  })
+  const resumeMutation = trpc.intelligence.resumeCampaign.useMutation({
+    onSettled: () => {
+      setPendingId(null)
+      utils.intelligence.listActiveCampaigns.invalidate({ clubId }).catch(() => {})
+    },
+  })
+
+  const togglePause = (id: string, status: string) => {
+    if (pendingId) return
+    setPendingId(id)
+    if (status === 'paused') {
+      resumeMutation.mutate({ clubId, campaignId: id })
+    } else {
+      pauseMutation.mutate({ clubId, campaignId: id })
+    }
+  }
 
   return (
     <div
@@ -79,6 +106,16 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
                           Sequence · {c.totalSteps} step{c.totalSteps === 1 ? '' : 's'}
                         </span>
                       )}
+                      {c.format === 'recurring' && (
+                        <span
+                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider"
+                          style={{ background: 'rgba(6,182,212,0.18)', color: '#67E8F9', fontWeight: 700 }}
+                          title={c.recurringDescription ? `${c.recurringDescription}. Cohort is re-evaluated each run; only members who match at run-time receive the email.` : 'Recurring campaign'}
+                        >
+                          <Repeat className="w-2.5 h-2.5" />
+                          {c.recurringDescription ?? 'Recurring'}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="py-2.5 pr-3" style={{ color: 'var(--t3)' }}>{c.cohortName ?? '—'}</td>
@@ -115,10 +152,22 @@ export function ActiveCampaignsTable({ clubId }: ActiveCampaignsTableProps) {
                   </td>
                   <td className="py-2.5 text-right">
                     <div className="inline-flex gap-1">
-                      <button title="Pause" className="p-1 rounded transition-colors hover:bg-[var(--hover)]" style={{ color: 'var(--t4)' }}>
-                        {c.status === 'paused' ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
+                      <button
+                        title={c.status === 'paused' ? 'Resume' : 'Pause'}
+                        onClick={() => togglePause(c.id, c.status)}
+                        disabled={pendingId === c.id}
+                        className="p-1 rounded transition-colors hover:bg-[var(--hover)] disabled:opacity-40"
+                        style={{ color: 'var(--t4)' }}
+                      >
+                        {pendingId === c.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : c.status === 'paused' ? (
+                          <Play className="w-3.5 h-3.5" />
+                        ) : (
+                          <Pause className="w-3.5 h-3.5" />
+                        )}
                       </button>
-                      <button title="Stop" className="p-1 rounded transition-colors hover:bg-[var(--hover)]" style={{ color: '#EF4444' }}>
+                      <button title="Stop (coming soon)" className="p-1 rounded transition-colors hover:bg-[var(--hover)] opacity-40 cursor-not-allowed" style={{ color: '#EF4444' }} disabled>
                         <StopCircle className="w-3.5 h-3.5" />
                       </button>
                     </div>

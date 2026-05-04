@@ -871,6 +871,39 @@ async function queryCohortMembers(
   return resolveCohortMembers(prisma, clubId, filters, limit)
 }
 
+/** Human-readable description of a Wizard-generated cron expression.
+ *  MVP supports daily / weekly+dow / monthly+dom only; anything else
+ *  falls through to "Custom schedule" so the UI doesn't lie. */
+function describeRecurringCron(expr: string, tz: string): string {
+  const parts = expr.trim().split(/\s+/)
+  if (parts.length !== 5) return 'Custom schedule'
+  const [m, h, dom, mon, dow] = parts
+  if (m !== '0') return 'Custom schedule'
+  const hour = parseInt(h, 10)
+  if (Number.isNaN(hour) || hour < 0 || hour > 23) return 'Custom schedule'
+  const hh = String(hour).padStart(2, '0')
+  const tzSuffix = ` ${tz}`
+  // Daily
+  if (dom === '*' && mon === '*' && dow === '*') {
+    return `Every day at ${hh}:00${tzSuffix}`
+  }
+  // Weekly
+  if (dow !== '*' && dom === '*' && mon === '*') {
+    const dayIdx = parseInt(dow, 10)
+    if (Number.isNaN(dayIdx) || dayIdx < 0 || dayIdx > 6) return 'Custom schedule'
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    return `Every ${days[dayIdx]} at ${hh}:00${tzSuffix}`
+  }
+  // Monthly
+  if (dom !== '*' && dow === '*' && mon === '*') {
+    const day = parseInt(dom, 10)
+    if (Number.isNaN(day) || day < 1 || day > 31) return 'Custom schedule'
+    const ord = day === 1 ? '1st' : day === 2 ? '2nd' : day === 3 ? '3rd' : `${day}th`
+    return `${ord} of each month at ${hh}:00${tzSuffix}`
+  }
+  return 'Custom schedule'
+}
+
 /** Public alias of queryCohortMembers for use outside the router (e.g.
  *  the recurring runner in app/api/cron/campaign-sends). The signature
  *  is intentionally `any` for prisma so this stays a thin wrapper. */
@@ -9499,6 +9532,13 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         //   - totalSteps is the length of the steps[] array (1 for one_time)
         const stepsArr: any[] = Array.isArray(c.steps) ? c.steps : []
         const totalSteps = c.format === 'sequence' && stepsArr.length > 0 ? stepsArr.length : 1
+        // Recurring metadata: human-readable description from the cron
+        // expression. Skips exact next-run calculation in MVP — that
+        // requires full IANA tz arithmetic and the description is
+        // already enough context for the admin.
+        const recurringDescription = c.format === 'recurring' && c.cronExpression
+          ? describeRecurringCron(c.cronExpression, c.recurringTimezone || 'UTC')
+          : null
         return {
           id: c.id,
           name: c.name,
@@ -9515,6 +9555,9 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           startedAt: c.launchedAt ?? c.scheduledAt,
           format: (c.format ?? 'one_time') as 'one_time' | 'sequence' | 'recurring',
           totalSteps,
+          recurringDescription,
+          recurringTimezone: c.recurringTimezone ?? null,
+          lastRecurringRun: c.lastRecurringRun ?? null,
         }
       })
     }),
@@ -9761,6 +9804,66 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         format: campaign.format,
         totalSteps: isSequence ? input.steps!.length : 1,
       }
+    }),
+
+  /**
+   * R5 — Pause / Resume for an active campaign.
+   *
+   * Pausing flips status='running'|'scheduled' → 'paused'. The cron
+   * skips any campaign that isn't 'running', so paused campaigns
+   * don't dispatch (one_time, sequence) and don't fan out new ticks
+   * (recurring). Resuming flips back to 'running' and the next cron
+   * tick picks up where it left off.
+   *
+   * Idempotent: calling pause on an already-paused campaign is a no-op
+   * (returns the current row unchanged).
+   */
+  pauseCampaign: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), campaignId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const c = await ctx.prisma.campaign.findUnique({
+        where: { id: input.campaignId },
+        select: { id: true, clubId: true, status: true },
+      })
+      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
+      if (c.clubId !== input.clubId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Campaign does not belong to this club' })
+      }
+      if (c.status !== 'running' && c.status !== 'scheduled') {
+        return { id: c.id, status: c.status, changed: false }
+      }
+      const updated = await ctx.prisma.campaign.update({
+        where: { id: input.campaignId },
+        data: { status: 'paused' },
+      })
+      return { id: updated.id, status: updated.status, changed: true }
+    }),
+
+  resumeCampaign: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), campaignId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const c = await ctx.prisma.campaign.findUnique({
+        where: { id: input.campaignId },
+        select: { id: true, clubId: true, status: true, scheduledAt: true },
+      })
+      if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Campaign not found' })
+      if (c.clubId !== input.clubId) {
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Campaign does not belong to this club' })
+      }
+      if (c.status !== 'paused') {
+        return { id: c.id, status: c.status, changed: false }
+      }
+      // If scheduledAt is still in the future, restore 'scheduled';
+      // otherwise 'running'. The cron's status filter handles either.
+      const now = new Date()
+      const isFuture = c.scheduledAt ? c.scheduledAt.getTime() > now.getTime() : false
+      const updated = await ctx.prisma.campaign.update({
+        where: { id: input.campaignId },
+        data: { status: isFuture ? 'scheduled' : 'running' },
+      })
+      return { id: updated.id, status: updated.status, changed: true }
     }),
 
   /**
