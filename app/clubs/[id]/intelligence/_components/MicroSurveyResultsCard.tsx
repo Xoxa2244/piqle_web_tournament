@@ -14,13 +14,18 @@
  * <10 newcomers have hit Day 12.
  */
 
+import { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { trpc } from '@/lib/trpc'
-import { ClipboardList, MessageSquare } from 'lucide-react'
+import { ClipboardList, MessageSquare, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
 
 interface OptionLabel {
   label: string
   hint: string
+  /** When true, this option requires per-member action by an operator
+   *  (e.g. apply discount, prep injury check-in) — drill-down rows show
+   *  an amber "action" pill so admins notice them in the list. */
+  actionRequired?: boolean
 }
 
 /** Human-readable labels for the 5 newcomer Day-12 survey options.
@@ -41,6 +46,7 @@ const NEWCOMER_DAY12_LABELS: Record<string, OptionLabel> = {
   price: {
     label: 'Pricing concerns',
     hint: 'Member-only price-sensitive. Consider a discount on the first month or trial extension.',
+    actionRequired: true, // operator should physically apply discount per member
   },
   other: {
     label: 'Something else',
@@ -56,10 +62,12 @@ const DECLINING_DAY1_LABELS: Record<string, OptionLabel> = {
   injury: {
     label: 'Injury or health issue',
     hint: 'Often = needs a pause, not a churn signal. Soft check-in in 30 days; do not push incentives.',
+    actionRequired: true, // operator should reach out personally with a soft check-in
   },
   busy: {
     label: 'Slammed at work / life',
     hint: 'Temporary external. A flexible "freeze" plan or short pause-and-resume offer keeps them.',
+    actionRequired: true, // operator can offer pause-and-resume per member
   },
   schedule: {
     label: 'Schedule does not work',
@@ -120,9 +128,9 @@ const SURVEY_COPY: Record<
     description: (w) =>
       `Members select a gift via 3 buttons in the email sent 7 days before their birthday. Picks are queued for the club to deliver. Last ${w} days.`,
     labels: {
-      gift_week:  { label: '🎾 A week of free play', hint: 'Lowest cost-per-pick. Default option for most members.' },
-      gift_pass:  { label: '👥 Guest pass for a friend', hint: 'Acquisition signal — they want to bring someone. Track if guest converts to member.' },
-      gift_merch: { label: '👕 IQSport merch', hint: 'Brand affinity. Confirm sizing in the day-of follow-up.' },
+      gift_week:  { label: '🎾 A week of free play', hint: 'Lowest cost-per-pick. Default option for most members.', actionRequired: true },
+      gift_pass:  { label: '👥 Guest pass for a friend', hint: 'Acquisition signal — they want to bring someone. Track if guest converts to member.', actionRequired: true },
+      gift_merch: { label: '👕 IQSport merch', hint: 'Brand affinity. Confirm sizing in the day-of follow-up.', actionRequired: true },
     },
   },
 }
@@ -172,7 +180,13 @@ export function MicroSurveyResultsCard({
             windowDays={windowDays}
           />
         ) : (
-          <ResultsBreakdown data={data} labels={labels} />
+          <ResultsBreakdown
+            data={data}
+            labels={labels}
+            clubId={clubId}
+            surveyType={surveyType}
+            windowDays={windowDays}
+          />
         )}
       </CardContent>
     </Card>
@@ -219,6 +233,9 @@ function NoResponsesYetPanel({ sentCount, windowDays }: { sentCount: number; win
 function ResultsBreakdown({
   data,
   labels,
+  clubId,
+  surveyType,
+  windowDays,
 }: {
   data: {
     totalSurveyEmailsSent: number
@@ -227,8 +244,12 @@ function ResultsBreakdown({
     breakdown: Array<{ option: string; count: number }>
   }
   labels: Record<string, OptionLabel>
+  clubId: string
+  surveyType: 'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation' | 'birthday_gift'
+  windowDays: number
 }) {
   const maxCount = Math.max(...data.breakdown.map((b) => b.count), 1)
+  const [showDetails, setShowDetails] = useState(false)
 
   return (
     <div className="space-y-4">
@@ -255,8 +276,14 @@ function ResultsBreakdown({
           return (
             <div key={row.option}>
               <div className="flex items-baseline justify-between gap-3 mb-1">
-                <div className="text-sm font-medium text-slate-800">
+                <div className="text-sm font-medium text-slate-800 flex items-center gap-2">
                   {meta?.label ?? row.option}
+                  {meta?.actionRequired && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-800 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                      <AlertCircle className="h-2.5 w-2.5" />
+                      action
+                    </span>
+                  )}
                 </div>
                 <div className="text-sm tabular-nums text-slate-700">
                   {row.count} ({Math.round((row.count / data.totalResponses) * 100)}%)
@@ -278,6 +305,86 @@ function ResultsBreakdown({
           )
         })}
       </div>
+
+      {/* Drill-down: per-member response list (Tier B fix). Collapsed by
+          default — most operators just want the aggregate. Expanded when
+          someone needs to act on a specific row (e.g. "who chose price"). */}
+      <div className="border-t border-slate-200 pt-3">
+        <button
+          onClick={() => setShowDetails((v) => !v)}
+          className="text-xs text-slate-600 hover:text-slate-900 flex items-center gap-1"
+        >
+          {showDetails ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          {showDetails ? 'Hide individual responses' : `View ${data.totalResponses} individual responses`}
+        </button>
+        {showDetails && (
+          <ResponseDetailsList
+            clubId={clubId}
+            surveyType={surveyType}
+            windowDays={windowDays}
+            labels={labels}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ResponseDetailsList({
+  clubId,
+  surveyType,
+  windowDays,
+  labels,
+}: {
+  clubId: string
+  surveyType: 'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation' | 'birthday_gift'
+  windowDays: number
+  labels: Record<string, OptionLabel>
+}) {
+  const { data: rows, isLoading } = trpc.intelligence.getMicroSurveyResponseDetails.useQuery({
+    clubId,
+    surveyType,
+    windowDays,
+  })
+
+  if (isLoading) {
+    return <div className="mt-3 text-xs text-muted-foreground">Loading…</div>
+  }
+  if (!rows || rows.length === 0) {
+    return <div className="mt-3 text-xs text-muted-foreground">No responses to show.</div>
+  }
+
+  return (
+    <div className="mt-3 max-h-72 overflow-y-auto space-y-1.5">
+      {rows.map((r) => {
+        const meta = labels[r.option]
+        const optionLabel = meta?.label ?? r.option
+        const date = new Date(r.respondedAt).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+        })
+        return (
+          <div
+            key={r.responseId}
+            className={`flex items-center justify-between gap-3 rounded-md px-2.5 py-2 text-xs ${
+              meta?.actionRequired ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'
+            }`}
+          >
+            <div className="flex-1 min-w-0">
+              <div className="text-slate-900 font-medium truncate">
+                {r.userName || r.userEmail || r.userId}
+              </div>
+              <div className="text-slate-500 mt-0.5 truncate">
+                {r.userEmail && r.userName ? r.userEmail : ''}
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <div className="text-slate-700">{optionLabel}</div>
+              <div className="text-slate-400 text-[10px]">{date}</div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

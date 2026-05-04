@@ -9189,6 +9189,188 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       }
     }),
 
+  /**
+   * Per-member drill-down for any survey type — Tier B of the dashboard
+   * gap fix. Powers the "View N responses" expander on each
+   * MicroSurveyResultsCard. Returns recent rows with member name + email
+   * so admin can act on individual answers (e.g. apply discount when a
+   * Newcomer says "price").
+   *
+   * Ordered most-recent first; capped at 100 rows. The widget shows the
+   * full list in a scrollable inline section, not a paginated view —
+   * volumes are low enough (typical week: <50 across all surveys for a
+   * single club).
+   */
+  getMicroSurveyResponseDetails: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        surveyType: z.enum(['onboarding_day12', 'declining_reactivation', 'sleeping_reactivation', 'birthday_gift']),
+        windowDays: z.number().int().min(1).max(365).default(90),
+        limit: z.number().int().min(1).max(500).default(100),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const since = new Date(Date.now() - input.windowDays * 86400000)
+
+      const rows = await ctx.prisma.$queryRaw<Array<{
+        responseId: string
+        userId: string
+        userName: string | null
+        userEmail: string | null
+        option: string
+        respondedAt: Date
+        logId: string
+      }>>`
+        SELECT
+          msr.id          AS "responseId",
+          msr.user_id     AS "userId",
+          u.name          AS "userName",
+          u.email         AS "userEmail",
+          msr.option      AS "option",
+          msr.responded_at AS "respondedAt",
+          msr.log_id      AS "logId"
+        FROM micro_survey_responses msr
+        JOIN users u ON u.id = msr.user_id
+        WHERE msr.club_id = ${input.clubId}
+          AND msr.survey_type = ${input.surveyType}
+          AND msr.responded_at >= ${since}
+        ORDER BY msr.responded_at DESC
+        LIMIT ${input.limit}
+      `
+
+      return rows
+    }),
+
+  /**
+   * Birthday gift fulfillment queue — Tier A of the dashboard gap fix.
+   * The Birthday segment is unique among Tier 1 in that every email REQUIRES
+   * a physical action (prepare gift). Without this view the segment promises
+   * gifts but admins have no list of what to prepare.
+   *
+   * Returns members whose birthday is in the future (or yesterday — grace
+   * period for late delivery) and who got a BIRTHDAY_GIFT_OFFER email,
+   * grouped by status:
+   *
+   *   - chosen_pending  → member picked a gift, no fulfillment marker yet
+   *   - chosen_fulfilled → admin marked gift delivered (reasoning.fulfilledAt set)
+   *   - awaiting_choice → email sent but no MicroSurveyResponse yet
+   *
+   * The widget shows pending items at the top so admin sees "Anna chose
+   * Guest Pass — prepare invite by May 10".
+   */
+  getBirthdayGiftQueue: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Look back 7 days (in case admin is catching up on missed fulfillment)
+      // and ahead 14 days (the next 2 weeks of birthdays). Anything outside
+      // that range is irrelevant for action.
+      const rows = await ctx.prisma.$queryRaw<Array<{
+        logId: string
+        userId: string
+        userName: string | null
+        userEmail: string | null
+        birthdayThisYear: string
+        chosenGift: string | null
+        respondedAt: Date | null
+        fulfilledAt: string | null
+        emailSentAt: Date
+      }>>`
+        SELECT
+          arl.id AS "logId",
+          arl."userId" AS "userId",
+          u.name AS "userName",
+          u.email AS "userEmail",
+          arl.reasoning->>'birthdayThisYear' AS "birthdayThisYear",
+          msr.option AS "chosenGift",
+          msr.responded_at AS "respondedAt",
+          arl.reasoning->>'fulfilledAt' AS "fulfilledAt",
+          arl."createdAt" AS "emailSentAt"
+        FROM ai_recommendation_logs arl
+        JOIN users u ON u.id = arl."userId"
+        LEFT JOIN micro_survey_responses msr ON msr.log_id = arl.id
+        WHERE arl."clubId" = ${input.clubId}
+          AND arl.type = 'BIRTHDAY_GIFT_OFFER'
+          AND arl.reasoning->>'birthdayThisYear' IS NOT NULL
+          AND (arl.reasoning->>'birthdayThisYear')::date >= (CURRENT_DATE - INTERVAL '7 days')::date
+          AND (arl.reasoning->>'birthdayThisYear')::date <= (CURRENT_DATE + INTERVAL '14 days')::date
+        ORDER BY (arl.reasoning->>'birthdayThisYear')::date ASC
+        LIMIT 200
+      `
+
+      // Derive status + days_until for each row in JS — clearer than
+      // expressing it in SQL across the JSON path filters.
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      return rows.map((r) => {
+        const bday = new Date(r.birthdayThisYear)
+        const daysUntilBirthday = Math.floor((bday.getTime() - today.getTime()) / 86400000)
+        let status: 'awaiting_choice' | 'chosen_pending' | 'chosen_fulfilled' | 'past'
+        if (daysUntilBirthday < 0) {
+          status = 'past'
+        } else if (!r.chosenGift) {
+          status = 'awaiting_choice'
+        } else if (r.fulfilledAt) {
+          status = 'chosen_fulfilled'
+        } else {
+          status = 'chosen_pending'
+        }
+        return {
+          logId: r.logId,
+          userId: r.userId,
+          userName: r.userName,
+          userEmail: r.userEmail,
+          birthdayThisYear: r.birthdayThisYear,
+          daysUntilBirthday,
+          chosenGift: r.chosenGift, // null if awaiting_choice
+          respondedAt: r.respondedAt,
+          fulfilledAt: r.fulfilledAt,
+          emailSentAt: r.emailSentAt,
+          status,
+        }
+      })
+    }),
+
+  /**
+   * Mark a birthday gift as fulfilled — admin clicks the button in the
+   * Pending Gifts widget after preparing the gift. Stamps
+   * reasoning.fulfilledAt + reasoning.fulfilledBy on the original
+   * BIRTHDAY_GIFT_OFFER log so the queue view filters it out next refresh.
+   *
+   * Idempotent — safe to call twice; second call just bumps timestamp.
+   */
+  markBirthdayGiftFulfilled: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid(), logId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const existing = await ctx.prisma.aIRecommendationLog.findFirst({
+        where: { id: input.logId, clubId: input.clubId, type: 'BIRTHDAY_GIFT_OFFER' },
+        select: { id: true, reasoning: true },
+      })
+      if (!existing) {
+        throw new Error('Birthday gift log not found for this club')
+      }
+
+      const merged = {
+        ...((existing.reasoning as any) || {}),
+        fulfilledAt: new Date().toISOString(),
+        fulfilledBy: ctx.session.user.id,
+      }
+
+      await ctx.prisma.aIRecommendationLog.update({
+        where: { id: existing.id },
+        data: { reasoning: merged },
+      })
+
+      return { ok: true, fulfilledAt: merged.fulfilledAt }
+    }),
+
   // P2-T5 — Members AI Insight ribbon (rules-based v1).
   //
   // Returns at most one insight ranked by confidence/$-impact.
