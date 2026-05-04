@@ -410,7 +410,7 @@ export function CampaignWizard({
 
           {/* Sticky footer — Back / Next (hidden on Step 4 when launched, since Launch is in-step) */}
           {!launched && (
-            <div className="shrink-0 px-5 py-3 flex items-center justify-between" style={{ background: 'var(--bg, #0B0B14)', borderTop: '1px solid var(--card-border)' }}>
+            <div className="shrink-0 px-5 pt-3 pb-5 flex items-center justify-between" style={{ background: 'var(--bg, #0B0B14)', borderTop: '1px solid var(--card-border)' }}>
               <button
                 onClick={prev}
                 disabled={step === 1}
