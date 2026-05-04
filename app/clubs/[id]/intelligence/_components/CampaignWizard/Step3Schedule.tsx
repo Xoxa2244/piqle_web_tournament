@@ -210,7 +210,7 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
           </div>
 
           <div className="text-[11px] leading-relaxed" style={{ color: 'var(--t4)' }}>
-            On each run the cohort is <strong style={{ color: 'var(--heading)' }}>re-evaluated</strong>: only members who match the cohort filters at run time receive the email. Members who don't match are skipped (and re-included on a later run if they qualify again).
+            On each run the cohort is <strong style={{ color: 'var(--heading)' }}>re-evaluated</strong>: only members who match the cohort filters at run time receive the email. Members who do not match are skipped (and re-included on a later run if they qualify again).
           </div>
         </div>
       )}
