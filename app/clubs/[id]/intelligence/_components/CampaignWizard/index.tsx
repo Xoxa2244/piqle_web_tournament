@@ -20,7 +20,7 @@ import { Step1Audience } from './Step1Audience'
 import { Step2Goal } from './Step2Goal'
 import { Step3Schedule } from './Step3Schedule'
 import { Step4Message } from './Step4Message'
-import { EMPTY_WIZARD_STATE, type WizardStep, type WizardState, type AudienceSelection, type CampaignGoal, type MessageDraft, type ScheduleSettings } from './types'
+import { EMPTY_WIZARD_STATE, buildRecurringCron, type WizardStep, type WizardState, type AudienceSelection, type CampaignGoal, type MessageDraft, type ScheduleSettings } from './types'
 
 interface CampaignWizardProps {
   clubId: string
@@ -158,6 +158,7 @@ export function CampaignWizard({
       const userIds = !cohortId ? state.audience.userIds : undefined
 
       const isSequence = state.schedule.format === 'sequence'
+      const isRecurring = state.schedule.format === 'recurring'
       const sequenceSteps = state.message.steps ?? []
 
       // For sequence launches, top-level subject/body/ctaLabel/ctaUrl mirror
@@ -207,6 +208,12 @@ export function CampaignWizard({
                 ...(s.ctaUrl?.trim() ? { ctaUrl: s.ctaUrl.trim() } : {}),
               })),
               exitOnBooking: state.schedule.exitOnBooking,
+            }
+          : {}),
+        ...(isRecurring
+          ? {
+              cronExpression: buildRecurringCron(state.schedule) ?? undefined,
+              recurringTimezone: state.schedule.recurringTimezone ?? 'UTC',
             }
           : {}),
       })

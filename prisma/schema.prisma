@@ -2158,6 +2158,16 @@ model Campaign {
   // follow-up behaviour (see lib/ai/onboarding-sequence.ts).
   exitOnBooking   Boolean  @default(true) @map("exit_on_booking")
 
+  // Recurring track: cron expression + timezone. NULL for one_time +
+  // sequence campaigns. The recurring runner re-evaluates the cohort on
+  // each tick and fans out a fresh batch — opposite of one_time/sequence
+  // which freeze the audience at launch.
+  cronExpression     String?   @map("cron_expression")
+  recurringTimezone  String?   @map("recurring_timezone")
+  // Last time the recurring runner produced a fan-out for this campaign.
+  // Used to short-circuit duplicate runs within the same cron tick window.
+  lastRecurringRun   DateTime? @map("last_recurring_run")
+
   status          String   @default("draft") // draft|scheduled|running|paused|completed|failed
 
   scheduledAt     DateTime? @map("scheduled_at")

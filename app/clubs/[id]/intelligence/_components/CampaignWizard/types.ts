@@ -69,6 +69,8 @@ export interface MessageDraft {
   steps?: SequenceStep[]
 }
 
+export type RecurringFrequency = 'daily' | 'weekly' | 'monthly'
+
 export interface ScheduleSettings {
   /** Send format — drives whether Step 4 renders 1 or N message editors. */
   format: SendFormat
@@ -79,6 +81,40 @@ export interface ScheduleSettings {
   /** Sequence: stop sending follow-up steps to a recipient who books
    *  between steps. Default true. Only meaningful when format='sequence'. */
   exitOnBooking: boolean
+  /** Recurring (only meaningful when format='recurring'). UI renders a
+   *  structured selector and computes `cronExpression` from these. */
+  recurringFrequency?: RecurringFrequency
+  /** 0=Sunday, 1=Monday, … 6=Saturday. Used when recurringFrequency='weekly'. */
+  recurringDayOfWeek?: number
+  /** 1..28 (clamped to 28 to avoid Feb edge cases in MVP). Used when
+   *  recurringFrequency='monthly'. */
+  recurringDayOfMonth?: number
+  /** 0..23 — local hour to fire (interpreted in recurringTimezone). */
+  recurringHour?: number
+  /** IANA timezone string. Defaults to 'UTC'. */
+  recurringTimezone?: string
+}
+
+/** Build the cron expression that the runner reads from frequency selectors.
+ *  We only generate the small set of patterns the Wizard supports; admins
+ *  cannot type custom cron in MVP. */
+export function buildRecurringCron(s: ScheduleSettings): string | null {
+  if (s.format !== 'recurring') return null
+  const hour = Math.max(0, Math.min(23, s.recurringHour ?? 9))
+  switch (s.recurringFrequency) {
+    case 'daily':
+      return `0 ${hour} * * *`
+    case 'weekly': {
+      const dow = Math.max(0, Math.min(6, s.recurringDayOfWeek ?? 1))
+      return `0 ${hour} * * ${dow}`
+    }
+    case 'monthly': {
+      const dom = Math.max(1, Math.min(28, s.recurringDayOfMonth ?? 1))
+      return `0 ${hour} ${dom} * *`
+    }
+    default:
+      return null
+  }
 }
 
 export interface WizardState {
@@ -98,5 +134,10 @@ export const EMPTY_WIZARD_STATE: WizardState = {
     scheduledAt: null,
     channels: { email: true, sms: false },
     exitOnBooking: true,
+    recurringFrequency: 'weekly',
+    recurringDayOfWeek: 1, // Monday
+    recurringDayOfMonth: 1,
+    recurringHour: 9,
+    recurringTimezone: 'UTC',
   },
 }

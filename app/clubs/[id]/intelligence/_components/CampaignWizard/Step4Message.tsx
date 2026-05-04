@@ -334,19 +334,10 @@ export function Step4Message({
     )
   }
 
-  // Recurring still placeholder — runner ships in R-track.
-  if (schedule.format === 'recurring') {
-    return (
-      <div className="space-y-4">
-        <div className="rounded-xl p-4 text-xs flex items-start gap-2" style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }}>
-          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#F59E0B' }} />
-          <div style={{ color: 'var(--heading)' }}>
-            Recurring sends ship in the next sprint. Switch to <em>One-time</em> or <em>Sequence</em> in Step 3 to draft this campaign now.
-          </div>
-        </div>
-      </div>
-    )
-  }
+  // Recurring uses the same single-message editor as one_time. The
+  // runner re-evaluates the cohort on each tick and sends to whoever
+  // matches at that time, but the message body itself is one canonical
+  // template (no per-step variation in MVP).
 
   return (
     <div className="space-y-4">
