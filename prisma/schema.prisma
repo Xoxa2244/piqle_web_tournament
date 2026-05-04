@@ -1598,6 +1598,11 @@ enum AIRecommendationType {
   // covers long-term inactive 90+ days). Triggers a 3-step recovery
   // sequence (Day 1 survey, Day 5 schedule snapshot, Day 12 incentive).
   DECLINING_REACTIVATION
+  // ENGAGE Segment #5 "Спящий": last booking 30–90 days ago, subscription
+  // still active. The next stop on the cascade after DECLINING_REACTIVATION
+  // (which covers 0–30 day window). 2-step sequence: Day 1 "what's new at
+  // the club", Day 14 "can we help?" + survey if still no booking.
+  SLEEPING_REACTIVATION
 }
 
 // ── Intelligence Module: Models ──

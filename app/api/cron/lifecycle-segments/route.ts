@@ -35,6 +35,14 @@ import {
   createDecliningStep0,
   processDecliningFollowUps,
 } from '@/lib/ai/declining-sequence'
+import {
+  detectSleepingMembers,
+  type SleepingCandidate,
+} from '@/lib/ai/sleeping-detector'
+import {
+  createSleepingStep0,
+  processSleepingFollowUps,
+} from '@/lib/ai/sleeping-sequence'
 import { cronLogger as log } from '@/lib/logger'
 
 export const runtime = 'nodejs'
@@ -48,6 +56,9 @@ interface ClubResult {
   decliningDetected: number
   decliningStep0: { sent: number; skipped: number }
   decliningFollowUps: { sent: number; skipped: number; exited: number }
+  sleepingDetected: number
+  sleepingStep0: { sent: number; skipped: number }
+  sleepingFollowUps: { sent: number; skipped: number; exited: number }
   errors: string[]
 }
 
@@ -81,6 +92,9 @@ async function handle(request: Request) {
       decliningDetected: 0,
       decliningStep0: { sent: 0, skipped: 0 },
       decliningFollowUps: { sent: 0, skipped: 0, exited: 0 },
+      sleepingDetected: 0,
+      sleepingStep0: { sent: 0, skipped: 0 },
+      sleepingFollowUps: { sent: 0, skipped: 0, exited: 0 },
       errors: [],
     }
 
@@ -123,6 +137,38 @@ async function handle(request: Request) {
       r.errors.push(`declining-followup: ${err?.message?.slice(0, 100) ?? 'unknown'}`)
     }
 
+    // ── Segment #5 Sleeping detection + Day 1 ──
+    let sleepingCandidates: SleepingCandidate[] = []
+    try {
+      // Default limit (50) keeps daily Mandrill volume sane on large clubs
+      // (some have 400+ sleepers; we drain in waves over ~10 days).
+      sleepingCandidates = await detectSleepingMembers(prisma, club.id)
+      r.sleepingDetected = sleepingCandidates.length
+    } catch (err: any) {
+      log.error({ clubId: club.id, error: err?.message?.slice(0, 200) }, '[lifecycle-cron] sleeping detect failed')
+      r.errors.push(`sleeping-detect: ${err?.message?.slice(0, 100) ?? 'unknown'}`)
+    }
+
+    for (const candidate of sleepingCandidates) {
+      try {
+        const out = await createSleepingStep0(prisma, candidate, r.clubName, false)
+        if (out.status === 'sent') r.sleepingStep0.sent++
+        else r.sleepingStep0.skipped++
+      } catch (err: any) {
+        log.error({ userId: candidate.userId, clubId: club.id, error: err?.message?.slice(0, 200) }, '[lifecycle-cron] sleeping step0 failed')
+        r.sleepingStep0.skipped++
+      }
+    }
+
+    // ── Segment #5 Sleeping follow-ups (Day 14) ──
+    try {
+      const out = await processSleepingFollowUps(prisma, club.id, r.clubName, false)
+      r.sleepingFollowUps = out
+    } catch (err: any) {
+      log.error({ clubId: club.id, error: err?.message?.slice(0, 200) }, '[lifecycle-cron] sleeping follow-ups failed')
+      r.errors.push(`sleeping-followup: ${err?.message?.slice(0, 100) ?? 'unknown'}`)
+    }
+
     results.push(r)
   }
 
@@ -134,8 +180,16 @@ async function handle(request: Request) {
       decliningStep0Sent: acc.decliningStep0Sent + r.decliningStep0.sent,
       decliningFollowUpsSent: acc.decliningFollowUpsSent + r.decliningFollowUps.sent,
       decliningExited: acc.decliningExited + r.decliningFollowUps.exited,
+      sleepingDetected: acc.sleepingDetected + r.sleepingDetected,
+      sleepingStep0Sent: acc.sleepingStep0Sent + r.sleepingStep0.sent,
+      sleepingFollowUpsSent: acc.sleepingFollowUpsSent + r.sleepingFollowUps.sent,
+      sleepingExited: acc.sleepingExited + r.sleepingFollowUps.exited,
     }),
-    { newcomerSent: 0, decliningDetected: 0, decliningStep0Sent: 0, decliningFollowUpsSent: 0, decliningExited: 0 },
+    {
+      newcomerSent: 0,
+      decliningDetected: 0, decliningStep0Sent: 0, decliningFollowUpsSent: 0, decliningExited: 0,
+      sleepingDetected: 0, sleepingStep0Sent: 0, sleepingFollowUpsSent: 0, sleepingExited: 0,
+    },
   )
 
   return NextResponse.json({ ok: true, processed: results.length, totals, perClub: results })

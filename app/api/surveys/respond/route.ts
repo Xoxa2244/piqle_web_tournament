@@ -44,10 +44,14 @@ const ALLOWED_OPTIONS = new Set([
   'partners',
   'price',
   'other',
-  // Reserved for future surveys per ENGAGE_MVP doc:
+  // DECLINING_REACTIVATION (segment #4):
   'injury',     // at-risk: травма
   'busy',       // at-risk: занят
   'pause',      // at-risk: просто пауза
+  // SLEEPING_REACTIVATION (segment #5):
+  'planschanged', // sleeping: my plans changed
+  'time',         // sleeping: cannot find a good time
+  // Reserved for future surveys:
   'liked',      // trial: понравилось
   'thinking',   // trial: нужно подумать
   'not_for_me', // trial: не для меня
@@ -60,6 +64,15 @@ const ALLOWED_OPTIONS = new Set([
 function deriveSurveyType(logType: string, reasoning: any): string {
   if (logType === 'NEW_MEMBER_WELCOME' && reasoning?.day12Variant === 'survey') {
     return 'onboarding_day12'
+  }
+  if (logType === 'DECLINING_REACTIVATION') {
+    // Segment #4 puts the survey on Day 1 (step 0). Day 5 + 12 don't have
+    // surveys, so any click here is by definition the Day 1 form.
+    return 'declining_reactivation'
+  }
+  if (logType === 'SLEEPING_REACTIVATION') {
+    // Segment #5 puts the survey on Day 14 (step 1). Day 1 has no survey.
+    return 'sleeping_reactivation'
   }
   // Fallback — log it as the source type so we don't lose the data even if
   // a future survey email forgets to set day12Variant or similar.

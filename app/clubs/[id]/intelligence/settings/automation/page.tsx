@@ -67,6 +67,7 @@ export default function SettingsAutomationPage() {
 
       <MicroSurveyResultsCard clubId={clubId} surveyType="onboarding_day12" />
       <MicroSurveyResultsCard clubId={clubId} surveyType="declining_reactivation" />
+      <MicroSurveyResultsCard clubId={clubId} surveyType="sleeping_reactivation" />
 
       <Card>
         <CardHeader>

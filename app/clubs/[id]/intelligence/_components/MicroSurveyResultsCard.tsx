@@ -71,8 +71,30 @@ const DECLINING_DAY1_LABELS: Record<string, OptionLabel> = {
   },
 }
 
+/** Labels for the 4-option Day-14 sleeping-reactivation survey. Different
+ *  vocabulary than declining — sleeping members have been gone longer,
+ *  so reasons skew toward longer-term life changes vs short-term excuses. */
+const SLEEPING_DAY14_LABELS: Record<string, OptionLabel> = {
+  planschanged: {
+    label: 'My plans changed',
+    hint: 'Life event (move, job change, etc). Probably not coming back — respect the signal, no further escalation.',
+  },
+  time: {
+    label: 'Cannot find a good time',
+    hint: 'Real friction. Worth a programming review of less-popular slots — could you add a session at their old preferred time?',
+  },
+  schedule: {
+    label: 'Schedule does not work',
+    hint: 'Same as Declining hint — programming gap. Cross-reference with Newcomer Day 12 schedule answers for confirmation.',
+  },
+  other: {
+    label: 'Something else',
+    hint: 'Open-ended. Future free-text follow-up will let them tell you specifically.',
+  },
+}
+
 const SURVEY_COPY: Record<
-  'onboarding_day12' | 'declining_reactivation',
+  'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation',
   { title: string; description: (windowDays: number) => string; labels: Record<string, OptionLabel> }
 > = {
   onboarding_day12: {
@@ -87,11 +109,17 @@ const SURVEY_COPY: Record<
       `Answers from the Day 1 email sent when a member who was booking ≥3 sessions per month suddenly drops to 0–1. Last ${w} days.`,
     labels: DECLINING_DAY1_LABELS,
   },
+  sleeping_reactivation: {
+    title: 'Sleeping-member survey — why have they been quiet?',
+    description: (w) =>
+      `Answers from the Day 14 follow-up sent to members who have been inactive for 30–90 days while their subscription is still active. Last ${w} days.`,
+    labels: SLEEPING_DAY14_LABELS,
+  },
 }
 
 interface MicroSurveyResultsCardProps {
   clubId: string
-  surveyType?: 'onboarding_day12' | 'declining_reactivation'
+  surveyType?: 'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation'
   /** Window in days to look back. Default 90 — wide enough that a small
    *  club still has at least a handful of responses to display. */
   windowDays?: number
@@ -141,11 +169,13 @@ export function MicroSurveyResultsCard({
   )
 }
 
-const EMPTY_COPY: Record<'onboarding_day12' | 'declining_reactivation', (w: number) => string> = {
+const EMPTY_COPY: Record<'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation', (w: number) => string> = {
   onboarding_day12: (w) =>
     `No new members have hit Day 12 with zero bookings in the last ${w} days. The survey only goes out to stalled newcomers — engaged ones get a congrats email instead.`,
   declining_reactivation: (w) =>
     `No regular members have dropped from ≥3 sessions per month down to 0–1 in the last ${w} days. The survey only goes out when this pattern is detected.`,
+  sleeping_reactivation: (w) =>
+    `No sleeping members have hit the Day 14 follow-up in the last ${w} days. The survey only goes to members 30–90 days inactive who didn't book or click after the first re-engagement email.`,
 }
 
 function EmptyPanel({
@@ -153,7 +183,7 @@ function EmptyPanel({
   surveyType,
 }: {
   windowDays: number
-  surveyType: 'onboarding_day12' | 'declining_reactivation'
+  surveyType: 'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation'
 }) {
   return (
     <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
