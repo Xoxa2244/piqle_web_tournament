@@ -218,7 +218,7 @@ export function Step1Audience({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="flex h-full min-h-0 flex-col gap-5">
       <div>
         <h3 className="text-base font-bold mb-1" style={{ color: 'var(--heading)' }}>Who should we send to?</h3>
         <p className="text-xs" style={{ color: 'var(--t3)' }}>Pick from saved cohorts or a suggested audience.</p>
@@ -250,38 +250,40 @@ export function Step1Audience({
 
       {/* List for the active kind */}
       {activeKind === 'saved_cohort' && (
-        <div className="space-y-2 max-h-[320px] overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col">
           {savedCohorts.length === 0 ? (
             <div className="text-xs p-4 rounded-xl text-center" style={{ background: 'var(--subtle)', color: 'var(--t4)' }}>
               No saved cohorts yet. Create one on the Cohorts page first.
             </div>
           ) : (
-            savedCohorts.map((c) => {
-              const selected = audience?.cohortId === c.id
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => pickSaved(c.id, c.name, c.memberCount)}
-                  className="w-full text-left rounded-xl p-3 transition-all flex items-center justify-between gap-3"
-                  style={{
-                    background: selected ? 'rgba(139,92,246,0.08)' : 'var(--card-bg)',
-                    border: `1px solid ${selected ? '#8B5CF6' : 'var(--card-border)'}`,
-                  }}
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold truncate" style={{ color: 'var(--heading)' }}>{c.name}</div>
-                    <div className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>{c.memberCount} members</div>
-                  </div>
-                  {selected && <Check className="w-4 h-4 shrink-0" style={{ color: '#8B5CF6' }} />}
-                </button>
-              )
-            })
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+              {savedCohorts.map((c) => {
+                const selected = audience?.cohortId === c.id
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => pickSaved(c.id, c.name, c.memberCount)}
+                    className="w-full text-left rounded-xl p-3 transition-all flex items-center justify-between gap-3"
+                    style={{
+                      background: selected ? 'rgba(139,92,246,0.08)' : 'var(--card-bg)',
+                      border: `1px solid ${selected ? '#8B5CF6' : 'var(--card-border)'}`,
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate" style={{ color: 'var(--heading)' }}>{c.name}</div>
+                      <div className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>{c.memberCount} members</div>
+                    </div>
+                    {selected && <Check className="w-4 h-4 shrink-0" style={{ color: '#8B5CF6' }} />}
+                  </button>
+                )
+              })}
+            </div>
           )}
         </div>
       )}
 
       {activeKind === 'ai_suggested' && (
-        <div className="space-y-2 max-h-[320px] overflow-y-auto">
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
           {goalLabel && (
             <div
               className="rounded-xl p-3 text-[11px]"
@@ -379,7 +381,7 @@ export function Step1Audience({
                       No member preview available yet.
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                       {activeSuggestedPreviewMembers.map((member) => {
                         const selected = selectedSuggestedUserIdSet.has(member.id)
 

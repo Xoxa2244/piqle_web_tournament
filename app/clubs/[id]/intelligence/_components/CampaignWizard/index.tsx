@@ -297,7 +297,7 @@ export function CampaignWizard({
           animate={{ x: 0 }}
           exit={{ x: '100%' }}
           transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-          className="fixed top-0 right-0 z-50 h-screen overflow-y-auto"
+          className="fixed top-0 right-0 z-50 flex h-screen flex-col overflow-hidden"
           style={{
             width: 'min(720px, 100vw)',
             background: 'var(--bg, #0B0B14)',
@@ -306,7 +306,7 @@ export function CampaignWizard({
           }}
         >
           {/* Sticky header — title + stepper + close */}
-          <div className="sticky top-0 z-10 px-5 py-4 space-y-3" style={{ background: 'var(--bg, #0B0B14)', borderBottom: '1px solid var(--card-border)' }}>
+          <div className="z-10 px-5 py-4 space-y-3 shrink-0" style={{ background: 'var(--bg, #0B0B14)', borderBottom: '1px solid var(--card-border)' }}>
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold" style={{ color: 'var(--heading)' }}>
                 {launched ? '🎉 Campaign launched' : 'New Campaign'}
@@ -351,7 +351,7 @@ export function CampaignWizard({
           </div>
 
           {/* Body */}
-          <div className="px-5 py-5">
+          <div className="flex-1 min-h-0 overflow-y-auto px-5 py-5">
             {launched ? (
               <div className="space-y-4 text-center py-8">
                 <div className="text-4xl">🚀</div>
@@ -410,7 +410,7 @@ export function CampaignWizard({
 
           {/* Sticky footer — Back / Next (hidden on Step 4 when launched, since Launch is in-step) */}
           {!launched && (
-            <div className="sticky bottom-0 px-5 py-3 flex items-center justify-between" style={{ background: 'var(--bg, #0B0B14)', borderTop: '1px solid var(--card-border)' }}>
+            <div className="shrink-0 px-5 py-3 flex items-center justify-between" style={{ background: 'var(--bg, #0B0B14)', borderTop: '1px solid var(--card-border)' }}>
               <button
                 onClick={prev}
                 disabled={step === 1}
