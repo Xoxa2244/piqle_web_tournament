@@ -15,7 +15,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { X, ChevronRight, ChevronLeft, AlertTriangle } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
-import { useListCohorts, useSuggestedCohorts, useIntelligenceSettings } from '../../_hooks/use-intelligence'
+import { useListCohorts, useSuggestedCohorts, useIntelligenceSettings, useReactivationCandidates, useNewMembers } from '../../_hooks/use-intelligence'
 import { Step1Audience } from './Step1Audience'
 import { Step2Goal } from './Step2Goal'
 import { Step3Schedule } from './Step3Schedule'
@@ -59,10 +59,21 @@ export function CampaignWizard({
   const [isLaunching, setIsLaunching] = useState(false)
   const [launched, setLaunched] = useState(false)
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false)
+  const currentGoal = state.goal ?? initialGoal ?? null
 
   // Data needed by Step 1 (audience picker)
   const { data: savedCohortsRaw = [] } = useListCohorts(clubId)
-  const { data: suggestedCohortsRaw = [] } = useSuggestedCohorts(clubId)
+  const { data: suggestedCohortsRaw = [], isLoading: suggestedCohortsLoading } = useSuggestedCohorts(clubId)
+  const { data: reactivationAudienceData, isLoading: reactivationAudienceLoading } = useReactivationCandidates(
+    clubId,
+    21,
+    { enabled: currentGoal === 'reactivate_dormant' },
+  )
+  const { data: newMembersAudienceData, isLoading: newMembersAudienceLoading } = useNewMembers(
+    clubId,
+    14,
+    { enabled: currentGoal === 'onboard_new' },
+  )
   const { data: settingsData } = useIntelligenceSettings(clubId)
   const liveMode = (settingsData?.settings?.controlPlane?.actions?.outreachSend?.mode ?? 'shadow') as 'disabled' | 'shadow' | 'live'
 
@@ -80,6 +91,80 @@ export function CampaignWizard({
     })),
     [suggestedCohortsRaw]
   )
+  const suggestedAudiences = useMemo(() => {
+    const cohortBackedSuggestions = suggestedCohorts.map((cohort) => ({
+      id: cohort.id,
+      cohortId: cohort.id,
+      name: cohort.name,
+      memberCount: cohort.memberCount,
+      userIds: cohort.userIds,
+      emoji: cohort.emoji,
+      description: cohort.description,
+    }))
+
+    if (currentGoal === 'reactivate_dormant') {
+      const candidates = Array.isArray((reactivationAudienceData as any)?.candidates)
+        ? (reactivationAudienceData as any).candidates
+        : []
+      const userIds = candidates
+        .map((candidate: any) => candidate.member?.id ?? candidate.memberId ?? candidate.userId ?? candidate.id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+
+      return userIds.length > 0
+        ? [{
+            id: `reactivate_dormant:${clubId}:21`,
+            cohortId: null,
+            name: 'Inactive 21+ days',
+            memberCount: userIds.length,
+            userIds,
+            emoji: '↩️',
+            description: `${userIds.length} member${userIds.length === 1 ? '' : 's'} haven't played in 21+ days. This is the matching audience for the win-back campaign.`,
+          }]
+        : []
+    }
+
+    if (currentGoal === 'onboard_new') {
+      const members = Array.isArray((newMembersAudienceData as any)?.members)
+        ? (newMembersAudienceData as any).members
+        : []
+      const userIds = members
+        .map((member: any) => member.userId ?? member.id)
+        .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+
+      return userIds.length > 0
+        ? [{
+            id: `onboard_new:${clubId}:14`,
+            cohortId: null,
+            name: 'New members · 14 days',
+            memberCount: userIds.length,
+            userIds,
+            emoji: '👋',
+            description: `${userIds.length} member${userIds.length === 1 ? '' : 's'} joined recently. This matches the welcome campaign audience.`,
+          }]
+        : []
+    }
+
+    if (!currentGoal || currentGoal === 'custom') return cohortBackedSuggestions
+
+    return suggestedCohorts
+      .filter((cohort) => matchesSuggestedCohortGoal(currentGoal, cohort))
+      .map((cohort) => ({
+        id: cohort.id,
+        cohortId: cohort.id,
+        name: cohort.name,
+        memberCount: cohort.memberCount,
+        userIds: cohort.userIds,
+        emoji: cohort.emoji,
+        description: cohort.description,
+      }))
+  }, [clubId, currentGoal, newMembersAudienceData, reactivationAudienceData, suggestedCohorts])
+  const suggestedAudiencesLoading = currentGoal === 'reactivate_dormant'
+    ? reactivationAudienceLoading
+    : currentGoal === 'onboard_new'
+      ? newMembersAudienceLoading
+      : (!currentGoal || currentGoal === 'custom' || currentGoal === 'renewal_reminder')
+        ? suggestedCohortsLoading
+        : false
 
   // Hydrate from initial* props on mount
   useEffect(() => {
@@ -100,31 +185,31 @@ export function CampaignWizard({
   }, [savedCohorts.length])
 
   useEffect(() => {
-    if (state.audience || initialSuggestedCohort || initialCohortId || initialUserIds?.length || !initialGoal) return
+    if (state.audience || initialSuggestedCohort || initialCohortId || initialUserIds?.length || !currentGoal) return
 
-    const match = suggestedCohorts.find((cohort) => matchesSuggestedCohortGoal(initialGoal, cohort))
+    const match = suggestedAudiences[0]
     if (!match) return
 
     setState((current) => {
       if (current.audience) return current
-      return {
-        ...current,
-        audience: {
-          kind: 'ai_suggested',
-          cohortId: match.id,
-          cohortName: match.name,
-          userIds: match.userIds,
-          memberCount: match.memberCount,
+        return {
+          ...current,
+          audience: {
+            kind: 'ai_suggested',
+            cohortId: match.cohortId ?? null,
+            cohortName: match.name,
+            userIds: match.userIds,
+            memberCount: match.memberCount,
         },
       }
     })
   }, [
+    currentGoal,
     initialCohortId,
-    initialGoal,
     initialSuggestedCohort,
     initialUserIds,
     state.audience,
-    suggestedCohorts,
+    suggestedAudiences,
   ])
 
   const canAdvance = (() => {
@@ -317,7 +402,8 @@ export function CampaignWizard({
                 goal={state.goal}
                 onChange={(audience) => setState((s) => ({ ...s, audience }))}
                 savedCohorts={savedCohorts}
-                suggestedCohorts={suggestedCohorts}
+                suggestedAudiences={suggestedAudiences}
+                suggestedAudiencesLoading={suggestedAudiencesLoading}
                 initialUserIds={initialUserIds}
               />
             ) : step === 2 ? (

@@ -5,7 +5,7 @@
  *
  * Three picker modes:
  *   • Pick from saved cohorts (user-created via Cohort Builder)
- *   • Pick from AI-suggested cohorts (3 generators, P3-T1)
+ *   • Pick from suggested audiences (goal-matched members or saved suggestions)
  *   • Use a userId list passed in from a previous selection
  *     (e.g. Members bulk-select handoff — P3-T2 / P2-T3)
  *
@@ -14,8 +14,8 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { Users, Sparkles, Check } from 'lucide-react'
-import { getCampaignGoalLabel, matchesSuggestedCohortGoal } from './audience-utils'
+import { Users, Sparkles, Check, Loader2 } from 'lucide-react'
+import { getCampaignGoalLabel } from './audience-utils'
 import type { AudienceSelection, AudienceSourceKind, CampaignGoal } from './types'
 
 interface Step1Props {
@@ -24,16 +24,16 @@ interface Step1Props {
   goal: CampaignGoal | null
   onChange: (next: AudienceSelection | null) => void
   savedCohorts: Array<{ id: string; name: string; memberCount: number }>
-  suggestedCohorts: Array<{
+  suggestedAudiences: Array<{
     id: string
+    cohortId: string | null
     name: string
     memberCount: number
     userIds: string[]
     emoji?: string
     description: string
-    generatorKey?: string
-    suggestedTemplateKey?: string
   }>
+  suggestedAudiencesLoading?: boolean
   /** When opened from Members bulk-select, pre-populated userIds. */
   initialUserIds?: string[]
 }
@@ -43,7 +43,8 @@ export function Step1Audience({
   goal,
   onChange,
   savedCohorts,
-  suggestedCohorts,
+  suggestedAudiences,
+  suggestedAudiencesLoading = false,
   initialUserIds,
 }: Step1Props) {
   const [activeKind, setActiveKind] = useState<AudienceSourceKind>(
@@ -56,15 +57,7 @@ export function Step1Audience({
     }
   }, [audience?.kind])
 
-  const goalMatchedSuggestedCohorts = useMemo(
-    () => suggestedCohorts.filter((cohort) => matchesSuggestedCohortGoal(goal, cohort)),
-    [goal, suggestedCohorts],
-  )
-
-  const visibleSuggestedCohorts = useMemo(() => {
-    if (goalMatchedSuggestedCohorts.length > 0) return goalMatchedSuggestedCohorts
-    return suggestedCohorts
-  }, [goalMatchedSuggestedCohorts, suggestedCohorts])
+  const visibleSuggestedAudiences = useMemo(() => suggestedAudiences, [suggestedAudiences])
 
   const goalLabel = getCampaignGoalLabel(goal)
 
@@ -87,21 +80,22 @@ export function Step1Audience({
 
   const pickSuggested = (id: string, name: string, memberCount: number, userIds: string[]) => {
     setActiveKind('ai_suggested')
-    onChange({ kind: 'ai_suggested', cohortId: id, cohortName: name, userIds, memberCount })
+    const selectedAudience = visibleSuggestedAudiences.find((audienceOption) => audienceOption.id === id)
+    onChange({ kind: 'ai_suggested', cohortId: selectedAudience?.cohortId ?? null, cohortName: name, userIds, memberCount })
   }
 
   return (
     <div className="space-y-5">
       <div>
         <h3 className="text-base font-bold mb-1" style={{ color: 'var(--heading)' }}>Who should we send to?</h3>
-        <p className="text-xs" style={{ color: 'var(--t3)' }}>Pick from saved cohorts or one of the AI suggestions.</p>
+        <p className="text-xs" style={{ color: 'var(--t3)' }}>Pick from saved cohorts or a suggested audience.</p>
       </div>
 
       {/* Source kind picker */}
       <div className="flex flex-wrap gap-2">
         {([
           { kind: 'saved_cohort' as const, label: 'Saved cohort', icon: Users },
-          { kind: 'ai_suggested' as const, label: 'AI-suggested', icon: Sparkles },
+          { kind: 'ai_suggested' as const, label: 'Suggested audience', icon: Sparkles },
           ...(initialUserIds?.length ? [{ kind: 'inline_userIds' as const, label: `Selected (${initialUserIds.length})`, icon: Check }] : []),
         ]).map(({ kind, label, icon: Icon }) => (
           <button
@@ -159,25 +153,30 @@ export function Step1Audience({
             <div
               className="rounded-xl p-3 text-[11px]"
               style={{
-                background: goalMatchedSuggestedCohorts.length > 0 ? 'rgba(139,92,246,0.08)' : 'var(--subtle)',
-                border: `1px solid ${goalMatchedSuggestedCohorts.length > 0 ? 'rgba(139,92,246,0.24)' : 'var(--card-border)'}`,
-                color: goalMatchedSuggestedCohorts.length > 0 ? '#C4B5FD' : 'var(--t3)',
+                background: visibleSuggestedAudiences.length > 0 ? 'rgba(139,92,246,0.08)' : 'var(--subtle)',
+                border: `1px solid ${visibleSuggestedAudiences.length > 0 ? 'rgba(139,92,246,0.24)' : 'var(--card-border)'}`,
+                color: visibleSuggestedAudiences.length > 0 ? '#C4B5FD' : 'var(--t3)',
               }}
             >
-              {goalMatchedSuggestedCohorts.length > 0
-                ? `Showing AI audiences that best match ${goalLabel}.`
-                : `No goal-specific AI audience is available for ${goalLabel} yet, so we're showing all AI suggestions.`}
+              {visibleSuggestedAudiences.length > 0
+                ? `Showing members who match ${goalLabel}.`
+                : `No suggested audience is available for ${goalLabel} yet.`}
             </div>
           )}
 
-          {visibleSuggestedCohorts.length === 0 ? (
+          {suggestedAudiencesLoading ? (
+            <div className="flex items-center gap-2 text-xs p-4 rounded-xl" style={{ background: 'var(--subtle)', color: 'var(--t4)' }}>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Loading matching members...
+            </div>
+          ) : visibleSuggestedAudiences.length === 0 ? (
             <div className="text-xs p-4 rounded-xl text-center" style={{ background: 'var(--subtle)', color: 'var(--t4)' }}>
-              No AI suggestions available yet. Build session history first.
+              No suggested audience available yet.
             </div>
           ) : (
-            visibleSuggestedCohorts.map((c) => {
+            visibleSuggestedAudiences.map((c) => {
               const selected = audience?.cohortId === c.id
-              const recommended = matchesSuggestedCohortGoal(goal, c)
+                || (audience?.cohortId == null && c.cohortId == null && audience?.cohortName === c.name)
               return (
                 <button
                   key={c.id}
@@ -191,19 +190,6 @@ export function Step1Audience({
                   <div className="min-w-0">
                     <div className="text-sm font-semibold flex items-center gap-1.5 flex-wrap" style={{ color: 'var(--heading)' }}>
                       {c.emoji ?? '🎯'} {c.name}
-                      {recommended && (
-                        <span
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px]"
-                          style={{
-                            background: 'rgba(139,92,246,0.14)',
-                            border: '1px solid rgba(139,92,246,0.22)',
-                            color: '#C4B5FD',
-                            fontWeight: 700,
-                          }}
-                        >
-                          Best match
-                        </span>
-                      )}
                     </div>
                     <div className="text-[11px] mt-1 line-clamp-2" style={{ color: 'var(--t4)' }}>{c.description}</div>
                     <div className="text-[11px] mt-1" style={{ color: '#A78BFA', fontWeight: 600 }}>{c.memberCount} members</div>
