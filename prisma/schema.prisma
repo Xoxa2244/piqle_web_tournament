@@ -1603,6 +1603,12 @@ enum AIRecommendationType {
   // (which covers 0–30 day window). 2-step sequence: Day 1 "what's new at
   // the club", Day 14 "can we help?" + survey if still no booking.
   SLEEPING_REACTIVATION
+  // ENGAGE Segment #8 "День рождения": fired 7 days before a member's
+  // birthday. Single email with 3 gift-choice buttons (week of free play /
+  // guest pass for a friend / merch). Member's choice is captured via
+  // MicroSurveyResponse and acted on by the club on the actual birthday.
+  // One per member per calendar year (cooldown logic in detector).
+  BIRTHDAY_GIFT_OFFER
 }
 
 // ── Intelligence Module: Models ──

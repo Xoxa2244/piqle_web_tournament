@@ -94,7 +94,7 @@ const SLEEPING_DAY14_LABELS: Record<string, OptionLabel> = {
 }
 
 const SURVEY_COPY: Record<
-  'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation',
+  'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation' | 'birthday_gift',
   { title: string; description: (windowDays: number) => string; labels: Record<string, OptionLabel> }
 > = {
   onboarding_day12: {
@@ -115,11 +115,21 @@ const SURVEY_COPY: Record<
       `Answers from the Day 14 follow-up sent to members who have been inactive for 30–90 days while their subscription is still active. Last ${w} days.`,
     labels: SLEEPING_DAY14_LABELS,
   },
+  birthday_gift: {
+    title: 'Birthday gift — which gift members chose',
+    description: (w) =>
+      `Members select a gift via 3 buttons in the email sent 7 days before their birthday. Picks are queued for the club to deliver. Last ${w} days.`,
+    labels: {
+      gift_week:  { label: '🎾 A week of free play', hint: 'Lowest cost-per-pick. Default option for most members.' },
+      gift_pass:  { label: '👥 Guest pass for a friend', hint: 'Acquisition signal — they want to bring someone. Track if guest converts to member.' },
+      gift_merch: { label: '👕 IQSport merch', hint: 'Brand affinity. Confirm sizing in the day-of follow-up.' },
+    },
+  },
 }
 
 interface MicroSurveyResultsCardProps {
   clubId: string
-  surveyType?: 'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation'
+  surveyType?: 'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation' | 'birthday_gift'
   /** Window in days to look back. Default 90 — wide enough that a small
    *  club still has at least a handful of responses to display. */
   windowDays?: number
@@ -169,13 +179,15 @@ export function MicroSurveyResultsCard({
   )
 }
 
-const EMPTY_COPY: Record<'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation', (w: number) => string> = {
+const EMPTY_COPY: Record<'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation' | 'birthday_gift', (w: number) => string> = {
   onboarding_day12: (w) =>
     `No new members have hit Day 12 with zero bookings in the last ${w} days. The survey only goes out to stalled newcomers — engaged ones get a congrats email instead.`,
   declining_reactivation: (w) =>
     `No regular members have dropped from ≥3 sessions per month down to 0–1 in the last ${w} days. The survey only goes out when this pattern is detected.`,
   sleeping_reactivation: (w) =>
     `No sleeping members have hit the Day 14 follow-up in the last ${w} days. The survey only goes to members 30–90 days inactive who didn't book or click after the first re-engagement email.`,
+  birthday_gift: (w) =>
+    `No birthday gift offers have been sent in the last ${w} days. The detector fires once per member per year, exactly 7 days before their birthday — so volume tracks the calendar.`,
 }
 
 function EmptyPanel({
@@ -183,7 +195,7 @@ function EmptyPanel({
   surveyType,
 }: {
   windowDays: number
-  surveyType: 'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation'
+  surveyType: 'onboarding_day12' | 'declining_reactivation' | 'sleeping_reactivation' | 'birthday_gift'
 }) {
   return (
     <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">

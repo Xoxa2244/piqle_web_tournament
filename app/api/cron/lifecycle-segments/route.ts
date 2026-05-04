@@ -43,6 +43,11 @@ import {
   createSleepingStep0,
   processSleepingFollowUps,
 } from '@/lib/ai/sleeping-sequence'
+import {
+  detectBirthdayMembers,
+  sendBirthdayGiftOffer,
+  type BirthdayCandidate,
+} from '@/lib/ai/birthday-gift'
 import { cronLogger as log } from '@/lib/logger'
 
 export const runtime = 'nodejs'
@@ -59,6 +64,8 @@ interface ClubResult {
   sleepingDetected: number
   sleepingStep0: { sent: number; skipped: number }
   sleepingFollowUps: { sent: number; skipped: number; exited: number }
+  birthdayDetected: number
+  birthdaySent: { sent: number; skipped: number }
   errors: string[]
 }
 
@@ -95,6 +102,8 @@ async function handle(request: Request) {
       sleepingDetected: 0,
       sleepingStep0: { sent: 0, skipped: 0 },
       sleepingFollowUps: { sent: 0, skipped: 0, exited: 0 },
+      birthdayDetected: 0,
+      birthdaySent: { sent: 0, skipped: 0 },
       errors: [],
     }
 
@@ -169,6 +178,27 @@ async function handle(request: Request) {
       r.errors.push(`sleeping-followup: ${err?.message?.slice(0, 100) ?? 'unknown'}`)
     }
 
+    // ── Segment #8 Birthday gift offer (D-7) ──
+    let birthdayCandidates: BirthdayCandidate[] = []
+    try {
+      birthdayCandidates = await detectBirthdayMembers(prisma, club.id)
+      r.birthdayDetected = birthdayCandidates.length
+    } catch (err: any) {
+      log.error({ clubId: club.id, error: err?.message?.slice(0, 200) }, '[lifecycle-cron] birthday detect failed')
+      r.errors.push(`birthday-detect: ${err?.message?.slice(0, 100) ?? 'unknown'}`)
+    }
+
+    for (const candidate of birthdayCandidates) {
+      try {
+        const out = await sendBirthdayGiftOffer(prisma, candidate, r.clubName, false)
+        if (out.status === 'sent') r.birthdaySent.sent++
+        else r.birthdaySent.skipped++
+      } catch (err: any) {
+        log.error({ userId: candidate.userId, clubId: club.id, error: err?.message?.slice(0, 200) }, '[lifecycle-cron] birthday send failed')
+        r.birthdaySent.skipped++
+      }
+    }
+
     results.push(r)
   }
 
@@ -184,11 +214,14 @@ async function handle(request: Request) {
       sleepingStep0Sent: acc.sleepingStep0Sent + r.sleepingStep0.sent,
       sleepingFollowUpsSent: acc.sleepingFollowUpsSent + r.sleepingFollowUps.sent,
       sleepingExited: acc.sleepingExited + r.sleepingFollowUps.exited,
+      birthdayDetected: acc.birthdayDetected + r.birthdayDetected,
+      birthdaySent: acc.birthdaySent + r.birthdaySent.sent,
     }),
     {
       newcomerSent: 0,
       decliningDetected: 0, decliningStep0Sent: 0, decliningFollowUpsSent: 0, decliningExited: 0,
       sleepingDetected: 0, sleepingStep0Sent: 0, sleepingFollowUpsSent: 0, sleepingExited: 0,
+      birthdayDetected: 0, birthdaySent: 0,
     },
   )
 

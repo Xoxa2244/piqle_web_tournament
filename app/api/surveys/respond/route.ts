@@ -51,6 +51,10 @@ const ALLOWED_OPTIONS = new Set([
   // SLEEPING_REACTIVATION (segment #5):
   'planschanged', // sleeping: my plans changed
   'time',         // sleeping: cannot find a good time
+  // BIRTHDAY_GIFT_OFFER (segment #8):
+  'gift_week',    // birthday: a week of free play
+  'gift_pass',    // birthday: guest pass for a friend
+  'gift_merch',   // birthday: IQSport merch
   // Reserved for future surveys:
   'liked',      // trial: понравилось
   'thinking',   // trial: нужно подумать
@@ -73,6 +77,10 @@ function deriveSurveyType(logType: string, reasoning: any): string {
   if (logType === 'SLEEPING_REACTIVATION') {
     // Segment #5 puts the survey on Day 14 (step 1). Day 1 has no survey.
     return 'sleeping_reactivation'
+  }
+  if (logType === 'BIRTHDAY_GIFT_OFFER') {
+    // Segment #8 single-step "pick your gift" survey.
+    return 'birthday_gift'
   }
   // Fallback — log it as the source type so we don't lose the data even if
   // a future survey email forgets to set day12Variant or similar.

@@ -9107,7 +9107,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         // Each new lifecycle segment that ships a survey email adds an enum
         // here. The procedure derives the email-count denominator differently
         // per type below — see surveyEmailWhere construction.
-        surveyType: z.enum(['onboarding_day12', 'declining_reactivation', 'sleeping_reactivation']).default('onboarding_day12'),
+        surveyType: z.enum(['onboarding_day12', 'declining_reactivation', 'sleeping_reactivation', 'birthday_gift']).default('onboarding_day12'),
         windowDays: z.number().int().min(1).max(365).default(90),
       }),
     )
@@ -9165,6 +9165,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         // Sleeping puts the survey on Day 14 (step 1), not Day 1.
         surveyEmailWhere.type = 'SLEEPING_REACTIVATION'
         surveyEmailWhere.sequenceStep = 1
+      } else if (input.surveyType === 'birthday_gift') {
+        // Birthday is single-step (D-7). Step 0 holds the survey.
+        surveyEmailWhere.type = 'BIRTHDAY_GIFT_OFFER'
+        surveyEmailWhere.sequenceStep = 0
       }
 
       const totalSurveyEmailsSent = await ctx.prisma.aIRecommendationLog.count({
