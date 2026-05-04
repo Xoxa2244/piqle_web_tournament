@@ -21,6 +21,7 @@ import { Step2Goal } from './Step2Goal'
 import { Step3Schedule } from './Step3Schedule'
 import { Step4Message } from './Step4Message'
 import { EMPTY_WIZARD_STATE, type WizardStep, type WizardState, type AudienceSelection, type CampaignGoal, type MessageDraft, type ScheduleSettings } from './types'
+import { matchesSuggestedCohortGoal } from './audience-utils'
 
 interface CampaignWizardProps {
   clubId: string
@@ -75,6 +76,7 @@ export function CampaignWizard({
     (suggestedCohortsRaw as any[]).map((c) => ({
       id: c.id, name: c.name, memberCount: c.memberCount ?? 0,
       userIds: c.userIds ?? [], emoji: c.emoji, description: c.description,
+      generatorKey: c.generatorKey, suggestedTemplateKey: c.suggestedTemplateKey,
     })),
     [suggestedCohortsRaw]
   )
@@ -96,6 +98,34 @@ export function CampaignWizard({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedCohorts.length])
+
+  useEffect(() => {
+    if (state.audience || initialSuggestedCohort || initialCohortId || initialUserIds?.length || !initialGoal) return
+
+    const match = suggestedCohorts.find((cohort) => matchesSuggestedCohortGoal(initialGoal, cohort))
+    if (!match) return
+
+    setState((current) => {
+      if (current.audience) return current
+      return {
+        ...current,
+        audience: {
+          kind: 'ai_suggested',
+          cohortId: match.id,
+          cohortName: match.name,
+          userIds: match.userIds,
+          memberCount: match.memberCount,
+        },
+      }
+    })
+  }, [
+    initialCohortId,
+    initialGoal,
+    initialSuggestedCohort,
+    initialUserIds,
+    state.audience,
+    suggestedCohorts,
+  ])
 
   const canAdvance = (() => {
     if (step === 1) return !!state.audience
@@ -284,6 +314,7 @@ export function CampaignWizard({
               <Step1Audience
                 clubId={clubId}
                 audience={state.audience}
+                goal={state.goal}
                 onChange={(audience) => setState((s) => ({ ...s, audience }))}
                 savedCohorts={savedCohorts}
                 suggestedCohorts={suggestedCohorts}
@@ -382,20 +413,9 @@ export function CampaignWizard({
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <div
-                      className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] uppercase tracking-[0.18em]"
-                      style={{
-                        background: 'rgba(248,113,113,0.10)',
-                        color: '#FCA5A5',
-                        border: '1px solid rgba(248,113,113,0.18)',
-                        fontWeight: 700,
-                      }}
-                    >
-                      Leave wizard
-                    </div>
                     <h3
                       id="discard-campaign-title"
-                      className="mt-3 text-[24px] leading-tight font-semibold"
+                      className="text-[24px] leading-tight font-semibold"
                       style={{ color: 'var(--heading)' }}
                     >
                       Discard this campaign draft?
