@@ -1,4 +1,9 @@
 -- 2026-04-30 — Engage P1.2: campaign send queue infrastructure.
+-- 2026-05-04 update: campaign_id column type aligned to TEXT to match
+-- prod's campaigns.id (created by create-campaigns-table.sql with
+-- TEXT id, matching Prisma's String type). Dev DBs where this
+-- migration first ran got campaign_id as UUID; the conversion below
+-- handles them idempotently.
 --
 -- Adds the columns needed for the per-minute campaign-sends cron to
 -- fan out, send, and track recipient-level state. The launchCampaign
@@ -9,19 +14,27 @@
 --
 -- See docs/ENGAGE_PRIORITY1_SPEC.md §2 P1.2 for the full design and
 -- §3 CC-1/CC-2 for the audit that drove this migration.
---
--- Notes on schema state observed on rgdev's dev DB
--- (angwdmyswzztmlrdzgxm / piqle_web_tournament):
---   * `campaigns.id` = uuid → `campaign_id` here is uuid for the FK
---   * `sent_at` (timestamptz) already exists from a prior partial
---     migration — IF NOT EXISTS handles it, no-op
---   * `ai_recommendation_logs` has duplicated camelCase + snake_case
---     timestamp columns from CourtReserve sync; we use snake_case
---     consistently in new code (see CLAUDE.md DB notes)
+
+-- ── 0. Convert campaign_id from UUID to TEXT if needed ──
+-- Dev DBs that ran this migration when it shipped with UUID need to be
+-- converted to TEXT so the FK to campaigns(id) (TEXT) can be added.
+-- UUID → TEXT casts cleanly; data preserved as-is.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'ai_recommendation_logs'
+      AND column_name = 'campaign_id'
+      AND data_type = 'uuid'
+  ) THEN
+    ALTER TABLE ai_recommendation_logs
+      ALTER COLUMN campaign_id TYPE TEXT USING campaign_id::text;
+  END IF;
+END $$;
 
 -- ── 1. ai_recommendation_logs: campaign correlation + send claim ──
 ALTER TABLE ai_recommendation_logs
-  ADD COLUMN IF NOT EXISTS campaign_id  UUID,
+  ADD COLUMN IF NOT EXISTS campaign_id  TEXT,
   ADD COLUMN IF NOT EXISTS sent_at      TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS retry_count  INT NOT NULL DEFAULT 0;
 
