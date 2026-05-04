@@ -63,7 +63,11 @@ export function buildEmailPanel(innerHtml: string) {
   `
 }
 
-export function renderTextParagraphs(text: string, color = '#CBD5E1') {
+export function renderTextParagraphs(text: string, color = '#E2E8F0') {
+  // Default body color bumped from #CBD5E1 (slate-300) to #E2E8F0 (slate-200)
+  // for legibility on iOS Mail in dark mode — iOS auto-shifts bright text to
+  // "balance" with dark backgrounds, which made the previous color render as
+  // a muted grey. Brighter starting color counteracts the shift.
   return text
     .split('\n')
     .map((line) => line.trim())
@@ -95,6 +99,18 @@ export function buildIqSportEmail(opts: {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    color-scheme + supported-color-schemes tell iOS Mail / Apple Mail / Outlook
+    dark-mode renderers that this email is INTENTIONALLY designed for dark
+    backgrounds. Without these hints, iOS aggressively "auto-balances"
+    light text on dark backgrounds, muting any near-white into grey — which
+    made our headings and paragraphs look dim before this fix.
+  -->
+  <meta name="color-scheme" content="dark">
+  <meta name="supported-color-schemes" content="dark">
+  <style>
+    :root { color-scheme: dark; supported-color-schemes: dark; }
+  </style>
   <title>${opts.title}</title>
 </head>
 <body style="margin:0;padding:0;background:#0B1020;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;color:#F8FAFC;">
@@ -115,7 +131,7 @@ export function buildIqSportEmail(opts: {
                     <div style="display:inline-block;padding:8px 14px;border-radius:999px;background:rgba(6,182,212,0.10);border:1px solid rgba(6,182,212,0.20);font-size:11px;font-weight:700;letter-spacing:0.18em;color:#A5F3FC;text-transform:uppercase;">
                       ${eyebrow}
                     </div>
-                    <h1 style="margin:18px 0 0;font-size:30px;line-height:1.15;font-weight:800;color:#F8FAFC;">
+                    <h1 style="margin:18px 0 0;font-size:30px;line-height:1.15;font-weight:800;color:#FFFFFF;">
                       ${opts.heading}
                     </h1>
                   </td>
