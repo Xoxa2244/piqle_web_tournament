@@ -217,7 +217,7 @@ function EmptyState() {
   return (
     <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
       <div className="font-medium text-slate-700 mb-1">No birthdays in the next 14 days</div>
-      The detector fires 7 days before each member's birthday — when the next email goes out, the
+      The detector fires 7 days before each member&apos;s birthday — when the next email goes out, the
       pending list will appear here automatically.
     </div>
   )
