@@ -6975,6 +6975,7 @@ Spirit: ${guidance.spirit}`
           name,
           filters: [{ field: 'userId', op: 'in', value: userIds }] as any,
           memberCount: userIds.length,
+          isDynamic: false,
           createdBy: ctx.session.user.id,
         },
       })
