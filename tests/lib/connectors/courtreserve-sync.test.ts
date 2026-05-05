@@ -13,6 +13,8 @@ import {
   getEventSeriesAnchor,
   buildSeriesUrlIndex,
   resolveEventUrls,
+  findCourtNameInTitle,
+  pickBestSessionCourtName,
 } from '@/lib/connectors/courtreserve-sync'
 
 describe('pickFirstUrl', () => {
@@ -258,6 +260,60 @@ describe('resolveEventUrls', () => {
     const result = resolveEventUrls(instanceRow, clubId, idx)
     expect(result.publicEventUrl).toBe('https://cr.example/series-public')
     expect(result.memberSsoUrl).toBe('https://cr.example/instance-sso')
+  })
+})
+
+describe('findCourtNameInTitle', () => {
+  it('matches the explicitly named court in the session title', () => {
+    expect(
+      findCourtNameInTitle('Singles - Court #1', ['Court #1', 'Court #4']),
+    ).toBe('Court #1')
+  })
+
+  it('prefers the longest exact court token so Court #10 does not match Court #1', () => {
+    expect(
+      findCourtNameInTitle('Doubles - Court #10', ['Court #1', 'Court #10']),
+    ).toBe('Court #10')
+  })
+
+  it('returns null when the title does not mention any known court', () => {
+    expect(
+      findCourtNameInTitle('Beginner Clinic', ['Court #1', 'Court #2']),
+    ).toBeNull()
+  })
+})
+
+describe('pickBestSessionCourtName', () => {
+  const clubCourtNames = ['Court #1', 'Court #4', 'Court #10']
+
+  it('prefers the court explicitly named in the title over conflicting CR court data', () => {
+    expect(
+      pickBestSessionCourtName(
+        'Singles - Court #1',
+        clubCourtNames,
+        ['Court #4'],
+      ),
+    ).toBe('Court #1')
+  })
+
+  it('falls back to normalized CR court names when title has no court hint', () => {
+    expect(
+      pickBestSessionCourtName(
+        'Open Play Advanced',
+        clubCourtNames,
+        ['  court #4  '],
+      ),
+    ).toBe('Court #4')
+  })
+
+  it('returns null when neither title nor CR court data can be matched', () => {
+    expect(
+      pickBestSessionCourtName(
+        'Mystery Session',
+        clubCourtNames,
+        ['Stadium Court'],
+      ),
+    ).toBeNull()
   })
 })
 

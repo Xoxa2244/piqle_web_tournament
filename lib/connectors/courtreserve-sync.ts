@@ -119,6 +119,76 @@ function getEventCourtNames(raw: any): string[] {
     .filter(Boolean)
 }
 
+function normalizeCourtText(value: string): string {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function getPickleballCourtNames(raw: any): string[] {
+  const courts = raw?.Courts || raw?.courts
+  if (!Array.isArray(courts)) return []
+
+  return courts
+    .filter((court: any) => {
+      const typeName = String(court?.CourtTypeName || court?.courtTypeName || '').trim().toLowerCase()
+      return !typeName || typeName.includes('pickleball')
+    })
+    .map((court: any) => String(court?.CourtName || court?.courtName || court?.Name || court?.name || '').trim())
+    .filter(Boolean)
+}
+
+export function findCourtNameInTitle(title: string, courtNames: string[]): string | null {
+  const normalizedTitle = normalizeCourtText(title)
+  if (!normalizedTitle) return null
+
+  const candidates = courtNames
+    .map((courtName) => ({
+      courtName,
+      normalizedCourtName: normalizeCourtText(courtName),
+    }))
+    .filter((candidate) => candidate.normalizedCourtName.length > 0)
+    .sort((a, b) => b.normalizedCourtName.length - a.normalizedCourtName.length)
+
+  for (const candidate of candidates) {
+    const pattern = new RegExp(
+      `(^|\\s)${escapeRegExp(candidate.normalizedCourtName).replace(/ /g, '\\s+')}(\\s|$)`,
+      'i',
+    )
+    if (pattern.test(normalizedTitle)) {
+      return candidate.courtName
+    }
+  }
+
+  return null
+}
+
+export function pickBestSessionCourtName(
+  title: string,
+  clubCourtNames: string[],
+  rawCourtNames: string[],
+): string | null {
+  const titleCourtName = findCourtNameInTitle(title, clubCourtNames)
+  if (titleCourtName) return titleCourtName
+
+  const clubCourtNameByNormalized = new Map(
+    clubCourtNames.map((courtName) => [normalizeCourtText(courtName), courtName]),
+  )
+
+  for (const rawCourtName of rawCourtNames) {
+    const matchedCourtName = clubCourtNameByNormalized.get(normalizeCourtText(rawCourtName))
+    if (matchedCourtName) return matchedCourtName
+  }
+
+  return null
+}
+
 function getEventRegistrationCount(raw: any): number {
   const value =
     raw?.CurrentRegistrations ??
@@ -307,6 +377,54 @@ function getEventMaxRegistrations(raw: any, fallback: number): number {
     fallback
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+async function repairSessionCourtAssignments(
+  clubId: string,
+  from: Date,
+  to: Date,
+): Promise<number> {
+  const courts = await prisma.clubCourt.findMany({
+    where: { clubId },
+    select: { id: true, name: true },
+  })
+  if (courts.length === 0) return 0
+
+  const courtIdByNormalizedName = new Map(
+    courts.map((court) => [normalizeCourtText(court.name), court.id]),
+  )
+  const courtNames = courts.map((court) => court.name)
+  const sessions = await prisma.playSession.findMany({
+    where: {
+      clubId,
+      date: {
+        gte: from,
+        lte: to,
+      },
+    },
+    select: {
+      id: true,
+      title: true,
+      courtId: true,
+    },
+  })
+
+  let repaired = 0
+  for (const session of sessions) {
+    const matchedCourtName = findCourtNameInTitle(session.title, courtNames)
+    if (!matchedCourtName) continue
+
+    const matchedCourtId = courtIdByNormalizedName.get(normalizeCourtText(matchedCourtName))
+    if (!matchedCourtId || matchedCourtId === session.courtId) continue
+
+    await prisma.playSession.update({
+      where: { id: session.id },
+      data: { courtId: matchedCourtId },
+    })
+    repaired++
+  }
+
+  return repaired
 }
 
 // ── External ID Mapping (simplified, no dependency on partner utils) ──
@@ -725,8 +843,9 @@ async function syncEventCalendar(
   ])
 
   const courtIdByName = new Map(
-    courts.map((court) => [court.name.trim().toLowerCase(), court.id]),
+    courts.map((court) => [normalizeCourtText(court.name), court.id]),
   )
+  const clubCourtNames = courts.map((court) => court.name)
   const sessionIdByExternalId = new Map(
     existingMappings.map((mapping) => [mapping.externalId, mapping.internalId]),
   )
@@ -766,15 +885,16 @@ async function syncEventCalendar(
         rawEvent?.endDateTime ||
         '01:00',
       )
-      const courtNames = getEventCourtNames(rawEvent)
-      const primaryCourtName = courtNames[0] || ''
-      const courtId = primaryCourtName
-        ? (courtIdByName.get(primaryCourtName.trim().toLowerCase()) || undefined)
+      const rawCourtNames = getPickleballCourtNames(rawEvent)
+      const fallbackCourtNames = rawCourtNames.length > 0 ? rawCourtNames : getEventCourtNames(rawEvent)
+      const matchedCourtName = pickBestSessionCourtName(title, clubCourtNames, fallbackCourtNames)
+      const courtId = matchedCourtName
+        ? (courtIdByName.get(normalizeCourtText(matchedCourtName)) || undefined)
         : undefined
       const registeredCount = getEventRegistrationCount(rawEvent)
       const maxPlayers = Math.max(
         registeredCount,
-        getEventMaxRegistrations(rawEvent, Math.max(courtNames.length, 1) * 4),
+        getEventMaxRegistrations(rawEvent, Math.max(fallbackCourtNames.length, 1) * 4),
       )
       const sessionDay = new Date(date)
       sessionDay.setHours(0, 0, 0, 0)
@@ -861,18 +981,26 @@ async function syncEventRegistrations(
   const sessionsResult = { created: 0, updated: 0, errors: 0 }
   const bookingsResult = { created: 0, updated: 0, errors: 0 }
 
-  // Pre-load email → userId map
-  const followers = await prisma.clubFollower.findMany({
-    where: { clubId },
-    include: { user: { select: { id: true, email: true } } },
-  })
-  const emailToUserId = new Map(followers.filter(f => f.user.email).map(f => [f.user.email!.toLowerCase(), f.userId]))
+  const [followers, clubCourts, existingMappings] = await Promise.all([
+    prisma.clubFollower.findMany({
+      where: { clubId },
+      include: { user: { select: { id: true, email: true } } },
+    }),
+    prisma.clubCourt.findMany({
+      where: { clubId },
+      select: { id: true, name: true },
+    }),
+    prisma.externalIdMapping.findMany({
+      where: { partnerId, entityType: ExternalEntityType.PLAY_SESSION },
+      select: { externalId: true, internalId: true },
+    }),
+  ])
 
-  // Pre-load existing event session mappings
-  const existingMappings = await prisma.externalIdMapping.findMany({
-    where: { partnerId, entityType: ExternalEntityType.PLAY_SESSION },
-    select: { externalId: true, internalId: true },
-  })
+  const emailToUserId = new Map(followers.filter(f => f.user.email).map(f => [f.user.email!.toLowerCase(), f.userId]))
+  const clubCourtNames = clubCourts.map((court) => court.name)
+  const courtIdByName = new Map(
+    clubCourts.map((court) => [normalizeCourtText(court.name), court.id]),
+  )
   const eventIdToSessionId = new Map(existingMappings.map(m => [m.externalId, m.internalId]))
 
   // Fetch in 31-day windows
@@ -916,25 +1044,26 @@ async function syncEventRegistrations(
             const activeRegs = regs.filter((r: any) => !r.CancelledOnUtc)
             const format = mapFormat(first.EventCategoryName || first.EventName || '')
 
-            // Resolve court from Courts array (first pickleball court)
-            let courtId: string | null = null
-            const courts = first.Courts || []
-            if (courts.length > 0) {
-              const pbCourt = courts.find((c: any) => c.CourtTypeName === 'Pickleball') || courts[0]
-              const courtName = pbCourt.CourtName || pbCourt.courtName
-              if (courtName) {
-                // Find existing court by name
-                const existing = await prisma.clubCourt.findFirst({ where: { clubId, name: courtName } })
-                courtId = existing?.id || null
-              }
-            }
+            const title = first.EventName || 'Event'
+            const pickleballCourtNames = getPickleballCourtNames(first)
+            const fallbackCourtNames = pickleballCourtNames.length > 0
+              ? pickleballCourtNames
+              : getEventCourtNames(first)
+            const matchedCourtName = pickBestSessionCourtName(
+              title,
+              clubCourtNames,
+              fallbackCourtNames,
+            )
+            const courtId = matchedCourtName
+              ? (courtIdByName.get(normalizeCourtText(matchedCourtName)) || null)
+              : null
 
             let sessionId = eventIdToSessionId.get(eventKey)
-            const numCourts = courts.filter((c: any) => (c.CourtTypeName || '').toLowerCase().includes('pickleball')).length || 1
+            const numCourts = fallbackCourtNames.length || 1
             const sessionData = {
               clubId,
               courtId,
-              title: first.EventName || 'Event',
+              title,
               date,
               startTime,
               endTime,
@@ -1254,18 +1383,16 @@ export async function runCourtReserveSync(
       }
     }
 
-    // Match sessions to courts by court name in title
+    // Repair court assignments when CR saved a mismatched/null courtId but the
+    // session title explicitly names a court (for example "Singles - Court #1").
     try {
-      await prisma.$executeRawUnsafe(`
-        UPDATE play_sessions ps
-        SET "courtId" = cc.id
-        FROM club_courts cc
-        WHERE ps."clubId" = $1
-          AND cc."clubId" = ps."clubId"
-          AND ps."courtId" IS NULL
-          AND ps.title ILIKE '%' || cc.name || '%'
-      `, clubId)
-    } catch {}
+      const repairedCourts = await repairSessionCourtAssignments(clubId, from, futureDate)
+      if (repairedCourts > 0) {
+        console.log(`[CR Sync] ${clubId}: repaired ${repairedCourts} court assignments from session titles`)
+      }
+    } catch (err: any) {
+      console.error(`[CR Sync] ${clubId}: post-sync court repair error:`, err?.message || err)
+    }
 
     // Sprint 1.6: post-sync URL backfill — propagate PublicEventUrl/SsoUrl
     // from series rows to same-title instance rows. This bridges the gap
