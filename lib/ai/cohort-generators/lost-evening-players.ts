@@ -34,7 +34,7 @@ export const generateLostEveningPlayers: CohortGenerator = async (clubId, db) =>
       SELECT b."userId" as "userId", ps.date as "sessionDate"
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = ${clubId}::uuid
+      WHERE ps."clubId" = ${clubId}
         AND b.status::text = 'CONFIRMED'
         AND ps.date >= ${previousWindowStart}
         AND ps."startTime" >= '17:00'

@@ -20,13 +20,13 @@ export const generateRenewalIn14d: CohortGenerator = async (clubId, db) => {
 
   // Pull member embeddings (csv_import) for this club. Each row's metadata
   // may carry a membership expiry date string; format varies by importer.
-  // document_embeddings.club_id is uuid in DB → needs explicit ::uuid cast
-  // for raw SQL parameter binding.
+  // document_embeddings.club_id is TEXT on prod (no ::uuid cast — see
+  // commit 8bd275c3 for the file-wide cleanup of the same pattern).
   let rows: Array<{ source_id: string; metadata: any }> = []
   try {
     rows = await db.$queryRaw<Array<{ source_id: string; metadata: any }>>`
       SELECT source_id, metadata FROM document_embeddings
-      WHERE club_id = ${clubId}::uuid
+      WHERE club_id = ${clubId}
         AND content_type = 'member'
         AND source_table = 'csv_import'
     `
