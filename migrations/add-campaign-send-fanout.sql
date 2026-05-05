@@ -55,8 +55,11 @@ END $$;
 -- Hot path for the cron: "give me the next 50 pending sends for any
 -- campaign that's running". Partial index keeps it tiny — only rows
 -- still waiting to be sent are indexed.
+-- Note: ai_recommendation_logs.createdAt is camelCase in the DB
+-- (Prisma model has no @map, so the column is literally "createdAt"
+-- — quoted for case preservation).
 CREATE INDEX IF NOT EXISTS ai_recommendation_logs_campaign_pending_idx
-  ON ai_recommendation_logs (campaign_id, created_at)
+  ON ai_recommendation_logs (campaign_id, "createdAt")
   WHERE sent_at IS NULL AND campaign_id IS NOT NULL;
 
 -- ── 2. AIRecommendationType enum: add CAMPAIGN_SEND ──
