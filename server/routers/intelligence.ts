@@ -5164,21 +5164,28 @@ export const intelligenceRouter = createTRPCRouter({
   getNewMembers: protectedProcedure
     .input(z.object({ clubId: z.string().uuid(), joinedWithinDays: z.number().default(14) }))
     .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Set-based rewrite: the previous club_followers + LATERAL MIN(bookedAt)
+      // plan scanned every follower and timed out on larger clubs.
+      // We only need members whose first confirmed booking at this club
+      // happened recently, so aggregate bookings once and join users after.
       const rows = await ctx.prisma.$queryRawUnsafe<any[]>(`
-        SELECT u.id, u.name, u.email, u.image, first_booking."firstPlayedAt" as "joinedAt"
-        FROM club_followers cf
-        JOIN users u ON u.id = cf.user_id
-        JOIN LATERAL (
-          SELECT MIN(b."bookedAt") as "firstPlayedAt"
+        WITH first_bookings AS (
+          SELECT
+            b."userId" AS user_id,
+            MIN(b."bookedAt") AS "joinedAt"
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
-          WHERE b."userId" = cf.user_id
-            AND ps."clubId" = $1
+          WHERE ps."clubId" = $1
             AND b.status::text = 'CONFIRMED'
-        ) first_booking ON true
-        WHERE cf.club_id = $1
-          AND first_booking."firstPlayedAt" >= NOW() - ($2 || ' days')::interval
-        ORDER BY first_booking."firstPlayedAt" DESC
+          GROUP BY b."userId"
+          HAVING MIN(b."bookedAt") >= NOW() - ($2 || ' days')::interval
+        )
+        SELECT u.id, u.name, u.email, u.image, fb."joinedAt"
+        FROM first_bookings fb
+        JOIN users u ON u.id = fb.user_id
+        ORDER BY fb."joinedAt" DESC
       `, input.clubId, String(input.joinedWithinDays))
       return { members: rows, count: rows.length }
     }),
@@ -10696,20 +10703,18 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
       const bookingUrl = `${baseUrl}/clubs/${input.clubId}`
 
-      // {{name}} substitution: for previews we plug in the recipient's
-      // display name from session, falling back to "there".
-      const firstName = (ctx.session.user.name ?? '').trim().split(/\s+/)[0] || 'there'
-      const subject = input.subject.replace(/\{\{\s*name\s*\}\}/gi, firstName)
-      const body = input.body.replace(/\{\{\s*name\s*\}\}/gi, firstName)
-
       try {
-        const { sendOutreachEmail } = await import('@/lib/email')
+        const { buildOutreachTemplateValues, sendOutreachEmail } = await import('@/lib/email')
         const { messageId } = await sendOutreachEmail({
           to: recipientEmail,
-          subject: `[TEST] ${subject}`,
-          body,
+          subject: `[TEST] ${input.subject}`,
+          body: input.body,
           clubName,
           bookingUrl,
+          templateValues: buildOutreachTemplateValues({
+            fullName: ctx.session.user.name,
+            clubName,
+          }),
           ctaLabel: input.ctaLabel,
           ctaUrl: input.ctaUrl,
           metadata: { clubId: input.clubId, userId: ctx.session.user.id },

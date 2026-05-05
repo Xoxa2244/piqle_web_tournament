@@ -1,4 +1,8 @@
-import { sendOutreachEmail } from '@/lib/email'
+import {
+  buildOutreachTemplateValues,
+  interpolateOutreachTemplate,
+  sendOutreachEmail,
+} from '@/lib/email'
 import { appendSmsOptOut, sendSms } from '@/lib/sms'
 import { reportUsage } from '@/lib/stripe-usage'
 import { evaluateAdvisorContactGuardrails } from './advisor-contact-guardrails'
@@ -87,33 +91,6 @@ function getBookingUrl(clubId: string) {
   return buildPlatformUrl(`/clubs/${clubId}/play`)
 }
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function getCampaignRecipientNameParts(name?: string | null) {
-  const parts = (name || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-
-  return {
-    fullName: parts.join(' ') || 'there',
-    firstName: parts[0] || 'there',
-    lastName: parts.slice(1).join(' '),
-  }
-}
-
-function interpolateCampaignText(
-  text: string,
-  replacements: Record<string, string>,
-) {
-  return Object.entries(replacements).reduce((result, [token, replacement]) => {
-    const pattern = new RegExp(`\\{\\{${escapeRegExp(token)}\\}\\}|\\{${escapeRegExp(token)}\\}`, 'gi')
-    return result.replace(pattern, replacement)
-  }, text)
-}
-
 async function deliverCampaignToUser(opts: {
   club: CampaignClub
   user: CampaignUser
@@ -126,29 +103,21 @@ async function deliverCampaignToUser(opts: {
   logId?: string
 }) : Promise<DeliveryResult> {
   const { club, user, channel, logId } = opts
-  const recipientName = getCampaignRecipientNameParts(user.name)
   const bookingUrl = getBookingUrl(club.id)
   const shouldSendEmail = channel === 'email' || channel === 'both'
   const shouldSendSms = channel === 'sms' || channel === 'both'
-  const templateValues = {
-    name: recipientName.firstName,
-    first_name: recipientName.firstName,
-    full_name: recipientName.fullName,
-    last_name: recipientName.lastName,
-    club: club.name,
-    club_name: club.name,
-    event_name: 'our upcoming event',
-    event_date: 'a date to be confirmed',
-    expires_in_days: 'soon',
-  }
+  const templateValues = buildOutreachTemplateValues({
+    fullName: user.name,
+    clubName: club.name,
+  })
 
   const emailSubject = opts.subject
-    ? interpolateCampaignText(opts.subject, templateValues)
+    ? interpolateOutreachTemplate(opts.subject, templateValues)
     : `Message from ${club.name}`
-  const emailBody = interpolateCampaignText(opts.body, templateValues)
+  const emailBody = interpolateOutreachTemplate(opts.body, templateValues)
   const smsText = opts.smsBody
-    ? interpolateCampaignText(opts.smsBody, templateValues)
-    : (shouldSendSms ? interpolateCampaignText(opts.body, templateValues).slice(0, 300) : undefined)
+    ? interpolateOutreachTemplate(opts.smsBody, templateValues)
+    : (shouldSendSms ? interpolateOutreachTemplate(opts.body, templateValues).slice(0, 300) : undefined)
 
   let externalMessageId: string | null = null
   let emailDelivered = false

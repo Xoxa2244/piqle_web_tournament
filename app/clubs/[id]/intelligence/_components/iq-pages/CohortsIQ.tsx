@@ -353,7 +353,7 @@ function looksLikeRawFilterDescription(description: string | null | undefined) {
 
 function formatCohortFilterSummary(filter: CohortFilter) {
   if (filter.field === 'userId' && filter.op === 'in' && Array.isArray(filter.value)) {
-    return `${filter.value.length} hand-picked members`
+    return `${filter.value.length} fixed members`
   }
   if (filter.field === 'activityLevel' && filter.op === 'eq' && typeof filter.value === 'string') {
     return `${formatCohortFilterValue('activityLevel', filter.value)} players`
@@ -393,6 +393,23 @@ function buildReadableCohortDescription(filters: CohortFilter[]) {
 function getCohortDisplayDescription(description: string | null | undefined, rawFilters: unknown) {
   if (description && !looksLikeRawFilterDescription(description)) return description
   return buildReadableCohortDescription(parseCohortFilters(rawFilters))
+}
+
+function getCohortFilterDisplayData(rawFilters: unknown) {
+  const parsed = parseCohortFilters(rawFilters)
+  const fixedMembersFilter = parsed.find(
+    (filter) => filter.field === 'userId' && filter.op === 'in' && Array.isArray(filter.value),
+  )
+  const visibleFilters = parsed.filter((filter) => filter !== fixedMembersFilter)
+  const fixedMembersCount = fixedMembersFilter && Array.isArray(fixedMembersFilter.value)
+    ? fixedMembersFilter.value.length
+    : 0
+
+  return {
+    fixedMembersCount,
+    hasFixedMembersFilter: Boolean(fixedMembersFilter),
+    visibleFilters,
+  }
 }
 
 function sanitizeCohortFilters(filters: CohortFilter[]): CohortFilter[] {
@@ -1459,31 +1476,28 @@ export default function CohortsIQ() {
                   </span>
                 </div>
                 {/* Filter tags. Frozen userId-IN cohorts (created from a member
-                    selection or after Add-to-existing) get a single
-                    "N hand-picked members" pill instead of dumping the raw uuid
-                    list onto the card. Predicate-based filters render as
+                    selection, AI suggestion, or after Add-to-existing) get a
+                    single "N fixed members" pill instead of dumping the raw
+                    uuid list onto the card. Predicate-based filters render as
                     before. */}
                 {(() => {
-                  const parsed = parseCohortFilters(c.filters)
-                  const handPickedFilter = parsed.find(
-                    (f) => f.field === 'userId' && f.op === 'in' && Array.isArray(f.value),
-                  )
-                  const otherFilters = parsed.filter((f) => f !== handPickedFilter)
-                  const handPickedCount = handPickedFilter && Array.isArray(handPickedFilter.value)
-                    ? handPickedFilter.value.length
-                    : 0
+                  const {
+                    fixedMembersCount,
+                    hasFixedMembersFilter,
+                    visibleFilters,
+                  } = getCohortFilterDisplayData(c.filters)
                   return (
                     <div className="flex flex-wrap gap-1 mb-3">
-                      {handPickedFilter && (
+                      {hasFixedMembersFilter && (
                         <span
                           className="text-[10px] px-2 py-0.5 rounded-full inline-flex items-center gap-1"
                           style={{ background: 'rgba(245,158,11,0.1)', color: '#F59E0B' }}
                           title="Frozen list — fixed members, no longer re-evaluated against filters"
                         >
-                          🔒 {handPickedCount} hand-picked
+                          Locked · {fixedMembersCount} fixed members
                         </span>
                       )}
-                      {otherFilters.map((f, i) => (
+                      {visibleFilters.map((f, i) => (
                         <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
                           {FILTER_FIELDS.find((ff) => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
                         </span>
@@ -2418,11 +2432,32 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
 
         {/* Filter tags */}
         <div className="flex flex-wrap gap-1.5">
-              {parseCohortFilters(cohort?.filters).map((f, i) => (
-                <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
-                  {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
-                </span>
-              ))}
+          {(() => {
+            const {
+              fixedMembersCount,
+              hasFixedMembersFilter,
+              visibleFilters,
+            } = getCohortFilterDisplayData(cohort?.filters)
+
+            return (
+              <>
+                {hasFixedMembersFilter && (
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full"
+                    style={{ background: 'rgba(245,158,11,0.1)', color: '#F59E0B' }}
+                    title="Frozen list — fixed members, no longer re-evaluated against filters"
+                  >
+                    Locked · {fixedMembersCount} fixed members
+                  </span>
+                )}
+                {visibleFilters.map((f, i) => (
+                  <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.1)', color: '#A78BFA' }}>
+                    {FILTER_FIELDS.find(ff => ff.key === f.field)?.label || f.field} {OP_LABELS[f.op]} {formatCohortFilterValue(f.field, f.value)}
+                  </span>
+                ))}
+              </>
+            )
+          })()}
           <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(6,182,212,0.1)', color: '#06B6D4' }}>
             {members.length} members
           </span>

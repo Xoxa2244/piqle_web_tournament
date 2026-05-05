@@ -12,7 +12,7 @@
  *        FOR UPDATE SKIP LOCKED, set sent_at=NOW() optimistically.
  *     c. For each claimed log:
  *        - Resolve user.email
- *        - Render subject/body with {{name}} substitution
+ *        - Render subject/body with campaign template substitution
  *        - Call sendOutreachEmail with metadata.logId for webhook correlation
  *        - On success: increment Campaign.sent_count
  *        - On failure: revert sent_at to NULL, increment retry_count.
@@ -35,7 +35,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { cronLogger as log } from '@/lib/logger'
-import { sendOutreachEmail, isBlockedEmail } from '@/lib/email'
+import { buildOutreachTemplateValues, sendOutreachEmail, isBlockedEmail } from '@/lib/email'
 import { resolveAgentControlPlane } from '@/lib/ai/agent-control-plane'
 
 export const runtime = 'nodejs'
@@ -469,10 +469,10 @@ async function processCampaign(campaign: CampaignForCron): Promise<{ sent: numbe
     // log's sequence_step. For one_time, this returns campaign-level fields.
     const content = resolveContentForLog(campaign, row.sequence_step)
 
-    // Substitute {{name}} placeholder. More substitutions can land later.
-    const firstName = (user.name ?? '').trim().split(/\s+/)[0] || 'there'
-    const subject = (content.subject ?? campaign.name).replace(/\{\{\s*name\s*\}\}/gi, firstName)
-    const body = (content.body ?? '').replace(/\{\{\s*name\s*\}\}/gi, firstName)
+    const templateValues = buildOutreachTemplateValues({
+      fullName: user.name,
+      clubName,
+    })
     const stepCtaLabel = content.ctaLabel
     const stepCtaUrl = content.ctaUrl
 
@@ -489,10 +489,11 @@ async function processCampaign(campaign: CampaignForCron): Promise<{ sent: numbe
     try {
       const { messageId } = await sendOutreachEmail({
         to: user.email,
-        subject,
-        body,
+        subject: content.subject ?? campaign.name,
+        body: content.body ?? '',
         clubName,
         bookingUrl,
+        templateValues,
         ctaLabel: stepCtaLabel,
         ctaUrl: stepCtaUrl,
         metadata: {

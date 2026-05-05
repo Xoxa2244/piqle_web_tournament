@@ -87,21 +87,20 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
   const { data: healthData, isLoading: healthLoading } = useMemberHealth(clubId, { enabled: loadPhase >= 1 })
   const { data: reactivationData, isLoading: reactivationLoading } = useReactivationCandidates(clubId, 21, { enabled: loadPhase >= 1 })
   const { data: underfilledData, isLoading: underfilledLoading } = useUnderfilledSessions(clubId, { enabled: loadPhase >= 2 })
-  const { data: newMembersData, isLoading: newMembersLoading } = useNewMembers(clubId, 14, { enabled: loadPhase >= 2 })
+  const { data: newMembersData, isLoading: newMembersLoading, error: newMembersError } = useNewMembers(clubId, 14, { enabled: loadPhase >= 2 })
 
-  const anyLoading = (loadPhase < 2)
+  const coreLoading = (loadPhase < 2)
     || healthLoading
     || reactivationLoading
     || underfilledLoading
-    || newMembersLoading
 
   useEffect(() => {
-    if (!anyLoading) return
+    if (!(coreLoading || newMembersLoading)) return
     const interval = window.setInterval(() => {
       setLoadingStep((current) => (current + 1) % 3)
     }, 1400)
     return () => window.clearInterval(interval)
-  }, [anyLoading])
+  }, [coreLoading, newMembersLoading])
 
   const loadingMessages = [
     'Collecting member activity and booking signals',
@@ -205,9 +204,10 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
   }
 
   const hasAnyResults = suggestions.length > 0
-  const showEmptyState = !anyLoading && !hasAnyResults
-  const showPartialLoading = anyLoading && hasAnyResults
-  const showInitialSkeleton = !hasAnyResults && anyLoading
+  const waitingOnOptionalNewMembers = newMembersLoading && !newMembersError
+  const showLoadingPill = coreLoading || (!hasAnyResults && waitingOnOptionalNewMembers)
+  const showEmptyState = !showLoadingPill && !hasAnyResults
+  const showInitialSkeleton = !hasAnyResults && showLoadingPill
 
   return (
     <motion.div
@@ -231,7 +231,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>
           Based on your club data, here are the highest-impact campaigns to launch
         </p>
-        {anyLoading && (
+        {showLoadingPill && (
           <div
             className="mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2"
             style={{

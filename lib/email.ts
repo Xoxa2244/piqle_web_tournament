@@ -68,6 +68,66 @@ export interface SafeSendMailOptions {
   tags?: string[]
 }
 
+export type OutreachTemplateValues = Record<string, string | null | undefined>
+
+function escapeTemplateToken(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+export function interpolateOutreachTemplate(
+  text: string,
+  templateValues: OutreachTemplateValues = {},
+) {
+  return Object.entries(templateValues).reduce((result, [token, replacement]) => {
+    if (!replacement) return result
+    const pattern = new RegExp(
+      `\\{\\{\\s*${escapeTemplateToken(token)}\\s*\\}\\}|\\{\\s*${escapeTemplateToken(token)}\\s*\\}`,
+      'gi',
+    )
+    return result.replace(pattern, replacement)
+  }, text)
+}
+
+export function buildOutreachTemplateValues({
+  fullName,
+  firstName,
+  lastName,
+  clubName,
+  eventName,
+  eventDate,
+  expiresInDays,
+}: {
+  fullName?: string | null
+  firstName?: string | null
+  lastName?: string | null
+  clubName?: string | null
+  eventName?: string | null
+  eventDate?: string | null
+  expiresInDays?: string | null
+} = {}): OutreachTemplateValues {
+  const normalizedFullName = (fullName ?? '').trim()
+  const normalizedFirstName =
+    (firstName ?? '').trim() ||
+    normalizedFullName.split(/\s+/).find(Boolean) ||
+    'there'
+  const normalizedLastName =
+    (lastName ?? '').trim() ||
+    normalizedFullName.split(/\s+/).slice(1).join(' ')
+  const normalizedClubName = (clubName ?? '').trim() || 'your club'
+
+  return {
+    name: normalizedFirstName,
+    first_name: normalizedFirstName,
+    full_name: normalizedFullName || normalizedFirstName,
+    last_name: normalizedLastName,
+    club: normalizedClubName,
+    club_name: normalizedClubName,
+    event_name: (eventName ?? '').trim() || 'our upcoming event',
+    event_date: (eventDate ?? '').trim() || 'a date to be confirmed',
+    expires_in_days: (expiresInDays ?? '').trim() || 'soon',
+  }
+}
+
 /**
  * Resolves the effective From: address for a send.
  *
@@ -609,6 +669,7 @@ export async function sendOutreachEmail({
   ctaUrl,
   bodyHtmlOverride,
   suppressDefaultCta,
+  templateValues,
 }: {
   to: string
   subject: string
@@ -640,12 +701,30 @@ export async function sendOutreachEmail({
    * suppress it. No effect when bodyHtmlOverride is empty.
    */
   suppressDefaultCta?: boolean
+  /** Optional template values for {first_name}, {{name}}, {club}, etc. */
+  templateValues?: OutreachTemplateValues
 }): Promise<{ messageId: string }> {
-  // Effective CTA — either the campaign-level override or the legacy default.
-  const effectiveCtaLabel = (ctaLabel?.trim() || 'Book a Session')
-  const effectiveCtaUrl = (ctaUrl?.trim() || bookingUrl)
+  const renderedTemplateValues = {
+    ...buildOutreachTemplateValues({ clubName }),
+    ...templateValues,
+  }
+  const renderedSubject = interpolateOutreachTemplate(subject, renderedTemplateValues)
+  const renderedBody = interpolateOutreachTemplate(body, renderedTemplateValues)
+  const renderedBodyHtmlOverride = bodyHtmlOverride
+    ? interpolateOutreachTemplate(bodyHtmlOverride, renderedTemplateValues)
+    : undefined
 
-  const text = `${body}\n\n${effectiveCtaLabel}: ${effectiveCtaUrl}`
+  // Effective CTA — either the campaign-level override or the legacy default.
+  const effectiveCtaLabel = interpolateOutreachTemplate(
+    ctaLabel?.trim() || 'Book a Session',
+    renderedTemplateValues,
+  )
+  const effectiveCtaUrl = interpolateOutreachTemplate(
+    ctaUrl?.trim() || bookingUrl,
+    renderedTemplateValues,
+  )
+
+  const text = `${renderedBody}\n\n${effectiveCtaLabel}: ${effectiveCtaUrl}`
 
   const formatLabel = (f: string) => f.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 
@@ -679,17 +758,17 @@ export async function sendOutreachEmail({
   // sequence). If they didn't override, use the default text+sessionCard
   // layout that's been the standard for slot-filler / reactivation emails.
   const defaultBodyHtml = `
-      ${renderTextParagraphs(body)}
+      ${renderTextParagraphs(renderedBody)}
       ${sessionCardHtml ? buildEmailPanel(sessionCardHtml) : ''}
       ${suppressDefaultCta ? '' : buildEmailButton(effectiveCtaLabel, effectiveCtaUrl)}
     `
-  const finalBodyHtml = bodyHtmlOverride
-    ? `${bodyHtmlOverride}${suppressDefaultCta ? '' : buildEmailButton(effectiveCtaLabel, effectiveCtaUrl)}`
+  const finalBodyHtml = renderedBodyHtmlOverride
+    ? `${renderedBodyHtmlOverride}${suppressDefaultCta ? '' : buildEmailButton(effectiveCtaLabel, effectiveCtaUrl)}`
     : defaultBodyHtml
 
   const html = buildIqSportEmail({
-    title: subject,
-    heading: subject,
+    title: renderedSubject,
+    heading: renderedSubject,
     eyebrow: 'Campaign Outreach',
     subheading: `Sent by ${clubName}`,
     baseUrl: bookingUrl,
@@ -704,7 +783,7 @@ export async function sendOutreachEmail({
   const info = await safeSendMail({
     to,
     from: fromHeader,
-    subject,
+    subject: renderedSubject,
     text,
     html,
     metadata,
