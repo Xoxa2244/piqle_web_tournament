@@ -37,7 +37,6 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
     { icon: CreditCard, label: "Billing", path: "/billing" },
     { icon: Plug, label: "Integrations", path: "/integrations" },
     { icon: Mail, label: "Email Domain", path: "/email-domain" },
-    { icon: Settings, label: "Settings", path: "/settings" },
   ]
   // Admin-only: Automation page (Agent Campaign Layer + triggers).
   // See docs/ENGAGE_REDESIGN_SPEC.md §2 P0-T2 / §3 P1-T3.
