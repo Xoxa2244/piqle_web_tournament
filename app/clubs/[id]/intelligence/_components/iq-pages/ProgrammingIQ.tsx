@@ -78,8 +78,14 @@ function formatWeekRange(weekStart: string): string {
   return `${sMon} – ${eMon}`
 }
 
-function hasDraftWarning(draft: GridDraft): boolean {
-  return (draft.metadata?.warnings?.length || 0) > 0
+function getDraftCellKind(draft: GridDraft): 'suggested' | 'saturation' | 'conflict' {
+  const explicitKind = draft.metadata?.cellKind
+  if (explicitKind === 'suggested' || explicitKind === 'saturation' || explicitKind === 'conflict') {
+    return explicitKind
+  }
+  if (!draft.courtId) return 'conflict'
+  const warningText = (draft.metadata?.warnings || []).join(' ')
+  return /saturat/i.test(warningText) ? 'saturation' : 'suggested'
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -140,19 +146,19 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const liveSessions = useMemo(() => (gridData?.liveSessions ?? []) as any[], [gridData])
   const drafts = useMemo(() => ((gridData?.drafts ?? []) as any[]) as GridDraft[], [gridData])
   const publishableDrafts = useMemo(
-    () => drafts.filter((draft) => !hasDraftWarning(draft)),
+    () => drafts.filter((draft) => draft.courtId && getDraftCellKind(draft) === 'suggested'),
     [drafts],
   )
   const calendarDrafts = useMemo(
-    () => drafts.filter((draft) => !!draft.courtId),
+    () => drafts.filter((draft) => draft.courtId && getDraftCellKind(draft) !== 'conflict'),
     [drafts],
   )
   const riskDrafts = useMemo(
-    () => drafts.filter((draft) => hasDraftWarning(draft)),
+    () => drafts.filter((draft) => draft.courtId && getDraftCellKind(draft) === 'saturation'),
     [drafts],
   )
   const unplacedIdeas = useMemo(
-    () => drafts.filter((draft) => !draft.courtId),
+    () => drafts.filter((draft) => getDraftCellKind(draft) === 'conflict' || !draft.courtId),
     [drafts],
   )
   const courtNamesById = useMemo(

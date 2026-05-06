@@ -235,8 +235,14 @@ function formatHour(h: number): string {
   return `${h - 12}p`
 }
 
-function hasDraftWarning(draft: GridDraft): boolean {
-  return (draft.metadata?.warnings?.length || 0) > 0
+function getDraftCellKind(draft: GridDraft): 'suggested' | 'saturation' | 'conflict' {
+  const explicitKind = draft.metadata?.cellKind
+  if (explicitKind === 'suggested' || explicitKind === 'saturation' || explicitKind === 'conflict') {
+    return explicitKind
+  }
+  if (!draft.courtId) return 'conflict'
+  const warningText = (draft.metadata?.warnings || []).join(' ')
+  return /saturat/i.test(warningText) ? 'saturation' : 'suggested'
 }
 
 /**
@@ -344,8 +350,8 @@ export function ProgrammingGrid({
           const isActive = activeCourtId === c.id
           const bucket = byCourt.get(c.id)
           const liveCount = bucket?.live.length || 0
-          const readyCount = bucket?.draft.filter((draft) => !hasDraftWarning(draft)).length || 0
-          const riskCount = bucket?.draft.filter((draft) => hasDraftWarning(draft)).length || 0
+          const readyCount = bucket?.draft.filter((draft) => getDraftCellKind(draft) === 'suggested').length || 0
+          const riskCount = bucket?.draft.filter((draft) => getDraftCellKind(draft) === 'saturation').length || 0
           return (
             <button
               key={c.id}
@@ -569,15 +575,16 @@ function DraftCell({
   draft: GridDraft
   onClick: () => void
 }) {
-  const hasWarning = (draft.metadata?.warnings?.length || 0) > 0
+  const draftKind = getDraftCellKind(draft)
+  const isRisk = draftKind === 'saturation'
   const tier = classifyTier({
     skillLevel: draft.skillLevel,
     format: draft.format,
     title: draft.title,
   })
   const skillBadge = SKILL_BADGE_STYLES[tier]
-  const fill = hasWarning ? 'rgba(245,158,11,0.12)' : 'rgba(139,92,246,0.14)'
-  const border = hasWarning ? 'rgba(245,158,11,0.55)' : 'rgba(139,92,246,0.52)'
+  const fill = isRisk ? 'rgba(245,158,11,0.12)' : 'rgba(139,92,246,0.14)'
+  const border = isRisk ? 'rgba(245,158,11,0.55)' : 'rgba(139,92,246,0.52)'
   const linkedLiveOptimization = draft.metadata?.liveOptimization
   return (
     <div
@@ -589,7 +596,7 @@ function DraftCell({
       }}
       onClick={onClick}
     >
-      {hasWarning ? (
+      {isRisk ? (
         <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: '#D97706' }} />
       ) : (
         <Sparkles className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: '#A78BFA' }} />
@@ -614,11 +621,11 @@ function DraftCell({
           {draft.startTime}–{draft.endTime} · {draft.confidence}% conf
         </div>
         {linkedLiveOptimization && (
-          <div className="text-[10px] mt-0.5 font-medium" style={{ color: hasWarning ? '#B45309' : '#8B5CF6' }}>
+          <div className="text-[10px] mt-0.5 font-medium" style={{ color: isRisk ? '#B45309' : '#8B5CF6' }}>
             {linkedLiveOptimization.type === 'move' ? 'moves a live session' : 'replaces a live session'}
           </div>
         )}
-        {hasWarning && (
+        {isRisk && (
           <div className="flex items-center gap-0.5 text-[10px] mt-0.5 font-medium" style={{ color: '#B45309' }}>
             <AlertTriangle className="w-2.5 h-2.5" />
             audience saturation risk
