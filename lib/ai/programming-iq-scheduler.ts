@@ -723,6 +723,14 @@ function countSameSkillNearby(
  * contact policy, does any skill-level pool end up seeing more invites
  * per member than the weekly cap allows?
  *
+ * Important nuance: this hard-gate is intentionally scoped to the new
+ * suggestion portfolio, not the already-live calendar. Existing live
+ * sessions can still be dense for a skill pool, but Programming IQ
+ * should not collapse to "0 publish-ready suggestions" just because the
+ * current week is already busy. Live-session pressure is surfaced via
+ * move/replace review and the UI contact-policy badge; here we only mark
+ * the overflow tail inside the draft set itself.
+ *
  * Returns a map from cell key → warning message for cells that the UI
  * should render with the `saturation` badge. Does NOT mutate the input.
  */
@@ -742,41 +750,74 @@ export function supplyDemandCheck(
     poolBySkill.set(skill, (poolBySkill.get(skill) || 0) + 1)
   }
 
-  // Capacity per skill tier across suggested + live cells this week.
-  const capacityBySkill = new Map<string, number>()
+  // New draft suggestions only. Live sessions stay out of the hard cap
+  // so a dense calendar doesn't automatically zero out publish-ready
+  // ideas for empty cells.
+  const suggestedBySkill = new Map<string, GridCell[]>()
   for (const cell of cells) {
-    if (cell.kind !== 'live' && cell.kind !== 'suggested') continue
+    if (cell.kind !== 'suggested') continue
     const skill = normaliseSkillKey(cell.skillLevel)
-    // Invite count = capacity × (1 + overbook buffer). 50% overbook is
-    // the slot-filler default, so total potential invites per session is
-    // cap × 1.5.
-    const capacity = Math.max(1, cell.maxPlayers || 8)
-    capacityBySkill.set(skill, (capacityBySkill.get(skill) || 0) + Math.ceil(capacity * 1.5))
+    if (!suggestedBySkill.has(skill)) suggestedBySkill.set(skill, [])
+    suggestedBySkill.get(skill)!.push(cell)
   }
 
-  // For each skill tier, compute average invites per eligible member.
-  // If > policy cap → every suggested cell of that tier gets a warning.
-  // Use Array.from rather than direct iteration because tsconfig target
-  // pre-ES2015 would require downlevelIteration.
-  for (const [skill, inviteCapacity] of Array.from(capacityBySkill.entries())) {
+  // For each skill tier, keep the strongest suggestions publish-ready
+  // until the draft portfolio itself exceeds the member-contact budget.
+  // Only the lower-priority overflow tail gets marked as saturation.
+  for (const [skill, suggestedCells] of Array.from(suggestedBySkill.entries())) {
     const pool = poolBySkill.get(skill) || 0
     if (pool <= 0) continue
-    const invitesPerMember = inviteCapacity / pool
     const allowedInvitesPerMember = policy.inviteCapPerMemberPerWeek * Math.max(behaviorProfile?.saturationCapMultiplier ?? 1, 0.8)
-    if (invitesPerMember > allowedInvitesPerMember) {
-      // Mark every suggested cell of this skill.
-      for (const cell of cells) {
-        if (cell.kind === 'suggested' && normaliseSkillKey(cell.skillLevel) === skill) {
-          warnings.set(
-            cell.key,
-            `Saturated: this ${prettySkill(skill)} pool (${pool} members) would see ~${invitesPerMember.toFixed(1)} invites/week at current caps (${policy.inviteCapPerMemberPerWeek}). Consider removing lower-scoring sessions.`,
-          )
-        }
+    const allowedInviteBudget = allowedInvitesPerMember * pool
+    let scheduledInviteCapacity = 0
+
+    const rankedSuggested = [...suggestedCells].sort((left, right) => {
+      const scoreDiff = getSaturationPriority(right) - getSaturationPriority(left)
+      if (scoreDiff !== 0) return scoreDiff
+      return left.key.localeCompare(right.key)
+    })
+
+    for (const cell of rankedSuggested) {
+      const inviteCapacity = getInviteCapacityForCell(cell)
+      const projectedInviteCapacity = scheduledInviteCapacity + inviteCapacity
+      if (projectedInviteCapacity > allowedInviteBudget) {
+        const invitesPerMember = projectedInviteCapacity / pool
+        warnings.set(
+          cell.key,
+          `Saturated: this ${prettySkill(skill)} pool (${pool} members) would see ~${invitesPerMember.toFixed(1)} invites/week at current caps (${policy.inviteCapPerMemberPerWeek}). Higher-scoring ideas stayed publish-ready first; review or swap lower-priority sessions.`,
+        )
       }
+      scheduledInviteCapacity = projectedInviteCapacity
     }
   }
 
   return warnings
+}
+
+function getInviteCapacityForCell(cell: Pick<GridCell, 'maxPlayers'>) {
+  // Invite count = capacity × (1 + overbook buffer). 50% overbook is
+  // the slot-filler default, so total potential invites per session is
+  // cap × 1.5.
+  return Math.ceil(Math.max(1, cell.maxPlayers || 8) * 1.5)
+}
+
+function getSaturationPriority(
+  cell: Pick<
+    GridCell,
+    'confidence' | 'projectedOccupancy' | 'estimatedInterestedMembers' | 'requestedByAdmin'
+  >,
+) {
+  const confidence = cell.confidence || 0
+  const projectedOccupancy = cell.projectedOccupancy || 0
+  const interestedMembers = Math.min(cell.estimatedInterestedMembers || 0, 100)
+  const adminPriorityBoost = cell.requestedByAdmin ? 8 : 0
+
+  return (
+    confidence * 0.55 +
+    projectedOccupancy * 0.3 +
+    interestedMembers * 0.15 +
+    adminPriorityBoost
+  )
 }
 
 function normaliseSkillKey(skill: PlaySessionSkillLevel | string | null | undefined): string {

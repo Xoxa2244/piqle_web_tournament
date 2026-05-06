@@ -360,7 +360,7 @@ describe('supplyDemandCheck', () => {
     expect(warnings.size).toBe(0)
   })
 
-  it('flags saturation when capacity > pool × cap', () => {
+  it('flags only the overflow tail when draft capacity > pool × cap', () => {
     // Same pool (10 × 3 = 30 budget). Four sessions × 8 × 1.5 = 48 → over.
     const cells: GridCell[] = [
       cellSuggested('c-1', 'INTERMEDIATE', 8),
@@ -369,10 +369,27 @@ describe('supplyDemandCheck', () => {
       cellSuggested('c-4', 'INTERMEDIATE', 8),
     ]
     const warnings = supplyDemandCheck(cells, intPrefs, policy)
-    expect(warnings.size).toBe(4)
+    expect(warnings.size).toBe(2)
+    expect(warnings.has('c-1')).toBe(false)
+    expect(warnings.has('c-2')).toBe(false)
+    expect(warnings.has('c-3')).toBe(true)
+    expect(warnings.has('c-4')).toBe(true)
     for (const msg of Array.from(warnings.values())) {
       expect(msg.toLowerCase()).toContain('saturated')
     }
+  })
+
+  it('does not spend the draft budget on already-live sessions', () => {
+    const cells: GridCell[] = [
+      cellLive('live-1', 'INTERMEDIATE', 8),
+      cellLive('live-2', 'INTERMEDIATE', 8),
+      cellLive('live-3', 'INTERMEDIATE', 8),
+      cellLive('live-4', 'INTERMEDIATE', 8),
+      cellSuggested('c-1', 'INTERMEDIATE', 8),
+      cellSuggested('c-2', 'INTERMEDIATE', 8),
+    ]
+    const warnings = supplyDemandCheck(cells, intPrefs, policy)
+    expect(warnings.size).toBe(0)
   })
 
   it('skips opt-outs from the pool count', () => {
@@ -1058,5 +1075,22 @@ function cellSuggested(key: string, skill: string, cap: number): GridCell {
     projectedOccupancy: 80,
     confidence: 70,
     rationale: [],
+  }
+}
+
+function cellLive(key: string, skill: string, cap: number): GridCell {
+  return {
+    key,
+    kind: 'live',
+    courtId: 'court-1',
+    courtName: 'Court 1',
+    dayOfWeek: 'Tuesday',
+    startTime: '19:00',
+    endTime: '20:30',
+    format: 'OPEN_PLAY' as any,
+    skillLevel: skill as any,
+    maxPlayers: cap,
+    projectedOccupancy: 80,
+    playSessionId: key,
   }
 }
