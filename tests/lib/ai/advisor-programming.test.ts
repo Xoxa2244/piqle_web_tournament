@@ -468,6 +468,94 @@ describe('advisor programming planning', () => {
     expect(countTargetedGapWindows(fillIdlePlan)).toBe(3)
   })
 
+  it('widens the gap-fill idea palette for large clubs when Fill idle hours is selected', () => {
+    const preferences = [
+      ...Array.from({ length: 2 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: true,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: false,
+        skillLevel: 'BEGINNER' as const,
+        preferredFormats: ['Clinic'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+      ...Array.from({ length: 2 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: true,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: false,
+        skillLevel: 'INTERMEDIATE' as const,
+        preferredFormats: ['Open Play'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+      ...Array.from({ length: 2 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: true,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: false,
+        skillLevel: 'ADVANCED' as const,
+        preferredFormats: ['Drill'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+      ...Array.from({ length: 2 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: true,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: false,
+        skillLevel: 'ALL_LEVELS' as const,
+        preferredFormats: ['Social'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+      ...Array.from({ length: 2 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: true,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: false,
+        skillLevel: 'BEGINNER' as const,
+        preferredFormats: ['League Play'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+    ]
+    const baseInput = {
+      sessions: [] as any[],
+      preferences,
+      audienceProfile: null,
+      courtCount: 24,
+      limit: 25,
+    }
+
+    const defaultPlan = buildAdvisorProgrammingPlan(baseInput)
+    const fillIdleProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FILL_IDLE_HOURS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+    const fillIdlePlan = buildAdvisorProgrammingPlan({
+      ...baseInput,
+      behaviorProfile: fillIdleProfile.behaviorProfile,
+    })
+
+    const tuesdayMorningIdeas = (plan: ReturnType<typeof buildAdvisorProgrammingPlan>) =>
+      plan.proposals.filter((proposal) =>
+        proposal.dayOfWeek === 'Tuesday'
+        && proposal.timeSlot === 'morning'
+        && proposal.source === 'fill_gap',
+      )
+
+    const defaultIdeas = tuesdayMorningIdeas(defaultPlan)
+    const fillIdleIdeas = tuesdayMorningIdeas(fillIdlePlan)
+
+    expect(defaultIdeas).toHaveLength(9)
+    expect(fillIdleIdeas.length).toBeGreaterThan(defaultIdeas.length)
+    expect(new Set(fillIdleIdeas.map((proposal) => proposal.format)).size).toBeGreaterThanOrEqual(5)
+    expect(new Set(fillIdleIdeas.map((proposal) => proposal.skillLevel)).size).toBeGreaterThanOrEqual(4)
+  })
+
   it('raises court pressure risk when the club has limited active courts', () => {
     const plan = buildAdvisorProgrammingPlan({
       sessions: [

@@ -1012,17 +1012,21 @@ function computeProgrammingWeightProfile(opts: {
   } satisfies ProgrammingWeightProfile
 }
 
-function getTopFormats(formatDemand: Map<PlaySessionFormat, number>) {
+function getTopFormats(
+  formatDemand: Map<PlaySessionFormat, number>,
+  limit = 3,
+) {
   const fallback: PlaySessionFormat[] = ['OPEN_PLAY', 'CLINIC', 'DRILL', 'SOCIAL', 'LEAGUE_PLAY']
   const ranked = Array.from(formatDemand.entries())
     .sort((left, right) => right[1] - left[1])
     .map(([format]) => format)
-  return Array.from(new Set([...ranked, ...fallback])).slice(0, 3)
+  return Array.from(new Set([...ranked, ...fallback])).slice(0, Math.max(1, limit))
 }
 
 function getTopSkills(
   skillDemand: Map<PlaySessionSkillLevel, number>,
   audienceProfile?: ProgrammingAudienceProfile | null,
+  limit = 3,
 ) {
   const scoreBySkill = new Map<PlaySessionSkillLevel, number>()
   for (const [skill, score] of Array.from(skillDemand.entries())) {
@@ -1048,7 +1052,7 @@ function getTopSkills(
       ...ranked.filter((skill) => includeAllLevels || skill !== 'ALL_LEVELS'),
       ...fallback,
     ]),
-  ).slice(0, 3)
+  ).slice(0, Math.max(1, limit))
 }
 
 function getPrimarySlotCombo(opts: {
@@ -1207,8 +1211,18 @@ function buildGapFillProposals(opts: {
   behaviorProfile?: ProgrammingBehaviorProfile | null
 }): AdvisorProgrammingProposalDraft[] {
   const proposals: AdvisorProgrammingProposalDraft[] = []
-  const candidateFormats = getTopFormats(opts.formatDemand)
-  const candidateSkills = getTopSkills(opts.skillDemand, opts.audienceProfile)
+  const exploratoryLargeClub =
+    (opts.courtCount || 0) >= 8 &&
+    (opts.behaviorProfile?.maxExperimentalSlots || 0) >= 4
+  const candidateFormats = getTopFormats(
+    opts.formatDemand,
+    exploratoryLargeClub ? 5 : 3,
+  )
+  const candidateSkills = getTopSkills(
+    opts.skillDemand,
+    opts.audienceProfile,
+    exploratoryLargeClub ? 4 : 3,
+  )
   const hasFormatSignals = sumMapValues(opts.formatDemand) > 0
   const hasSkillSignals = sumMapValues(opts.skillDemand) > 0
   const peakFormatSignal = maxMapValue(opts.formatDemand)
