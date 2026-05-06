@@ -131,15 +131,25 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
     description: 'Focus on empty court time and improve court utilization.',
     goalDeltas: { utilization: 12, operationalFit: 4 },
     behaviorDeltas: {
-      selectionScoreFloor: -2,
-      experimentalScoreFloor: -2,
-      maxExperimentalSlots: 3,
-      fillGapMinDemand: -1,
-      existingSlotMinOccupancy: -8,
-      noSupplyHistoricalScore: 4,
-      offPeakExplorationBonus: 6,
-      emptyWindowExplorationBonus: 4,
-      saturationCapMultiplier: 0.12,
+      // Fill-idle should be materially more permissive than auto mode.
+      // The previous profile only nudged the scorer and still skipped most
+      // low-signal morning/afternoon gaps on dense clubs, which made the
+      // preset feel inert. Lower the demand gate, widen the experimental
+      // budget, and soften portfolio penalties so empty windows can surface.
+      selectionScoreFloor: -4,
+      experimentalScoreFloor: -8,
+      maxExperimentalSlots: 5,
+      fillGapMinDemand: -2,
+      existingSlotMinOccupancy: -14,
+      noSupplyHistoricalScore: 8,
+      offPeakExplorationBonus: 10,
+      emptyWindowExplorationBonus: 8,
+      saturationCapMultiplier: 0.15,
+      sameFormatSkillPenalty: -2,
+      sameFormatPenalty: -2,
+      sameWindowPenalty: -4,
+      portfolioPenaltyMultiplier: -0.08,
+      secondCourtDuplicationThreshold: -4,
     },
     keywords: ['idle', 'empty', 'utilization', 'morning', 'weekday morning', 'fill'],
   },

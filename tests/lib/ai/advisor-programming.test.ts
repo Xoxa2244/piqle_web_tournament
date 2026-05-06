@@ -397,6 +397,77 @@ describe('advisor programming planning', () => {
     expect(hasTuesdayMorning(experimentalPlan)).toBe(true)
   })
 
+  it('lets Fill idle hours surface multiple low-demand off-peak windows that auto mode skips', () => {
+    const lowDemandPreferences = [
+      ...Array.from({ length: 2 }, () => ({
+        preferredDays: ['Tuesday'],
+        preferredTimeMorning: true,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: false,
+        skillLevel: 'BEGINNER' as const,
+        preferredFormats: ['Clinic'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+      ...Array.from({ length: 2 }, () => ({
+        preferredDays: ['Thursday'],
+        preferredTimeMorning: false,
+        preferredTimeAfternoon: true,
+        preferredTimeEvening: false,
+        skillLevel: 'INTERMEDIATE' as const,
+        preferredFormats: ['Social'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+      ...Array.from({ length: 2 }, () => ({
+        preferredDays: ['Friday'],
+        preferredTimeMorning: true,
+        preferredTimeAfternoon: false,
+        preferredTimeEvening: false,
+        skillLevel: 'BEGINNER' as const,
+        preferredFormats: ['Drill'],
+        targetSessionsPerWeek: 1,
+        notificationsOptOut: false,
+      })),
+    ]
+    const baseInput = {
+      sessions: [] as any[],
+      preferences: lowDemandPreferences,
+      audienceProfile: null,
+      courtCount: 4,
+      limit: 20,
+    }
+
+    const defaultPlan = buildAdvisorProgrammingPlan(baseInput)
+    const fillIdleProfile = computeProgrammingStrategyProfile({
+      selectedPresetIds: ['FILL_IDLE_HOURS'],
+      inferredPresetIds: [],
+      hasRequest: false,
+    })
+    const fillIdlePlan = buildAdvisorProgrammingPlan({
+      ...baseInput,
+      behaviorProfile: fillIdleProfile.behaviorProfile,
+    })
+
+    const targetedWindows = new Set([
+      'Tuesday|morning',
+      'Thursday|afternoon',
+      'Friday|morning',
+    ])
+    const countTargetedGapWindows = (plan: ReturnType<typeof buildAdvisorProgrammingPlan>) =>
+      new Set(
+        plan.proposals
+          .filter((proposal) =>
+            proposal.source === 'fill_gap'
+            && targetedWindows.has(`${proposal.dayOfWeek}|${proposal.timeSlot}`),
+          )
+          .map((proposal) => `${proposal.dayOfWeek}|${proposal.timeSlot}`),
+      ).size
+
+    expect(countTargetedGapWindows(defaultPlan)).toBe(0)
+    expect(countTargetedGapWindows(fillIdlePlan)).toBe(3)
+  })
+
   it('raises court pressure risk when the club has limited active courts', () => {
     const plan = buildAdvisorProgrammingPlan({
       sessions: [
