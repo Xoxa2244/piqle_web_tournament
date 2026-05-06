@@ -356,7 +356,8 @@ export function ProgrammingGrid({
           const bucket = byCourt.get(c.id)
           const liveCount = bucket?.live.length || 0
           const readyCount = bucket?.draft.filter((draft) => getDraftCellKind(draft) === 'suggested').length || 0
-          const riskCount = bucket?.draft.filter((draft) => getDraftCellKind(draft) === 'saturation').length || 0
+          const backupCount = bucket?.draft.filter((draft) => getDraftCellKind(draft) === 'risk').length || 0
+          const saturationCount = bucket?.draft.filter((draft) => getDraftCellKind(draft) === 'saturation').length || 0
           return (
             <button
               key={c.id}
@@ -375,7 +376,9 @@ export function ProgrammingGrid({
               {c.isIndoor ? <Building2 className="w-3.5 h-3.5" /> : <MapPin className="w-3.5 h-3.5" />}
               {c.name}
               <span className="text-[10px] opacity-70">
-                ({liveCount} pub · {readyCount} ready{riskCount > 0 ? ` · ${riskCount} risk` : ''})
+                ({liveCount} pub · {readyCount} ready
+                {backupCount > 0 ? ` · ${backupCount} backup` : ''}
+                {saturationCount > 0 ? ` · ${saturationCount} risk` : ''})
               </span>
             </button>
           )
@@ -508,6 +511,12 @@ export function ProgrammingGrid({
           icon={<Sparkles className="w-3 h-3" style={{ color: '#A78BFA' }} />}
           title="Suggested session"
           description="Publish-ready draft recommended by Programming IQ."
+        />
+        <LegendItem
+          swatchStyle={{ background: 'rgba(251,191,36,0.10)', border: '1.5px dashed rgba(251,191,36,0.50)' }}
+          icon={<AlertTriangle className="w-3 h-3" style={{ color: '#D97706' }} />}
+          title="Backup idea"
+          description="Weaker historical signal but covers an empty court — review before publishing."
         />
         <LegendItem
           swatchStyle={{ background: 'rgba(245,158,11,0.14)', border: '1.5px dashed rgba(245,158,11,0.55)' }}

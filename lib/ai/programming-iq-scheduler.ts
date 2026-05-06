@@ -1658,11 +1658,25 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const maxRisk = strategyProfile.behaviorProfile.maxRiskCells
   if (riskFloor > 0 && maxRisk > 0 && eligible.length < selectionTargetCount) {
     const eligibleIds = new Set(eligible.map((p) => p.id))
+    // Score candidates against an EMPTY selected set, not `eligible`.
+    // The greedy score function applies diversity penalties
+    // (sameFormatPenalty, sameWindowPenalty, sameFormatSkillPenalty,
+    // portfolioPenaltyMultiplier) relative to whatever is in the
+    // "selected" array. If we pass `eligible` (the already-chosen
+    // suggested cells), every remaining candidate that resembles one
+    // of them gets penalised — which on a moderately-diverse club
+    // pushes most leftovers below riskFloor and yields 0 risk cells.
+    //
+    // The risk pass exists precisely to fill empty slots with
+    // weaker-but-plausible *similar* ideas. So we score each candidate
+    // on its own merit (no diversity penalty) to decide whether it
+    // qualifies for the risk band, then defer to the bin-packer to
+    // place them on whatever empty courts remain.
     const remainingForRisk = expanded
       .filter((p) => !eligibleIds.has(p.id))
       .map((p) => ({
         proposal: p,
-        score: getGreedySelectionScore(p, eligible, scoringContext),
+        score: getGreedySelectionScore(p, [], scoringContext),
       }))
       .filter(({ score }) =>
         score >= riskFloor
