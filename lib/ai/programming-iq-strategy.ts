@@ -46,6 +46,14 @@ export type ProgrammingBehaviorProfile = {
   primeOpenPlayPenalty: number
   portfolioPenaltyMultiplier: number
   secondCourtDuplicationThreshold: number
+  /** 2026-05-06 (risk pass): score range [riskScoreFloor, selectionScoreFloor)
+   *  promotes a candidate to a `risk` cell instead of dropping it. Empty
+   *  slots get filled with weaker-but-plausible ideas, marked yellow in
+   *  the UI so admin can evaluate. Set <= 0 to disable risk pass entirely. */
+  riskScoreFloor: number
+  /** Cap on how many risk cells per generated grid. Prevents flooding a
+   *  small underdeveloped club with 100 weak ideas. */
+  maxRiskCells: number
 }
 
 export type ProgrammingPresetDefinition = {
@@ -107,6 +115,10 @@ const BASE_BEHAVIOR_PROFILE: ProgrammingBehaviorProfile = {
   primeOpenPlayPenalty: 12,
   portfolioPenaltyMultiplier: 1,
   secondCourtDuplicationThreshold: 92,
+  // Risk pass — see ProgrammingBehaviorProfile.riskScoreFloor doc.
+  // Default 42: candidates with [42, 62) get surfaced as `risk` cells.
+  riskScoreFloor: 42,
+  maxRiskCells: 80,
 }
 
 const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
@@ -150,6 +162,11 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
       sameWindowPenalty: -4,
       portfolioPenaltyMultiplier: -0.08,
       secondCourtDuplicationThreshold: -4,
+      // Plus aggressive risk pass — lower the risk floor and lift the
+      // cap so underdeveloped slots get covered with weaker-but-plausible
+      // ideas surfaced as amber `risk` cells (separate from `suggested`).
+      riskScoreFloor: -8,
+      maxRiskCells: 40,
     },
     keywords: ['idle', 'empty', 'utilization', 'morning', 'weekday morning', 'fill'],
   },
@@ -486,6 +503,10 @@ function normalizeBehaviorProfile(profile: ProgrammingBehaviorProfile): Programm
     primeOpenPlayPenalty: clamp(Math.round(profile.primeOpenPlayPenalty), 6, 24),
     portfolioPenaltyMultiplier: clamp(roundBehavior(profile.portfolioPenaltyMultiplier), 0.85, 1.3),
     secondCourtDuplicationThreshold: clamp(Math.round(profile.secondCourtDuplicationThreshold), 84, 98),
+    // Allow [0, selectionScoreFloor) — 0 disables, lower bound bottoms
+    // out at "20" so we never surface obviously-wrong filler.
+    riskScoreFloor: clamp(Math.round(profile.riskScoreFloor), 0, 60),
+    maxRiskCells: clamp(Math.round(profile.maxRiskCells), 0, 200),
   }
 }
 

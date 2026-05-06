@@ -105,7 +105,7 @@ export interface SchedulerContactPolicy {
   inviteCapPerMemberPerWeek: number
 }
 
-export type GridCellKind = 'live' | 'suggested' | 'empty' | 'conflict' | 'saturation'
+export type GridCellKind = 'live' | 'suggested' | 'risk' | 'empty' | 'conflict' | 'saturation'
 
 export interface GridCell {
   /** Stable key for React: `${courtId}__${dayOfWeek}__${startTime}`. */
@@ -224,6 +224,10 @@ export interface BuildWeeklyGridResult {
   stats: {
     liveKept: number
     suggested: number
+    /** Cells emitted by the risk pass — weaker signal, admin should
+     *  evaluate before publish. Counted separately from `suggested` so
+     *  the UI can call out volume from each tier. */
+    risk: number
     empty: number
     conflicts: number
     saturations: number
@@ -1639,9 +1643,45 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   )
   const duplicateVariantsAdded = expanded.filter((proposal) => proposal.id.endsWith('__dup')).length
 
+  // 3.5. Risk pass — for clubs / weeks where the strict greedy under-
+  //      delivers (e.g. moderate history + dominant single-format like
+  //      80% Open Play), promote weaker-but-plausible candidates to
+  //      `risk` cells instead of leaving the grid mostly empty. Score
+  //      window: [riskScoreFloor, selectionScoreFloor). Capped at
+  //      maxRiskCells (and never overshoots targetCount overall).
+  //
+  //      Disabled when riskScoreFloor <= 0 or maxRiskCells <= 0 (e.g.
+  //      via preset deltas) — keeps the door open to opt out of risk
+  //      surfacing on small clubs that don't need volume.
+  const riskCandidates: AdvisorProgrammingProposalDraft[] = []
+  const riskFloor = strategyProfile.behaviorProfile.riskScoreFloor
+  const maxRisk = strategyProfile.behaviorProfile.maxRiskCells
+  if (riskFloor > 0 && maxRisk > 0 && eligible.length < selectionTargetCount) {
+    const eligibleIds = new Set(eligible.map((p) => p.id))
+    const remainingForRisk = expanded
+      .filter((p) => !eligibleIds.has(p.id))
+      .map((p) => ({
+        proposal: p,
+        score: getGreedySelectionScore(p, eligible, scoringContext),
+      }))
+      .filter(({ score }) =>
+        score >= riskFloor
+        && score < scoringContext.behaviorProfile.selectionScoreFloor,
+      )
+      .sort((a, b) => b.score - a.score)
+      .slice(0, Math.min(maxRisk, selectionTargetCount - eligible.length))
+
+    for (const { proposal } of remainingForRisk) {
+      riskCandidates.push(proposal)
+    }
+  }
+  const riskIds = new Set(riskCandidates.map((p) => p.id))
+
   // 4. Bin-pack onto courts.
+  // Eligible go first (priority placement); risk candidates compete for
+  // remaining slots only — they don't displace `suggested` cells.
   const assignments = assignCourtsToProposals(
-    eligible,
+    [...eligible, ...riskCandidates],
     input.courts,
     input.existingWeekSessions,
     input.historicalSessions,
@@ -1652,11 +1692,13 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const assignmentNoCourtCount = assignments.filter((assignment) => assignment.failed === 'no_court').length
   const assignmentOutsideHoursCount = assignments.filter((assignment) => assignment.failed === 'outside_hours').length
 
-  // 5. Emit suggested cells for successful assignments.
+  // 5. Emit suggested / risk cells for successful assignments.
   const cells: GridCell[] = []
   let suggestedCount = 0
+  let riskCount = 0
   let conflictCount = 0
   for (const a of assignments) {
+    const isRisk = riskIds.has(a.proposal.id)
     if (a.failed) {
       // Proposal couldn't be placed — keep it as an off-grid idea so the
       // admin still sees the demand signal and the reason it stayed out
@@ -1688,9 +1730,18 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       conflictCount += 1
       continue
     }
+    const baseRationale = a.usedHoursFallback
+      ? [
+          ...a.proposal.rationale,
+          'Placed on an active court using relaxed availability because no historical court-hours signal covered this window.',
+        ]
+      : a.proposal.rationale
+    const baseWarnings = a.proposal.conflict && a.proposal.conflict.overallRisk !== 'low'
+      ? [a.proposal.conflict.riskSummary, ...a.proposal.conflict.warnings]
+      : []
     cells.push({
       key: `${a.courtId}__${a.proposal.dayOfWeek}__${a.proposal.startTime}`,
-      kind: 'suggested',
+      kind: isRisk ? 'risk' : 'suggested',
       courtId: a.courtId,
       courtName: a.courtName,
       dayOfWeek: a.proposal.dayOfWeek,
@@ -1703,19 +1754,23 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       projectedOccupancy: a.proposal.projectedOccupancy,
       estimatedInterestedMembers: a.proposal.estimatedInterestedMembers,
       confidence: a.proposal.confidence,
-      rationale: a.usedHoursFallback
+      rationale: isRisk
         ? [
-            ...a.proposal.rationale,
-            'Placed on an active court using relaxed availability because no historical court-hours signal covered this window.',
+            ...baseRationale,
+            'Lower-confidence idea promoted by the risk pass — historical signal is moderate. Review before publishing.',
           ]
-        : a.proposal.rationale,
-      warnings: a.proposal.conflict && a.proposal.conflict.overallRisk !== 'low'
-        ? [a.proposal.conflict.riskSummary, ...a.proposal.conflict.warnings]
-        : [],
+        : baseRationale,
+      warnings: isRisk
+        ? ['Weaker historical signal — verify demand before publishing', ...baseWarnings]
+        : baseWarnings,
       requestedByAdmin: requestedProposalIds.has(a.proposal.id),
       liveOptimization: liveOptimizations.byProposalId.get(a.proposal.id) || null,
     })
-    suggestedCount += 1
+    if (isRisk) {
+      riskCount += 1
+    } else {
+      suggestedCount += 1
+    }
   }
 
   // 6. Emit live cells (read-only in UI) from existing week sessions.
@@ -1941,6 +1996,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     stats: {
       liveKept,
       suggested: suggestedCount,
+      risk: riskCount,
       empty: 0,
       conflicts: conflictCount,
       saturations: saturationCount,
