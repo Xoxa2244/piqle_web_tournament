@@ -801,20 +801,11 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
         />
       )}
 
-      {/* B-track: ready-made campaign templates. Card click opens the
-          Wizard with format/goal/message pre-filled — admin only picks
-          the audience. Distinct from AI-Recommended Campaigns below
-          (which propose specific real audiences). */}
-      <PlaybookGrid
-        onSelect={(playbook) => {
-          setWizardInitialPlaybook(playbook)
-          setShowWizard(true)
-        }}
-      />
-
-      {/* P1-T4: AI-Recommended Campaigns lifted to top — first content block.
-          P2-T9: "Preview & Launch" now opens the new CampaignWizard with the
-          mapped Goal pre-filled (was opening the deprecated CampaignCreator). */}
+      {/* P1-T4: AI-Recommended Campaigns — moved to top of content stack
+          (above Playbooks) because it carries data-driven $ impact for
+          this specific club, vs. Playbooks which are generic templates.
+          "Preview & Launch" opens CampaignWizard with the mapped Goal
+          pre-filled. */}
       <CampaignSuggestions
         clubId={clubId}
         onSelectType={(type) => {
@@ -829,6 +820,19 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
             NEW_MEMBER_WELCOME: 'onboard_new',
           }
           setWizardInitialGoal(map[type] ?? 'custom')
+          setShowWizard(true)
+        }}
+      />
+
+      {/* B-track: ready-made campaign templates. Card click opens the
+          Wizard with format/goal/message pre-filled — admin only picks
+          the audience. Below AI-Recommended because it's a generic
+          template library, not a specific data-backed proposal.
+          Compact "starter library" presentation, distinct from the
+          highlighted AI-Recommended block above. */}
+      <PlaybookGrid
+        onSelect={(playbook) => {
+          setWizardInitialPlaybook(playbook)
           setShowWizard(true)
         }}
       />

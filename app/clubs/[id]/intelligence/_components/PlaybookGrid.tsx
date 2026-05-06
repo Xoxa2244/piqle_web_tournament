@@ -10,30 +10,23 @@
  * message all pre-populated. Admin only picks the audience and
  * tweaks copy if they want.
  *
- * Card styling intentionally distinct from AI-Recommended Campaigns
- * (which suggest specific real audiences). Playbooks are templates,
- * not recommendations.
+ * Visually positioned as a secondary "starter library" — sits below
+ * AI-Recommended Campaigns (which carry data-driven $ impact and
+ * deserve the spotlight). Compact cards, monochrome muted treatment,
+ * dense 5-up grid on desktop so the whole library fits one row and
+ * doesn't compete with the AI-Recommended block above.
  */
 
-import { Gift, Mail, RefreshCw, Calendar, TrendingUp, Sparkles, ChevronRight } from 'lucide-react'
+import { Gift, Calendar, RefreshCw, Sparkles, Send, BookOpen, ChevronRight, type LucideIcon } from 'lucide-react'
 import { PLAYBOOKS, type Playbook } from './CampaignWizard/playbooks'
 
-const ICON_COMPONENTS: Record<Playbook['icon'], typeof Gift> = {
+const ICON_COMPONENTS: Record<Playbook['icon'], LucideIcon> = {
   gift: Gift,
-  mail: Mail,
+  mail: Send,
   refresh: RefreshCw,
   calendar: Calendar,
-  'trending-up': TrendingUp,
+  'trending-up': Send,
   sparkles: Sparkles,
-}
-
-const ICON_COLORS: Record<Playbook['icon'], string> = {
-  gift: '#F472B6',
-  mail: '#A78BFA',
-  refresh: '#67E8F9',
-  calendar: '#FBBF24',
-  'trending-up': '#34D399',
-  sparkles: '#A78BFA',
 }
 
 interface PlaybookGridProps {
@@ -44,66 +37,65 @@ interface PlaybookGridProps {
 
 export function PlaybookGrid({ onSelect }: PlaybookGridProps) {
   return (
-    <div className="rounded-2xl p-5" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h2 className="text-base font-bold" style={{ color: 'var(--heading)' }}>
-            Start from a playbook
+    <div
+      className="rounded-2xl p-4"
+      style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+    >
+      <div className="flex items-center gap-2 mb-3">
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: 'rgba(148,163,184,0.14)' }}
+        >
+          <BookOpen className="w-3.5 h-3.5" style={{ color: 'var(--t3)' }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-bold" style={{ color: 'var(--heading)' }}>
+            Template library
           </h2>
-          <p className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>
-            Ready-made scenarios — click one and the wizard opens with format, goal, and message pre-filled. You only pick the audience.
+          <p className="text-[11px]" style={{ color: 'var(--t4)' }}>
+            Generic starting points — pick a shape, then choose the audience yourself. Use these when you already know what you want to send.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
         {PLAYBOOKS.map((p) => {
           const Icon = ICON_COMPONENTS[p.icon]
-          const iconColor = ICON_COLORS[p.icon]
           const isSequence = p.schedule.format === 'sequence'
-          const stepCount = (p.message.steps?.length ?? 0)
+          const stepCount = p.message.steps?.length ?? 0
           return (
             <button
               key={p.id}
               onClick={() => onSelect(p)}
-              className="text-left rounded-xl p-3 transition-all hover:scale-[1.01] hover:border-purple-400/40"
+              className="group flex flex-col gap-1.5 text-left rounded-lg p-2.5 transition-all hover:border-purple-400/40"
               style={{
                 background: 'var(--subtle)',
                 border: '1px solid var(--card-border)',
               }}
+              title={p.description}
             >
-              <div className="flex items-start gap-2.5">
-                <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                  style={{ background: `${iconColor}22` }}
-                >
-                  <Icon className="w-4 h-4" style={{ color: iconColor }} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <h3 className="text-sm font-bold leading-tight" style={{ color: 'var(--heading)' }}>{p.title}</h3>
-                  </div>
-                  <p className="text-[11px] leading-relaxed mb-2" style={{ color: 'var(--t3)' }}>
-                    {p.description}
-                  </p>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span
-                      className="px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider"
-                      style={{
-                        background: isSequence ? 'rgba(139,92,246,0.16)' : 'rgba(148,163,184,0.16)',
-                        color: isSequence ? '#A78BFA' : 'var(--t3)',
-                        fontWeight: 700,
-                      }}
-                    >
-                      {isSequence ? `Sequence · ${stepCount} steps` : 'One-time'}
-                    </span>
-                    <span className="text-[10px]" style={{ color: 'var(--t4)' }}>
-                      {p.audienceHint}
-                    </span>
-                  </div>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 mt-1 shrink-0" style={{ color: 'var(--t4)' }} />
+              <div className="flex items-center justify-between">
+                <Icon className="w-3.5 h-3.5" style={{ color: 'var(--t3)' }} />
+                <ChevronRight
+                  className="w-3 h-3 opacity-0 transition-opacity group-hover:opacity-60"
+                  style={{ color: 'var(--t3)' }}
+                />
               </div>
+              <h3
+                className="text-[12px] font-semibold leading-tight"
+                style={{ color: 'var(--heading)' }}
+              >
+                {p.title}
+              </h3>
+              <span
+                className="text-[9px] uppercase tracking-wider"
+                style={{
+                  color: 'var(--t4)',
+                  fontWeight: 600,
+                }}
+              >
+                {isSequence ? `Sequence · ${stepCount}` : 'One-time'}
+              </span>
             </button>
           )
         })}
