@@ -244,6 +244,28 @@ export interface BuildWeeklyGridResult {
       description: string
       source: 'selected' | 'inferred'
     }>
+    pipelineDebug: {
+      targetSuggestionCount: number
+      plannerLimit: number
+      upstreamProposals: {
+        total: number
+        expandPeak: number
+        fillGap: number
+      }
+      duplicateVariantsAdded: number
+      selectedPortfolioCount: number
+      assignments: {
+        placed: number
+        noCourt: number
+        outsideHours: number
+      }
+      finalDrafts: {
+        publishReady: number
+        backup: number
+        unplaced: number
+      }
+      liveOptimizationCandidates: number
+    }
     requestPriorityNote: string | null
     requestSummary: {
       requestedIdeas: number
@@ -885,6 +907,22 @@ function getSuggestionVariantSignature(proposal: Pick<
   return `${proposal.dayOfWeek}__${proposal.startTime}__${proposal.format}__${proposal.skillLevel}`
 }
 
+function countProposalSources(proposals: AdvisorProgrammingProposalDraft[]) {
+  let expandPeak = 0
+  let fillGap = 0
+
+  for (const proposal of proposals) {
+    if (proposal.source === 'fill_gap') fillGap += 1
+    else expandPeak += 1
+  }
+
+  return {
+    total: proposals.length,
+    expandPeak,
+    fillGap,
+  }
+}
+
 function getConflictPenalty(proposal: AdvisorProgrammingProposalDraft) {
   const conflict = proposal.conflict
   if (!conflict) return 0
@@ -1473,6 +1511,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const generationId = randomUUID()
   const activeCourts = input.courts.filter((c) => c.isActive)
   const targetCount = input.targetSuggestionCount ?? Math.max(10, activeCourts.length * 6)
+  const plannerLimit = Math.max(200, targetCount * 4)
   const regenerateRequest = input.regeneratePrompt?.trim()
     ? parseAdvisorProgrammingRequest(input.regeneratePrompt)
     : null
@@ -1494,7 +1533,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     interestRequests: input.interestRequests,
     audienceProfile: input.audienceProfile,
     request: regenerateRequest,
-    limit: Math.max(200, targetCount * 4),
+    limit: plannerLimit,
     courtCount: activeCourts.length,
     strategyPresetIds: strategyProfile.appliedPresets.map((preset) => preset.id),
     behaviorProfile: strategyProfile.behaviorProfile,
@@ -1523,6 +1562,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   if (input.regenerateHint) {
     rankedProposals = applyRegenerateHint(rankedProposals, input.regenerateHint)
   }
+  const upstreamProposals = countProposalSources(rankedProposals)
   const requestedProposals = plan.requestedAlternates?.length
     ? plan.requestedAlternates
     : plan.requested
@@ -1597,6 +1637,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       pinnedProposalIds: new Set(pinnedProposalIds),
     },
   )
+  const duplicateVariantsAdded = expanded.filter((proposal) => proposal.id.endsWith('__dup')).length
 
   // 4. Bin-pack onto courts.
   const assignments = assignCourtsToProposals(
@@ -1607,6 +1648,9 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     input.weekStartDate,
     input.timezone,
   )
+  const assignmentPlacedCount = assignments.filter((assignment) => !assignment.failed).length
+  const assignmentNoCourtCount = assignments.filter((assignment) => assignment.failed === 'no_court').length
+  const assignmentOutsideHoursCount = assignments.filter((assignment) => assignment.failed === 'outside_hours').length
 
   // 5. Emit suggested cells for successful assignments.
   const cells: GridCell[] = []
@@ -1784,9 +1828,33 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const publishReadyCount = cells.filter((cell) => cell.kind === 'suggested').length
   const backupCount = cells.filter((cell) => cell.kind === 'saturation').length
   const unplacedCount = cells.filter((cell) => cell.kind === 'conflict').length
+  const pipelineDebug = {
+    targetSuggestionCount: targetCount,
+    plannerLimit,
+    upstreamProposals,
+    duplicateVariantsAdded,
+    selectedPortfolioCount: eligible.length,
+    assignments: {
+      placed: assignmentPlacedCount,
+      noCourt: assignmentNoCourtCount,
+      outsideHours: assignmentOutsideHoursCount,
+    },
+    finalDrafts: {
+      publishReady: publishReadyCount,
+      backup: backupCount,
+      unplaced: unplacedCount,
+    },
+    liveOptimizationCandidates: liveOptimizations.candidates.length,
+  }
   const requestPlacedCount = requestedCells.filter((cell) => cell.kind === 'suggested').length
   const requestBackupCount = requestedCells.filter((cell) => cell.kind === 'saturation').length
   const requestUnplacedCount = requestedCells.filter((cell) => cell.kind === 'conflict').length
+  const lowVolumeThreshold = Math.ceil(targetCount * 0.5)
+  if (targetCount >= 12 && publishReadyCount + backupCount < lowVolumeThreshold) {
+    insights.unshift(
+      `Pipeline diagnostics: ${upstreamProposals.total} upstream idea${upstreamProposals.total === 1 ? '' : 's'} (${upstreamProposals.fillGap} gap-fill, ${upstreamProposals.expandPeak} expand-peak), ${eligible.length} cleared portfolio selection, ${assignmentPlacedCount} placed on courts, ${backupCount} moved to backup, ${unplacedCount} left unplaced.`,
+    )
+  }
   let strongestRequestEval: ProgrammingRequestEvaluation | null = requestEvaluations
     .slice()
     .sort((left, right) => right.score - left.score)[0] || null
@@ -1887,6 +1955,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     },
     summary: {
       appliedPresets: strategyProfile.appliedPresets,
+      pipelineDebug,
       requestPriorityNote: regenerateRequest
         ? describeProgrammingRequestPriority(strategyProfile.requestPriority)
         : null,

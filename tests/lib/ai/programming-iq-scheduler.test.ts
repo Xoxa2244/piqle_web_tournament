@@ -468,6 +468,52 @@ describe('buildWeeklyGrid — smoke', () => {
     expect(out.insights.join(' ')).toContain('member profile data')
   })
 
+  it('returns pipeline diagnostics when suggestion volume stays far below target', () => {
+    const manyCourts: SchedulerCourt[] = Array.from({ length: 12 }, (_, index) => ({
+      id: `court-many-${index}`,
+      name: `Court ${index + 1}`,
+      isIndoor: index % 2 === 0,
+      isActive: true,
+    }))
+
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: manyCourts,
+      historicalSessions: [],
+      existingWeekSessions: [],
+      lastNDaysSessions: [],
+      preferences: [],
+      interestRequests: [],
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 40,
+    })
+
+    expect(out.stats.suggested).toBe(0)
+    expect(out.summary.pipelineDebug).toEqual({
+      targetSuggestionCount: 40,
+      plannerLimit: 200,
+      upstreamProposals: {
+        total: 0,
+        expandPeak: 0,
+        fillGap: 0,
+      },
+      duplicateVariantsAdded: 0,
+      selectedPortfolioCount: 0,
+      assignments: {
+        placed: 0,
+        noCourt: 0,
+        outsideHours: 0,
+      },
+      finalDrafts: {
+        publishReady: 0,
+        backup: 0,
+        unplaced: 0,
+      },
+      liveOptimizationCandidates: 0,
+    })
+    expect(out.insights.join(' ')).toContain('Pipeline diagnostics: 0 upstream ideas')
+  })
+
   it('treats plain regenerate as a nearby variant instead of replaying the exact same mix', () => {
     const out = buildWeeklyGrid({
       weekStartDate: new Date('2026-04-27'),
