@@ -53,9 +53,14 @@ export function CellEditPopover(props: CellEditPopoverProps) {
   )
 }
 
-function getDraftCellKind(draft: GridDraft): 'suggested' | 'saturation' | 'conflict' {
+function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'saturation' | 'conflict' {
   const explicitKind = draft.metadata?.cellKind
-  if (explicitKind === 'suggested' || explicitKind === 'saturation' || explicitKind === 'conflict') {
+  if (
+    explicitKind === 'suggested'
+    || explicitKind === 'risk'
+    || explicitKind === 'saturation'
+    || explicitKind === 'conflict'
+  ) {
     return explicitKind
   }
   if (!draft.courtId) return 'conflict'
