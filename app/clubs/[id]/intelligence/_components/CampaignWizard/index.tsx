@@ -339,6 +339,7 @@ export function CampaignWizard({
   const handleLaunch = async () => {
     if (liveMode !== 'live') return
     if (!state.audience || !state.goal) return
+    if (state.schedule.format !== 'one_time') return
     setIsLaunching(true)
     try {
       // Build audience input. cohortId wins if available; otherwise use the
@@ -389,6 +390,7 @@ export function CampaignWizard({
   const launchDisabled = step !== 4
     || !state.audience
     || !state.goal
+    || state.schedule.format !== 'one_time'
     || liveMode !== 'live'
     || isLaunching
     || launchMutation.isPending
