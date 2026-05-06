@@ -235,6 +235,15 @@ export function CampaignWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedCohorts.length])
 
+  useEffect(() => {
+    if (state.audience?.kind !== 'ai_suggested' || state.schedule.format !== 'recurring') return
+    setState((s) => (
+      s.audience?.kind === 'ai_suggested' && s.schedule.format === 'recurring'
+        ? { ...s, schedule: { ...s.schedule, format: 'one_time' } }
+        : s
+    ))
+  }, [state.audience?.kind, state.schedule.format])
+
   const canAdvance = (() => {
     if (step === 1) return !!state.audience
     if (step === 2) return !!state.goal
@@ -504,6 +513,7 @@ export function CampaignWizard({
               />
             ) : step === 3 ? (
               <Step3Schedule
+                audienceKind={state.audience?.kind ?? null}
                 schedule={state.schedule}
                 onChange={(schedule: ScheduleSettings) => setState((s) => ({ ...s, schedule }))}
               />

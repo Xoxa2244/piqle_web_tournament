@@ -16,7 +16,7 @@
  */
 
 import { Send, Calendar, Zap, Mail, MessageSquare, Layers, Repeat } from 'lucide-react'
-import type { ScheduleSettings, SendFormat, RecurringFrequency } from './types'
+import type { AudienceSourceKind, ScheduleSettings, SendFormat, RecurringFrequency } from './types'
 import { buildRecurringCron } from './types'
 
 /** Curated dropdown of timezones admins are likely to need. UTC at the
@@ -45,7 +45,48 @@ const TIMEZONE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'Pacific/Auckland', label: 'Auckland' },
 ]
 
+const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const
+
+function padHour(hour: number) {
+  return `${String(hour).padStart(2, '0')}:00`
+}
+
+function ordinalDay(day: number) {
+  const mod100 = day % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${day}th`
+  switch (day % 10) {
+    case 1: return `${day}st`
+    case 2: return `${day}nd`
+    case 3: return `${day}rd`
+    default: return `${day}th`
+  }
+}
+
+function getTimezoneLabel(timezone: string) {
+  return TIMEZONE_OPTIONS.find((option) => option.value === timezone)?.label ?? timezone
+}
+
+function describeRecurringSchedule(schedule: ScheduleSettings) {
+  const timezone = schedule.recurringTimezone ?? 'UTC'
+  const time = padHour(Math.max(0, Math.min(23, schedule.recurringHour ?? 9)))
+
+  switch (schedule.recurringFrequency) {
+    case 'daily':
+      return `Runs every day at ${time} (${getTimezoneLabel(timezone)}).`
+    case 'monthly': {
+      const day = Math.max(1, Math.min(28, schedule.recurringDayOfMonth ?? 1))
+      return `Runs on the ${ordinalDay(day)} of every month at ${time} (${getTimezoneLabel(timezone)}).`
+    }
+    case 'weekly':
+    default: {
+      const dayOfWeek = Math.max(0, Math.min(6, schedule.recurringDayOfWeek ?? 1))
+      return `Runs every ${WEEKDAY_LABELS[dayOfWeek]} at ${time} (${getTimezoneLabel(timezone)}).`
+    }
+  }
+}
+
 interface Step3Props {
+  audienceKind?: AudienceSourceKind | null
   schedule: ScheduleSettings
   onChange: (next: ScheduleSettings) => void
 }
@@ -78,7 +119,13 @@ const FORMAT_OPTIONS: Array<{
   },
 ]
 
-export function Step3Schedule({ schedule, onChange }: Step3Props) {
+export function Step3Schedule({ audienceKind, schedule, onChange }: Step3Props) {
+  const recurringCron = buildRecurringCron(schedule)
+  const recurringSummary = describeRecurringSchedule(schedule)
+  const recurringDisabledReason = audienceKind === 'ai_suggested'
+    ? 'Recurring campaigns are currently available only for saved cohorts.'
+    : null
+
   return (
     <div className="space-y-5">
       <div>
@@ -92,33 +139,36 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
         <div className="grid sm:grid-cols-3 gap-2">
           {FORMAT_OPTIONS.map(({ key, label, hint, icon: Icon, disabled, comingSoon }) => {
             const active = schedule.format === key
+            const disabledReason = key === 'recurring' ? recurringDisabledReason : null
+            const isDisabled = disabled || !!disabledReason
             return (
-              <button
-                key={key}
-                onClick={() => !disabled && onChange({ ...schedule, format: key })}
-                disabled={disabled}
-                className="relative text-left rounded-xl p-3 transition-all flex flex-col gap-1"
-                style={{
-                  background: active ? 'rgba(139,92,246,0.08)' : 'var(--card-bg)',
-                  border: `1px solid ${active ? '#8B5CF6' : 'var(--card-border)'}`,
-                  opacity: disabled ? 0.55 : 1,
-                  cursor: disabled ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {comingSoon && (
-                  <span
-                    className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider"
-                    style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontWeight: 700 }}
-                  >
-                    Soon
-                  </span>
-                )}
-                <div className="flex items-center gap-2">
-                  <Icon className="w-4 h-4" style={{ color: active ? '#A78BFA' : 'var(--t3)' }} />
-                  <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>{label}</span>
-                </div>
-                <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t4)' }}>{hint}</p>
-              </button>
+              <div key={key} title={disabledReason ?? undefined} className="h-full">
+                <button
+                  onClick={() => !isDisabled && onChange({ ...schedule, format: key })}
+                  disabled={isDisabled}
+                  className="relative text-left rounded-xl p-3 transition-all flex h-full w-full flex-col gap-1"
+                  style={{
+                    background: active ? 'rgba(139,92,246,0.08)' : 'var(--card-bg)',
+                    border: `1px solid ${active ? '#8B5CF6' : 'var(--card-border)'}`,
+                    opacity: isDisabled ? 0.55 : 1,
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  {comingSoon && (
+                    <span
+                      className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider"
+                      style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontWeight: 700 }}
+                    >
+                      Soon
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <Icon className="w-4 h-4" style={{ color: active ? '#A78BFA' : 'var(--t3)' }} />
+                    <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>{label}</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t4)' }}>{hint}</p>
+                </button>
+              </div>
             )
           })}
         </div>
@@ -246,14 +296,18 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
             </div>
           </div>
 
-          <div className="rounded-lg p-2 text-[11px]" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
-            <span style={{ color: 'var(--t4)' }}>Cron preview:</span>{' '}
-            <code style={{ color: 'var(--heading)', fontWeight: 600 }}>{buildRecurringCron(schedule) ?? '—'}</code>
-            <span style={{ color: 'var(--t4)' }}> ({schedule.recurringTimezone ?? 'UTC'})</span>
+          <div className="rounded-lg p-2 text-[11px] space-y-1" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
+            <div>
+              <span style={{ color: 'var(--heading)', fontWeight: 600 }}>{recurringSummary}</span>
+            </div>
+            <div>
+              <span style={{ color: 'var(--t4)' }}>Technical schedule:</span>{' '}
+              <code style={{ color: 'var(--heading)', fontWeight: 600 }}>{recurringCron ?? '—'}</code>
+            </div>
           </div>
 
           <div className="text-[11px] leading-relaxed" style={{ color: 'var(--t4)' }}>
-            On each run the cohort is <strong style={{ color: 'var(--heading)' }}>re-evaluated</strong>: only members who match the cohort filters at run time receive the email. Members who do not match are skipped (and re-included on a later run if they qualify again).
+            Each time this runs, the cohort is checked again. Only members who match the filters at that moment will get the message. If someone no longer matches, they are skipped for that run and can be included again later if they qualify.
           </div>
         </div>
       )}
