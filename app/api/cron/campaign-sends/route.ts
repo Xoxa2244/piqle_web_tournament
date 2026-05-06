@@ -325,6 +325,7 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
       WHERE log.campaign_id = ${campaign.id}::uuid
         AND log.type = 'CAMPAIGN_SEND'
         AND log.sent_at IS NOT NULL
+        AND log.status = 'sent'
         AND log.sequence_step = ${n}
         AND log.sent_at <= NOW() - (${delayDays} * INTERVAL '1 day')
         AND NOT EXISTS (
@@ -412,11 +413,12 @@ async function processCampaign(campaign: CampaignForCron): Promise<{ sent: numbe
     UPDATE ai_recommendation_logs
        SET sent_at = NOW()
      WHERE id IN (
-       SELECT id FROM ai_recommendation_logs
-        WHERE campaign_id = $1::uuid
-          AND sent_at IS NULL
-          AND type = 'CAMPAIGN_SEND'
-        ORDER BY "createdAt" ASC
+        SELECT id FROM ai_recommendation_logs
+         WHERE campaign_id = $1::uuid
+           AND sent_at IS NULL
+           AND type = 'CAMPAIGN_SEND'
+           AND status = 'pending'
+         ORDER BY "createdAt" ASC
         LIMIT $2
         FOR UPDATE SKIP LOCKED
      )
@@ -459,7 +461,7 @@ async function processCampaign(campaign: CampaignForCron): Promise<{ sent: numbe
       // No email — drop straight to failed_count, do not retry.
       await prisma.aIRecommendationLog.update({
         where: { id: row.id },
-        data: { bouncedAt: new Date(), bounceType: 'no_email' },
+        data: { status: 'failed', bouncedAt: new Date(), bounceType: 'no_email' },
       })
       failed++
       continue
@@ -480,7 +482,7 @@ async function processCampaign(campaign: CampaignForCron): Promise<{ sent: numbe
     if (isBlockedEmail(user.email)) {
       await prisma.aIRecommendationLog.update({
         where: { id: row.id },
-        data: { bouncedAt: new Date(), bounceType: 'blocked_domain' },
+        data: { status: 'failed', bouncedAt: new Date(), bounceType: 'blocked_domain' },
       })
       failed++
       continue
@@ -516,23 +518,24 @@ async function processCampaign(campaign: CampaignForCron): Promise<{ sent: numbe
       const newRetryCount = (row.retry_count ?? 0) + 1
       const exhausted = newRetryCount >= MAX_RETRIES
 
-      if (exhausted) {
-        // Give up — count as failed, won't be re-claimed.
-        await prisma.aIRecommendationLog.update({
-          where: { id: row.id },
-          data: {
-            retryCount: newRetryCount,
-            bouncedAt: new Date(),
-            bounceType: 'retry_exhausted',
-            reasoning: { lastError: message },
-          },
-        })
-        failed++
+    if (exhausted) {
+      // Give up — count as failed, won't be re-claimed.
+      await prisma.aIRecommendationLog.update({
+        where: { id: row.id },
+        data: {
+          status: 'failed',
+          retryCount: newRetryCount,
+          bouncedAt: new Date(),
+          bounceType: 'retry_exhausted',
+          reasoning: { lastError: message },
+        },
+      })
+      failed++
       } else {
         // Revert sent_at so the row re-enters the queue on the next tick.
         await prisma.aIRecommendationLog.update({
           where: { id: row.id },
-          data: { sentAt: null, retryCount: newRetryCount },
+          data: { sentAt: null, retryCount: newRetryCount, status: 'pending' },
         })
         skipped++
       }

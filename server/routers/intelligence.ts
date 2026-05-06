@@ -83,6 +83,176 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
   return { isAdmin: true, isMember: true }
 }
 
+async function dispatchSequenceStepZeroNow(
+  prisma: any,
+  input: {
+    campaignId: string
+    clubId: string
+    campaignName: string
+    recipientIds: string[]
+    steps: Array<{
+      stepIndex: number
+      delayDays: number
+      subject: string
+      body: string
+      ctaLabel?: string
+      ctaUrl?: string
+    }>
+  },
+) {
+  type SequenceLaunchLog = { id: string; userId: string }
+  type SequenceLaunchUser = { id: string; email: string | null; name: string | null }
+
+  const stepZero = input.steps[0]
+  if (!stepZero || input.recipientIds.length === 0) {
+    return { sent: 0, failed: 0, skipped: 0 }
+  }
+
+  await prisma.aIRecommendationLog.createMany({
+    data: input.recipientIds.map((userId) => ({
+      clubId: input.clubId,
+      userId,
+      type: 'CAMPAIGN_SEND' as const,
+      channel: 'email',
+      status: 'pending',
+      campaignId: input.campaignId,
+      sequenceStep: 0,
+      reasoning: {
+        campaignName: input.campaignName,
+        totalSteps: input.steps.length,
+      },
+    })),
+    skipDuplicates: true,
+  })
+
+  const logs: SequenceLaunchLog[] = await prisma.aIRecommendationLog.findMany({
+    where: {
+      campaignId: input.campaignId,
+      type: 'CAMPAIGN_SEND',
+      sequenceStep: 0,
+      userId: { in: input.recipientIds },
+    },
+    select: { id: true, userId: true },
+  })
+
+  if (logs.length === 0) {
+    return { sent: 0, failed: 0, skipped: 0 }
+  }
+
+  const claimedAt = new Date()
+  await prisma.aIRecommendationLog.updateMany({
+    where: { id: { in: logs.map((row) => row.id) } },
+    data: { sentAt: claimedAt, status: 'pending' },
+  })
+
+  const users: SequenceLaunchUser[] = await prisma.user.findMany({
+    where: { id: { in: logs.map((row) => row.userId) } },
+    select: { id: true, email: true, name: true },
+  })
+  const userById = new Map<string, SequenceLaunchUser>(users.map((user) => [user.id, user] as const))
+
+  const club = await prisma.club.findUnique({
+    where: { id: input.clubId },
+    select: { name: true },
+  })
+  const clubName = club?.name ?? 'Your Club'
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
+  const bookingUrl = `${baseUrl}/clubs/${input.clubId}`
+  const { buildOutreachTemplateValues, isBlockedEmail, sendOutreachEmail } = await import('@/lib/email')
+
+  let sent = 0
+  let failed = 0
+  let skipped = 0
+
+  for (const row of logs) {
+    const user = userById.get(row.userId)
+    if (!user?.email) {
+      await prisma.aIRecommendationLog.update({
+        where: { id: row.id },
+        data: {
+          status: 'failed',
+          bouncedAt: new Date(),
+          bounceType: 'no_email',
+        },
+      })
+      failed++
+      continue
+    }
+
+    if (isBlockedEmail(user.email)) {
+      await prisma.aIRecommendationLog.update({
+        where: { id: row.id },
+        data: {
+          status: 'failed',
+          bouncedAt: new Date(),
+          bounceType: 'blocked_domain',
+        },
+      })
+      failed++
+      continue
+    }
+
+    try {
+      const { messageId } = await sendOutreachEmail({
+        to: user.email,
+        subject: stepZero.subject || input.campaignName,
+        body: stepZero.body,
+        clubName,
+        bookingUrl,
+        templateValues: buildOutreachTemplateValues({
+          fullName: user.name,
+          clubName,
+        }),
+        ctaLabel: stepZero.ctaLabel,
+        ctaUrl: stepZero.ctaUrl,
+        metadata: {
+          logId: row.id,
+          clubId: input.clubId,
+          userId: user.id,
+        },
+        tags: ['campaign', `campaign:${input.campaignId}`, 'step:0'],
+      })
+
+      await prisma.aIRecommendationLog.update({
+        where: { id: row.id },
+        data: {
+          externalMessageId: messageId,
+          status: 'sent',
+        },
+      })
+      sent++
+    } catch (err: any) {
+      const message = String(err?.message ?? err).slice(0, 200)
+      await prisma.aIRecommendationLog.update({
+        where: { id: row.id },
+        data: {
+          sentAt: null,
+          retryCount: 1,
+          status: 'pending',
+          reasoning: {
+            campaignName: input.campaignName,
+            totalSteps: input.steps.length,
+            lastError: message,
+          },
+        },
+      })
+      skipped++
+    }
+  }
+
+  if (sent > 0 || failed > 0) {
+    await prisma.campaign.update({
+      where: { id: input.campaignId },
+      data: {
+        sentCount: { increment: sent },
+        failedCount: { increment: failed },
+      },
+    })
+  }
+
+  return { sent, failed, skipped }
+}
+
 // ── Helper: bucket a 24h time into morning/afternoon/evening ──
 // Used by Programming IQ when persisting OpsSessionDraft rows so its
 // timeSlot stays aligned with the rest of the ops-session workflows.
@@ -10617,6 +10787,13 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           subject: input.subject,
           body: input.body,
           channels: input.channels,
+          ctaLabel: input.ctaLabel ?? null,
+          ctaUrl: input.ctaUrl ?? null,
+          format: input.format,
+          steps: input.steps ? (input.steps as any) : null,
+          exitOnBooking: input.exitOnBooking ?? true,
+          cronExpression: input.format === 'recurring' ? input.cronExpression?.trim() ?? null : null,
+          recurringTimezone: input.format === 'recurring' ? input.recurringTimezone ?? 'UTC' : null,
           status,
           scheduledAt: scheduledDate,
           launchedAt: status === 'running' ? now : null,
@@ -10635,6 +10812,14 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         if (processedCampaign?.status) {
           finalStatus = processedCampaign.status
         }
+      } else if (input.format === 'sequence' && !isFuture) {
+        await dispatchSequenceStepZeroNow(ctx.prisma, {
+          campaignId: campaign.id,
+          clubId: input.clubId,
+          campaignName: input.name,
+          recipientIds,
+          steps: input.steps ?? [],
+        })
       }
 
       return {

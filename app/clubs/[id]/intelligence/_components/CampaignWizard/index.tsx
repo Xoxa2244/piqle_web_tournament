@@ -235,6 +235,15 @@ export function CampaignWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedCohorts.length])
 
+  useEffect(() => {
+    if (state.audience?.kind !== 'ai_suggested' || state.schedule.format !== 'recurring') return
+    setState((s) => (
+      s.audience?.kind === 'ai_suggested' && s.schedule.format === 'recurring'
+        ? { ...s, schedule: { ...s.schedule, format: 'one_time' } }
+        : s
+    ))
+  }, [state.audience?.kind, state.schedule.format])
+
   const canAdvance = (() => {
     if (step === 1) return !!state.audience
     if (step === 2) return !!state.goal
@@ -290,6 +299,43 @@ export function CampaignWizard({
     },
   })
 
+  const isSequence = state.schedule.format === 'sequence'
+  const isRecurring = state.schedule.format === 'recurring'
+  const sequenceSteps = state.message.steps ?? []
+  const selectedChannels = [
+    ...(state.schedule.channels.email ? ['email' as const] : []),
+    ...(state.schedule.channels.sms ? ['sms' as const] : []),
+  ]
+  const topLevelSubject = isSequence
+    ? (sequenceSteps[0]?.subject ?? '').trim()
+    : state.message.subject.trim()
+  const topLevelBody = isSequence
+    ? (sequenceSteps[0]?.body ?? '').trim()
+    : state.message.body.trim()
+  const topLevelCtaLabel = isSequence
+    ? (sequenceSteps[0]?.ctaLabel ?? '').trim()
+    : (state.message.ctaLabel ?? '').trim()
+  const topLevelCtaUrl = isSequence
+    ? (sequenceSteps[0]?.ctaUrl ?? '').trim()
+    : (state.message.ctaUrl ?? '').trim()
+
+  const hasInvalidCta = (ctaLabel?: string, ctaUrl?: string) => {
+    const url = ctaUrl?.trim() ?? ''
+    const label = ctaLabel?.trim() ?? ''
+    if (!url) return false
+    return !/^https?:\/\/.+/i.test(url) || label.length === 0
+  }
+
+  const sequenceInvalid = isSequence && (
+    sequenceSteps.length === 0
+    || sequenceSteps.some((step) => (
+      step.subject.trim().length === 0
+      || step.body.trim().length === 0
+      || hasInvalidCta(step.ctaLabel, step.ctaUrl)
+    ))
+  )
+  const recurringMissingCohort = isRecurring && !state.audience?.cohortId
+
   const handleLaunch = async () => {
     if (liveMode !== 'live') return
     if (!state.audience || !state.goal) return
@@ -300,37 +346,13 @@ export function CampaignWizard({
       const cohortId = state.audience.cohortId
       const userIds = !cohortId ? state.audience.userIds : undefined
 
-      const isSequence = state.schedule.format === 'sequence'
-      const isRecurring = state.schedule.format === 'recurring'
-      const sequenceSteps = state.message.steps ?? []
-
-      // For sequence launches, top-level subject/body/ctaLabel/ctaUrl mirror
-      // step 0 — backend's listing surfaces still need a single subject/body
-      // to display. The runner reads from `steps[stepIndex]` for actual
-      // sending, not from the top-level fields.
-      const topLevelSubject = isSequence
-        ? (sequenceSteps[0]?.subject ?? '').trim()
-        : state.message.subject.trim()
-      const topLevelBody = isSequence
-        ? (sequenceSteps[0]?.body ?? '').trim()
-        : state.message.body.trim()
-      const topLevelCtaLabel = isSequence
-        ? (sequenceSteps[0]?.ctaLabel ?? '').trim()
-        : (state.message.ctaLabel ?? '').trim()
-      const topLevelCtaUrl = isSequence
-        ? (sequenceSteps[0]?.ctaUrl ?? '').trim()
-        : (state.message.ctaUrl ?? '').trim()
-
       launchMutation.mutate({
         clubId,
         name: `${state.goal.replace(/_/g, ' ')} · ${new Date().toLocaleDateString()}`,
         goal: state.goal,
         subject: topLevelSubject,
         body: topLevelBody,
-        channels: [
-          ...(state.schedule.channels.email ? ['email' as const] : []),
-          ...(state.schedule.channels.sms ? ['sms' as const] : []),
-        ],
+        channels: selectedChannels,
         cohortId: cohortId ?? undefined,
         userIds,
         audienceLabel: state.audience.cohortName,
@@ -364,22 +386,18 @@ export function CampaignWizard({
       setIsLaunching(false)
     }
   }
-
-  const ctaUrlTrimmed = state.message.ctaUrl?.trim() ?? ''
-  const ctaLabelTrimmed = state.message.ctaLabel?.trim() ?? ''
-  const ctaUrlInvalid = ctaUrlTrimmed.length > 0 && !/^https?:\/\/.+/i.test(ctaUrlTrimmed)
-  const ctaLabelMissing = ctaUrlTrimmed.length > 0 && ctaLabelTrimmed.length === 0
   const launchDisabled = step !== 4
     || !state.audience
     || !state.goal
-    || state.schedule.format !== 'one_time'
     || liveMode !== 'live'
     || isLaunching
     || launchMutation.isPending
-    || state.message.subject.trim().length === 0
-    || state.message.body.trim().length === 0
-    || ctaUrlInvalid
-    || ctaLabelMissing
+    || selectedChannels.length === 0
+    || recurringMissingCohort
+    || sequenceInvalid
+    || topLevelSubject.length === 0
+    || topLevelBody.length === 0
+    || hasInvalidCta(topLevelCtaLabel, topLevelCtaUrl)
 
   return (
     <AnimatePresence>
@@ -495,6 +513,7 @@ export function CampaignWizard({
               />
             ) : step === 3 ? (
               <Step3Schedule
+                audienceKind={state.audience?.kind ?? null}
                 schedule={state.schedule}
                 onChange={(schedule: ScheduleSettings) => setState((s) => ({ ...s, schedule }))}
               />
