@@ -8,6 +8,7 @@ import { ExternalEntityType } from '@prisma/client'
 import * as XLSX from 'xlsx'
 import { generateMemberProfilesForClub } from '@/lib/ai/member-profile-generator'
 import { normalizePhone } from '@/lib/phone-normalize'
+import { canonicalizeMembershipTier } from './membership-canonicalize'
 import { randomUUID } from 'crypto'
 
 // ── Types ──
@@ -198,7 +199,7 @@ async function upsertImportedUser(existingUserId: string | null, payload: Import
     duprSingles: payload.duprSingles ?? null,
     duprDoubles: payload.duprDoubles ?? null,
     dateOfBirth: payload.dateOfBirth ?? null,
-    membershipType: payload.membershipType || null,
+    membershipType: canonicalizeMembershipTier(payload.membershipType),
     membershipStatus: payload.membershipStatus || null,
     zipCode: payload.zipCode || null,
     skillLevel: payload.skillLevel || null,

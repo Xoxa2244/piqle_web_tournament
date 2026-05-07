@@ -7,6 +7,7 @@ import { ExternalEntityType } from '@prisma/client'
 import { CourtReserveClient } from './courtreserve-client'
 import { decryptCredentials } from './encryption'
 import { normalizePhone } from '@/lib/phone-normalize'
+import { canonicalizeMembershipTier } from './membership-canonicalize'
 import type { CRMember, CRReservation, CRCourt, SyncResult, SyncError } from './courtreserve-types'
 
 const PARTNER_PREFIX = 'cr' // ExternalIdMapping partnerId prefix
@@ -556,7 +557,7 @@ async function syncMembersWithProgress(
             ...(duprSingles !== undefined ? { duprRatingSingles: duprSingles } : {}),
             ...(duprDoubles !== undefined ? { duprRatingDoubles: duprDoubles } : {}),
             ...(dateOfBirth ? { dateOfBirth } : {}),
-            ...(member.membershipTypeName ? { membershipType: member.membershipTypeName } : {}),
+            ...(canonicalizeMembershipTier(member.membershipTypeName) ? { membershipType: canonicalizeMembershipTier(member.membershipTypeName)! } : {}),
             ...(member.membershipStatus ? { membershipStatus: member.membershipStatus } : {}),
             ...(member.zipCode ? { zipCode: member.zipCode } : {}),
             ...(member.skillLevel ? { skillLevel: member.skillLevel } : {}),
