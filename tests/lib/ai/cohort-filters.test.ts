@@ -50,7 +50,7 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
 
     it('includes clubId placeholder $1', () => {
       const result = buildCohortWhereClause([{ field: 'sessionFormat', op: 'eq', value: 'LEAGUE_PLAY' }])
-      expect(result).toContain('ps."clubId" = $1')
+      expect(result).toContain('ps."clubId"::text = $1')
     })
   })
 

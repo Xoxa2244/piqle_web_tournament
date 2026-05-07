@@ -1053,26 +1053,26 @@ function buildCohortFilterClause(f: CohortFilter): string {
         return f.op === 'contains' ? `u.city ILIKE '%' || ${val} || '%'` : `u.city = ${val}`
       case 'sessionFormat':
         // Players who have played in a specific session format
-        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND ps.format = ${val} AND psb.status = 'CONFIRMED')`
+        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId"::text = $1 AND ps.format = ${val} AND psb.status = 'CONFIRMED')`
       case 'dayOfWeek': {
         // Players who play on a specific day of week (Monday=1, Sunday=0)
         const dayMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 }
         const dayNum = dayMap[String(f.value)] ?? 0
-        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
+        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId"::text = $1 AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
       }
       case 'frequency': {
         // Sessions per month — players who play at least N times/month
         const freqVal = Number(f.value)
         if (!Number.isFinite(freqVal) || freqVal < 0 || freqVal > 10000) return 'TRUE'
         const freqOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
-        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
+        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId"::text = $1 AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
       }
       case 'recency': {
         // Days since last visit — players who visited within/after N days
         const recVal = Number(f.value)
         if (!Number.isFinite(recVal) || recVal < 0 || recVal > 36500) return 'TRUE'
         const recOp = f.op === 'lte' ? '>=' : f.op === 'gte' ? '<=' : f.op === 'lt' ? '>' : f.op === 'gt' ? '<' : '='
-        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
+        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId"::text = $1 AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
       }
       case 'userId':
         // Direct user ID filter (used for "cohort from session" and bulk-select
@@ -1091,7 +1091,7 @@ function buildCohortFilterClause(f: CohortFilter): string {
         const hsVal = Number(f.value)
         if (!Number.isFinite(hsVal) || hsVal < 0 || hsVal > 100) return 'TRUE'
         const hsOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
-        return `u.id::text IN (SELECT DISTINCT ON (mhs.user_id) mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id = $1 ORDER BY mhs.user_id, mhs.date DESC) AND u.id::text IN (SELECT mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id = $1 AND mhs.health_score ${hsOp} ${hsVal} AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+        return `u.id::text IN (SELECT DISTINCT ON (mhs.user_id) mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id::text = $1 ORDER BY mhs.user_id, mhs.date DESC) AND u.id::text IN (SELECT mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id::text = $1 AND mhs.health_score ${hsOp} ${hsVal} AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
       }
       case 'riskLevel': {
         // Latest snapshot per user where risk_level = (string|in array).
@@ -1101,11 +1101,11 @@ function buildCohortFilterClause(f: CohortFilter): string {
             .filter((v) => ['healthy', 'watch', 'at_risk', 'critical'].includes(v))
           if (safe.length === 0) return 'TRUE'
           const list = safe.map((v) => `'${v}'`).join(',')
-          return `u.id::text IN (SELECT mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id = $1 AND mhs.risk_level IN (${list}) AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+          return `u.id::text IN (SELECT mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id::text = $1 AND mhs.risk_level IN (${list}) AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
         }
         const safeVal = String(f.value).replace(/'/g, "''")
         if (!['healthy', 'watch', 'at_risk', 'critical'].includes(safeVal)) return 'TRUE'
-        return `u.id::text IN (SELECT mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id = $1 AND mhs.risk_level = '${safeVal}' AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+        return `u.id::text IN (SELECT mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id::text = $1 AND mhs.risk_level = '${safeVal}' AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
       }
       case 'joinedDaysAgo': {
         // Days since user joined this club (club_followers.created_at).
@@ -1158,7 +1158,7 @@ const ACTIVE_MEMBER_JOIN = `
     SELECT DISTINCT psb."userId"
     FROM play_session_bookings psb
     JOIN play_sessions ps ON ps.id = psb."sessionId"
-    WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED'
+    WHERE ps."clubId"::text = $1 AND psb.status = 'CONFIRMED'
   ) active ON active."userId"::text = u.id::text
 `
 
@@ -1206,7 +1206,7 @@ async function fetchCohortBaseMembers(
         mhs.health_score,
         mhs.risk_level
       FROM member_health_snapshots mhs
-      WHERE mhs.club_id = $1
+      WHERE mhs.club_id::text = $1
         AND mhs.user_id::text = u.id::text
       ORDER BY mhs.date DESC
       LIMIT 1
@@ -1250,7 +1250,7 @@ async function fetchCohortBaseMembers(
       FROM play_session_bookings psb
       JOIN play_sessions ps ON ps.id = psb."sessionId"
       WHERE psb."userId"::text = u.id::text
-        AND ps."clubId" = $1
+        AND ps."clubId"::text = $1
     ) recent_activity ON TRUE`
     : EMPTY_RECENT_ACTIVITY_JOIN
 
@@ -1288,7 +1288,7 @@ async function fetchCohortBaseMembers(
     ${activeMemberJoin}
     ${latestHealthJoin}
     ${recentActivityJoin}
-    WHERE cf.club_id = $1 AND ${where}
+    WHERE cf.club_id::text = $1 AND ${where}
     ORDER BY u.name ASC
     ${limitClause}
   `, clubId)
@@ -1337,7 +1337,7 @@ async function countCohortMembers(prisma: any, clubId: string, filters: CohortFi
       FROM club_followers cf
       JOIN users u ON u.id::text = cf.user_id::text
       ${activeMemberJoin}
-      WHERE cf.club_id = $1 AND ${where}
+      WHERE cf.club_id::text = $1 AND ${where}
     `, clubId)
     return Number(result[0]?.count ?? 0)
   }
@@ -7334,7 +7334,7 @@ Spirit: ${guidance.spirit}`
           SELECT DISTINCT psb."userId"
           FROM play_session_bookings psb
           JOIN play_sessions ps ON ps.id = psb."sessionId"
-          WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED'
+          WHERE ps."clubId"::text = $1 AND psb.status = 'CONFIRMED'
         )
         SELECT
           COUNT(*)::bigint as total,
@@ -7356,7 +7356,7 @@ Spirit: ${guidance.spirit}`
           ${sqlBigIntCountOrZero('SUM(CASE WHEN u.city IS NOT NULL THEN 1 ELSE 0 END)', 'has_city', capabilities.userColumns.has('city'))}
         FROM club_followers cf
         JOIN users u ON u.id::text = cf.user_id::text
-        WHERE cf.club_id = $1
+        WHERE cf.club_id::text = $1
       `
       const rows: [{ total: bigint; has_gender: bigint; has_dob: bigint; has_skill: bigint; has_membership: bigint; has_city: bigint }] = await ctx.prisma.$queryRawUnsafe(`
         ${coverageBase}
