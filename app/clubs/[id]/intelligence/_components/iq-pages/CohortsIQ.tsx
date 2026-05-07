@@ -2394,13 +2394,27 @@ function CohortBuilder({
 
 // ── Cohort Detail View ──
 function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId: string; onClose: () => void }) {
-  const { data, isLoading } = trpc.intelligence.getCohortMembers.useQuery({ clubId, cohortId })
+  const { data, isLoading, error } = trpc.intelligence.getCohortMembers.useQuery({ clubId, cohortId })
 
   if (isLoading) {
     return (
       <div className="rounded-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
         <div className="space-y-3">
           {[1, 2, 3].map(i => <div key={i} className="h-14 rounded-xl animate-pulse" style={{ background: 'var(--subtle)' }} />)}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-2">
+            <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>Couldn&apos;t load cohort members</h2>
+            <p className="text-sm" style={{ color: '#EF4444' }}>{error.message}</p>
+          </div>
+          <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
         </div>
       </div>
     )

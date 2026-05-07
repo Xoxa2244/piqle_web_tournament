@@ -36,6 +36,7 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
   describe('Session Format filter (NEW)', () => {
     it('generates subquery for OPEN_PLAY', () => {
       const result = buildCohortWhereClause([{ field: 'sessionFormat', op: 'eq', value: 'OPEN_PLAY' }])
+      expect(result).toContain('u.id::text IN (SELECT psb."userId"::text')
       expect(result).toContain('play_session_bookings')
       expect(result).toContain('play_sessions')
       expect(result).toContain("ps.format = 'OPEN_PLAY'")
@@ -82,19 +83,18 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
 
   describe('UserId filter (NEW — cohort from session)', () => {
     // SQL injection protection: each id has single-quotes escaped (`'` → `''`)
-    // before being inlined. The original implementation also added a `::uuid`
-    // cast, but `users.id` is TEXT in this schema (not UUID) — the cast caused
-    // silent prod breakage (commit 6ec06847). Escaping alone is sufficient
-    // because the inlined string is always wrapped in single quotes.
+    // before being inlined. Production schemas have drifted between TEXT and
+    // UUID identifier columns, so the DB column is normalized via `::text`
+    // while the literals stay wrapped in single quotes.
     it('in operator with array of IDs', () => {
       const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ['user-1', 'user-2', 'user-3'] }])
-      expect(result).toContain("u.id IN ('user-1','user-2','user-3')")
+      expect(result).toContain("u.id::text IN ('user-1','user-2','user-3')")
     })
 
     it('escapes single quotes in user IDs', () => {
       const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ["user-O'Brien"] }])
       // Escape still applied even with embedded quote.
-      expect(result).toContain("u.id IN ('user-O''Brien')")
+      expect(result).toContain("u.id::text IN ('user-O''Brien')")
     })
 
     it('non-in operator returns TRUE (safety)', () => {
