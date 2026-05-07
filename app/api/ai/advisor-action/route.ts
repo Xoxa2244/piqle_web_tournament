@@ -1101,10 +1101,10 @@ function buildAdminReminderRoutingAction(policy: AdvisorAdminReminderRoutingDraf
 function getAdminReminderRoutingCopy(language: SupportedLanguage | string) {
   if (language === 'ru') {
     return {
-      needChanges: 'Скажи, как напоминать админу: только в приложении, по email, по SMS или по обоим каналам. Если уже знаешь контакт, просто пришли его прямо сюда.',
-      needEmail: 'Какой email использовать для admin reminders?',
-      needPhone: 'Какой номер использовать для admin reminders по SMS?',
-      needBoth: 'Чтобы включить email + SMS reminders, пришли email и номер телефона для админских напоминаний.',
+      needChanges: 'Tell me how admin reminders should arrive: in-app only, by email, by SMS, or both. If you already know the contact, just paste it here.',
+      needEmail: 'What email should I use for admin reminders?',
+      needPhone: 'What phone number should I use for admin SMS reminders?',
+      needBoth: 'To turn on email + SMS admin reminders, send me the reminder email and phone number to use.',
     }
   }
 
@@ -1180,12 +1180,12 @@ function getProgrammingCopy(language: SupportedLanguage | string) {
 function getSlotFillerCopy(language: SupportedLanguage | string) {
   if (language === 'ru') {
     return {
-      needSession: 'Какую недозаполненную сессию мне заполнить?',
-      repeatSession: 'Мне все еще нужна конкретная сессия. Выбери одну из вариантов ниже или опиши ее по времени/формату.',
-      noSessions: 'Я не вижу недозаполненных сессий на ближайшие дни. Когда появятся свободные слоты, я смогу подобрать игроков и подготовить приглашения.',
-      noCandidates: (sessionLabel: string) => `Я нашел нужную сессию, но пока не вижу сильных кандидатов для приглашения на ${sessionLabel}.`,
-      ready: (count: number, sessionLabel: string) => `Я подобрал ${count} кандидатов для ${sessionLabel}. Проверь приглашение ниже и подтверди отправку.`,
-      suggestions: ['Переключи на SMS', 'Пригласи топ-8 игроков', 'Покажи другую недозаполненную сессию'],
+      needSession: 'Which underfilled session should I fill?',
+      repeatSession: 'I still need a specific session. Pick one of the options below or describe it by time or format.',
+      noSessions: 'I don\'t see any underfilled sessions coming up right now. As soon as there are open spots, I can pick the best players and prepare invites.',
+      noCandidates: (sessionLabel: string) => `I found the right session, but I couldn't find strong invite candidates for ${sessionLabel} yet.`,
+      ready: (count: number, sessionLabel: string) => `I picked ${count} candidates for ${sessionLabel}. Review the invite below, then approve to send it.`,
+      suggestions: ['Use SMS instead', 'Invite the top 8 players', 'Show me another underfilled session'],
     }
   }
 
@@ -1213,9 +1213,9 @@ function getSlotFillerCopy(language: SupportedLanguage | string) {
 function getReactivationCopy(language: SupportedLanguage | string) {
   if (language === 'ru') {
     return {
-      empty: (label: string) => `Сейчас я не вижу сильных кандидатов на реактивацию в сегменте "${label}".`,
-      ready: (count: number, label: string) => `Я нашел ${count} кандидатов на реактивацию в сегменте "${label}". Проверь win-back сообщение ниже и подтверди отправку.`,
-      suggestions: ['Переключи на SMS', 'Оставь только топ-5', 'Возьми тех, кто не играл 30+ дней'],
+      empty: (label: string) => `I couldn't find strong reactivation candidates in "${label}" right now.`,
+      ready: (count: number, label: string) => `I found ${count} reactivation candidates in "${label}". Review the win-back message below, then approve to send it.`,
+      suggestions: ['Use SMS instead', 'Only top 5 members', 'Target 30+ day inactive members'],
     }
   }
 
@@ -1255,7 +1255,7 @@ function getMembershipLifecycleCopy(language: SupportedLanguage | string, kind: 
 function getContactPolicyCopy(language: SupportedLanguage | string) {
   if (language === 'ru') {
     return {
-      needChanges: 'Скажи, что именно поменять в contact policy: quiet hours, cooldown, дневной лимит, недельный лимит или окно recent booking.',
+      needChanges: 'Tell me what to change in the contact policy: quiet hours, cooldown, daily cap, weekly cap, or the recent booking suppression window.',
     }
   }
 
@@ -1273,7 +1273,7 @@ function getContactPolicyCopy(language: SupportedLanguage | string) {
 function getAutonomyPolicyCopy(language: SupportedLanguage | string) {
   if (language === 'ru') {
     return {
-      needChanges: 'Скажи, что поменять в autonomy policy: какой action поставить в auto, approve или off, и нужны ли пороги confidence, лимит получателей или membership signal.',
+      needChanges: 'Tell me what to change in the autonomy policy: which actions should be auto, approve, or off, and whether you want confidence thresholds, recipient caps, or membership signal requirements.',
     }
   }
 
@@ -1291,7 +1291,7 @@ function getAutonomyPolicyCopy(language: SupportedLanguage | string) {
 function getSandboxRoutingCopy(language: SupportedLanguage | string) {
   if (language === 'ru') {
     return {
-      needChanges: 'Скажи, как должен работать sandbox: оставить только preview, маршрутизировать на test recipients, и какие email или SMS получатели должны быть в whitelist.',
+      needChanges: 'Tell me how sandbox should behave: stay preview-only, route to test recipients, and which email or SMS recipients should be on the whitelist.',
     }
   }
 
