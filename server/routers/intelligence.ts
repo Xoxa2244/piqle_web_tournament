@@ -670,7 +670,42 @@ interface CohortSchemaCapabilities {
   userColumns: Set<string>
   clubFollowerColumns: Set<string>
   memberHealthColumns: Set<string>
+  playSessionColumns: Set<string>
+  playSessionBookingColumns: Set<string>
   hasMemberHealthSnapshots: boolean
+}
+
+function isCohortFilterLike(value: unknown): value is CohortFilter {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+
+  return typeof candidate.field === 'string'
+    && typeof candidate.op === 'string'
+    && (
+      typeof candidate.value === 'string'
+      || typeof candidate.value === 'number'
+      || (Array.isArray(candidate.value) && candidate.value.every((item) => typeof item === 'string'))
+    )
+}
+
+export function normalizeStoredCohortFilters(raw: unknown): CohortFilter[] {
+  if (Array.isArray(raw)) return raw.filter(isCohortFilterLike)
+
+  if (typeof raw === 'string') {
+    try {
+      return normalizeStoredCohortFilters(JSON.parse(raw))
+    } catch {
+      return []
+    }
+  }
+
+  if (raw && typeof raw === 'object') {
+    const record = raw as Record<string, unknown>
+    if (Array.isArray(record.filters)) return record.filters.filter(isCohortFilterLike)
+    if (Array.isArray(record.conditions)) return record.conditions.filter(isCohortFilterLike)
+  }
+
+  return []
 }
 
 function createDefaultCohortSchemaCapabilities(): CohortSchemaCapabilities {
@@ -694,6 +729,8 @@ function createDefaultCohortSchemaCapabilities(): CohortSchemaCapabilities {
     ]),
     clubFollowerColumns: new Set(['club_id', 'user_id', 'created_at']),
     memberHealthColumns: new Set(['club_id', 'user_id', 'date', 'health_score', 'risk_level']),
+    playSessionColumns: new Set(['id', 'clubId', 'date', 'format', 'pricePerSlot']),
+    playSessionBookingColumns: new Set(['sessionId', 'userId', 'status', 'bookedAt']),
     hasMemberHealthSnapshots: true,
   }
 }
@@ -720,23 +757,31 @@ async function getCohortSchemaCapabilities(prisma: any): Promise<CohortSchemaCap
           ))
           OR (table_name = 'club_followers' AND column_name IN ('club_id', 'user_id', 'created_at'))
           OR (table_name = 'member_health_snapshots' AND column_name IN ('club_id', 'user_id', 'date', 'health_score', 'risk_level'))
+          OR (table_name = 'play_sessions' AND column_name IN ('id', 'clubId', 'date', 'format', 'pricePerSlot'))
+          OR (table_name = 'play_session_bookings' AND column_name IN ('sessionId', 'userId', 'status', 'bookedAt'))
         )
     `)
 
     const userColumns = new Set<string>()
     const clubFollowerColumns = new Set<string>()
     const memberHealthColumns = new Set<string>()
+    const playSessionColumns = new Set<string>()
+    const playSessionBookingColumns = new Set<string>()
 
     for (const row of rows) {
       if (row.table_name === 'users') userColumns.add(row.column_name)
       if (row.table_name === 'club_followers') clubFollowerColumns.add(row.column_name)
       if (row.table_name === 'member_health_snapshots') memberHealthColumns.add(row.column_name)
+      if (row.table_name === 'play_sessions') playSessionColumns.add(row.column_name)
+      if (row.table_name === 'play_session_bookings') playSessionBookingColumns.add(row.column_name)
     }
 
     const capabilities: CohortSchemaCapabilities = {
       userColumns,
       clubFollowerColumns,
       memberHealthColumns,
+      playSessionColumns,
+      playSessionBookingColumns,
       hasMemberHealthSnapshots: memberHealthColumns.size > 0,
     }
 
@@ -833,6 +878,18 @@ function hasMemberHealthSnapshotSupport(capabilities: CohortSchemaCapabilities) 
     && capabilities.memberHealthColumns.has('risk_level')
 }
 
+function hasPlaySessionSupport(capabilities: CohortSchemaCapabilities) {
+  return capabilities.playSessionColumns.has('id')
+    && capabilities.playSessionColumns.has('clubId')
+    && capabilities.playSessionColumns.has('date')
+    && capabilities.playSessionColumns.has('format')
+    && capabilities.playSessionColumns.has('pricePerSlot')
+    && capabilities.playSessionBookingColumns.has('sessionId')
+    && capabilities.playSessionBookingColumns.has('userId')
+    && capabilities.playSessionBookingColumns.has('status')
+    && capabilities.playSessionBookingColumns.has('bookedAt')
+}
+
 function isCohortFilterSupportedBySchema(filter: CohortFilter, capabilities: CohortSchemaCapabilities) {
   switch (filter.field) {
     case 'age':
@@ -856,6 +913,11 @@ function isCohortFilterSupportedBySchema(filter: CohortFilter, capabilities: Coh
       return capabilities.userColumns.has('dupr_rating_doubles')
         && capabilities.userColumns.has('dupr_rating_singles')
         && capabilities.userColumns.has('skill_level')
+    case 'sessionFormat':
+    case 'dayOfWeek':
+    case 'frequency':
+    case 'recency':
+      return hasPlaySessionSupport(capabilities)
     case 'healthScore':
     case 'riskLevel':
       return hasMemberHealthSnapshotSupport(capabilities)
@@ -1100,19 +1162,32 @@ const ACTIVE_MEMBER_JOIN = `
   ) active ON active."userId" = u.id
 `
 
+const EMPTY_RECENT_ACTIVITY_JOIN = `
+  LEFT JOIN LATERAL (
+    SELECT
+      0::int as sessions_last_30,
+      0::int as previous_sessions_30,
+      NULL::int as days_since_last_visit,
+      0::int as total_confirmed_sessions,
+      0::int as total_revenue
+  ) recent_activity ON TRUE
+`
+
 async function fetchCohortBaseMembers(
   prisma: any,
   clubId: string,
   filters: CohortFilter[],
   limit: number | null = 500,
 ): Promise<any[]> {
+  const normalizedFilters = normalizeStoredCohortFilters(filters)
   const capabilities = await getCohortSchemaCapabilities(prisma)
-  const supportedFilters = filterCohortFiltersByCapabilities(filters, capabilities)
+  const supportedFilters = filterCohortFiltersByCapabilities(normalizedFilters, capabilities)
   const where = buildCohortWhereClause(supportedFilters)
   const limitClause = typeof limit === 'number' && limit > 0
     ? `LIMIT ${Math.floor(limit)}`
     : ''
   const hasMemberHealth = hasMemberHealthSnapshotSupport(capabilities)
+  const hasPlaySessions = hasPlaySessionSupport(capabilities)
   const hasDateOfBirth = capabilities.userColumns.has('date_of_birth')
   const hasCreatedAt = capabilities.clubFollowerColumns.has('created_at')
   const hasDuprDoubles = capabilities.userColumns.has('dupr_rating_doubles')
@@ -1142,6 +1217,42 @@ async function fetchCohortBaseMembers(
         NULL::int as health_score,
         NULL::text as risk_level
     ) latest_health ON TRUE`
+  const activeMemberJoin = hasPlaySessions ? ACTIVE_MEMBER_JOIN : ''
+  const recentActivityJoin = hasPlaySessions
+    ? `
+    LEFT JOIN LATERAL (
+      SELECT
+        COUNT(*) FILTER (
+          WHERE psb.status = 'CONFIRMED'
+            AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
+        )::int as sessions_last_30,
+        COUNT(*) FILTER (
+          WHERE psb.status = 'CONFIRMED'
+            AND psb."bookedAt" >= NOW() - INTERVAL '60 days'
+            AND psb."bookedAt" < NOW() - INTERVAL '30 days'
+        )::int as previous_sessions_30,
+        CASE
+          WHEN MAX(psb."bookedAt") FILTER (WHERE psb.status = 'CONFIRMED') IS NOT NULL
+            THEN FLOOR(
+              EXTRACT(
+                EPOCH FROM (
+                  NOW() - MAX(psb."bookedAt") FILTER (WHERE psb.status = 'CONFIRMED')
+                )
+              ) / 86400
+            )::int
+          ELSE NULL
+        END as days_since_last_visit,
+        COUNT(*) FILTER (WHERE psb.status = 'CONFIRMED')::int as total_confirmed_sessions,
+        COALESCE(
+          SUM(COALESCE(ps."pricePerSlot", 0)) FILTER (WHERE psb.status = 'CONFIRMED'),
+          0
+        )::int as total_revenue
+      FROM play_session_bookings psb
+      JOIN play_sessions ps ON ps.id = psb."sessionId"
+      WHERE psb."userId" = u.id
+        AND ps."clubId" = $1
+    ) recent_activity ON TRUE`
+    : EMPTY_RECENT_ACTIVITY_JOIN
 
   return prisma.$queryRawUnsafe(`
     SELECT u.id, u.name, u.email,
@@ -1174,40 +1285,9 @@ async function fetchCohortBaseMembers(
            recent_activity.total_revenue as "totalRevenue"
     FROM club_followers cf
     JOIN users u ON u.id = cf.user_id
-    ${ACTIVE_MEMBER_JOIN}
+    ${activeMemberJoin}
     ${latestHealthJoin}
-    LEFT JOIN LATERAL (
-      SELECT
-        COUNT(*) FILTER (
-          WHERE psb.status = 'CONFIRMED'
-            AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
-        )::int as sessions_last_30,
-        COUNT(*) FILTER (
-          WHERE psb.status = 'CONFIRMED'
-            AND psb."bookedAt" >= NOW() - INTERVAL '60 days'
-            AND psb."bookedAt" < NOW() - INTERVAL '30 days'
-        )::int as previous_sessions_30,
-        CASE
-          WHEN MAX(psb."bookedAt") FILTER (WHERE psb.status = 'CONFIRMED') IS NOT NULL
-            THEN FLOOR(
-              EXTRACT(
-                EPOCH FROM (
-                  NOW() - MAX(psb."bookedAt") FILTER (WHERE psb.status = 'CONFIRMED')
-                )
-              ) / 86400
-            )::int
-          ELSE NULL
-        END as days_since_last_visit,
-        COUNT(*) FILTER (WHERE psb.status = 'CONFIRMED')::int as total_confirmed_sessions,
-        COALESCE(
-          SUM(COALESCE(ps."pricePerSlot", 0)) FILTER (WHERE psb.status = 'CONFIRMED'),
-          0
-        )::int as total_revenue
-      FROM play_session_bookings psb
-      JOIN play_sessions ps ON ps.id = psb."sessionId"
-      WHERE psb."userId" = u.id
-        AND ps."clubId" = $1
-    ) recent_activity ON TRUE
+    ${recentActivityJoin}
     WHERE cf.club_id = $1 AND ${where}
     ORDER BY u.name ASC
     ${limitClause}
@@ -1220,8 +1300,9 @@ async function resolveCohortMembers(
   filters: CohortFilter[],
   limit: number | null = 500,
 ): Promise<any[]> {
+  const normalizedFilters = normalizeStoredCohortFilters(filters)
   const capabilities = await getCohortSchemaCapabilities(prisma)
-  const supportedFilters = filterCohortFiltersByCapabilities(filters, capabilities)
+  const supportedFilters = filterCohortFiltersByCapabilities(normalizedFilters, capabilities)
   const { sqlFilters, enrichedFilters } = splitCohortFilters(supportedFilters)
 
   if (enrichedFilters.length === 0) {
@@ -1243,17 +1324,19 @@ async function resolveCohortMembers(
 }
 
 async function countCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<number> {
+  const normalizedFilters = normalizeStoredCohortFilters(filters)
   const capabilities = await getCohortSchemaCapabilities(prisma)
-  const supportedFilters = filterCohortFiltersByCapabilities(filters, capabilities)
+  const supportedFilters = filterCohortFiltersByCapabilities(normalizedFilters, capabilities)
   const { sqlFilters, enrichedFilters } = splitCohortFilters(supportedFilters)
 
   if (enrichedFilters.length === 0) {
     const where = buildCohortWhereClause(sqlFilters)
+    const activeMemberJoin = hasPlaySessionSupport(capabilities) ? ACTIVE_MEMBER_JOIN : ''
     const result: [{ count: bigint }] = await prisma.$queryRawUnsafe(`
       SELECT COUNT(DISTINCT cf.user_id) as count
       FROM club_followers cf
       JOIN users u ON u.id = cf.user_id
-      ${ACTIVE_MEMBER_JOIN}
+      ${activeMemberJoin}
       WHERE cf.club_id = $1 AND ${where}
     `, clubId)
     return Number(result[0]?.count ?? 0)
@@ -7245,7 +7328,8 @@ Spirit: ${guidance.spirit}`
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const capabilities = await getCohortSchemaCapabilities(ctx.prisma)
-      const rows: [{ total: bigint; has_gender: bigint; has_dob: bigint; has_skill: bigint; has_membership: bigint; has_city: bigint }] = await ctx.prisma.$queryRawUnsafe(`
+      const coverageBase = hasPlaySessionSupport(capabilities)
+        ? `
         WITH active AS (
           SELECT DISTINCT psb."userId"
           FROM play_session_bookings psb
@@ -7261,6 +7345,21 @@ Spirit: ${guidance.spirit}`
           ${sqlBigIntCountOrZero('SUM(CASE WHEN u.city IS NOT NULL THEN 1 ELSE 0 END)', 'has_city', capabilities.userColumns.has('city'))}
         FROM active a
         JOIN users u ON u.id = a."userId"
+      `
+        : `
+        SELECT
+          COUNT(*)::bigint as total,
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.gender IS NOT NULL THEN 1 ELSE 0 END)', 'has_gender', capabilities.userColumns.has('gender'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.date_of_birth IS NOT NULL THEN 1 ELSE 0 END)', 'has_dob', capabilities.userColumns.has('date_of_birth'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.skill_level IS NOT NULL THEN 1 ELSE 0 END)', 'has_skill', capabilities.userColumns.has('skill_level'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.membership_type IS NOT NULL THEN 1 ELSE 0 END)', 'has_membership', capabilities.userColumns.has('membership_type'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.city IS NOT NULL THEN 1 ELSE 0 END)', 'has_city', capabilities.userColumns.has('city'))}
+        FROM club_followers cf
+        JOIN users u ON u.id = cf.user_id
+        WHERE cf.club_id = $1
+      `
+      const rows: [{ total: bigint; has_gender: bigint; has_dob: bigint; has_skill: bigint; has_membership: bigint; has_city: bigint }] = await ctx.prisma.$queryRawUnsafe(`
+        ${coverageBase}
       `, input.clubId)
       const r = rows[0]
       const total = Number(r.total) || 1
@@ -7433,7 +7532,7 @@ Spirit: ${guidance.spirit}`
       }
 
       // Resolve current member set. Empty filters → empty current set.
-      const existingFilters = (cohort.filters as unknown as CohortFilter[]) || []
+      const existingFilters = normalizeStoredCohortFilters(cohort.filters)
       let currentIds = new Set<string>()
       if (existingFilters.length > 0) {
         try {
@@ -7481,7 +7580,7 @@ Spirit: ${guidance.spirit}`
       const cohort = await ctx.prisma.clubCohort.findUnique({ where: { id: input.cohortId } })
       if (!cohort) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cohort not found' })
 
-      const filters = (cohort.filters as any[]) || []
+      const filters = normalizeStoredCohortFilters(cohort.filters)
       const members = await queryCohortMembers(ctx.prisma, input.clubId, filters)
 
       // Refresh count
@@ -7587,7 +7686,7 @@ Spirit: ${guidance.spirit}`
         where: { id: input.clubId },
         select: { name: true, voiceSettings: true },
       })
-      const filters = (cohort.filters as any[]) || []
+      const filters = normalizeStoredCohortFilters(cohort.filters)
       const filterDesc = filters.map((f: any) => `${f.field} ${f.op} ${f.value}`).join(', ')
       const cohortMembers = await resolveCohortMembers(ctx.prisma, input.clubId, filters, null)
       const cohortUserIds = cohortMembers
@@ -10927,7 +11026,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         if (cohort.clubId !== input.clubId) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Cohort does not belong to this club' })
         }
-        const filters = (cohort.filters as unknown as CohortFilter[]) || []
+        const filters = normalizeStoredCohortFilters(cohort.filters)
         const rows = await queryCohortMembers(ctx.prisma, input.clubId, filters)
         recipientIds = (rows as any[]).map((r) => r.id).filter((id): id is string => typeof id === 'string')
         resolvedCohortId = cohort.id

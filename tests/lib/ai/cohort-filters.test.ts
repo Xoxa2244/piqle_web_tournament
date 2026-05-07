@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCohortWhereClause, filterCohortFiltersByCapabilities, type CohortFilter } from '@/server/routers/intelligence'
+import { buildCohortWhereClause, filterCohortFiltersByCapabilities, normalizeStoredCohortFilters, type CohortFilter } from '@/server/routers/intelligence'
 
 describe('Cohort Filters — buildCohortWhereClause', () => {
   describe('Empty filters', () => {
@@ -215,12 +215,13 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
           userColumns: new Set(['id', 'name', 'email']),
           clubFollowerColumns: new Set(['club_id', 'user_id']),
           memberHealthColumns: new Set<string>(),
+          playSessionColumns: new Set<string>(),
+          playSessionBookingColumns: new Set<string>(),
           hasMemberHealthSnapshots: false,
         } as any,
       )
 
       expect(filtered).toEqual([
-        { field: 'frequency', op: 'gte', value: 2 },
         { field: 'userId', op: 'in', value: ['user-1'] },
       ])
     })
@@ -236,13 +237,66 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
           userColumns: new Set(['id', 'name', 'email', 'date_of_birth']),
           clubFollowerColumns: new Set(['club_id', 'user_id', 'created_at']),
           memberHealthColumns: new Set<string>(),
+          playSessionColumns: new Set<string>(),
+          playSessionBookingColumns: new Set<string>(),
           hasMemberHealthSnapshots: false,
         } as any,
       )
 
       expect(filtered).toEqual([
+      ])
+    })
+
+    it('drops activity filters when play session tables are unavailable', () => {
+      const filtered = filterCohortFiltersByCapabilities(
+        [
+          { field: 'sessionFormat', op: 'eq', value: 'OPEN_PLAY' },
+          { field: 'frequency', op: 'gte', value: 2 },
+          { field: 'recency', op: 'lte', value: 30 },
+          { field: 'city', op: 'eq', value: 'Austin' },
+        ],
+        {
+          userColumns: new Set(['id', 'name', 'email', 'city']),
+          clubFollowerColumns: new Set(['club_id', 'user_id', 'created_at']),
+          memberHealthColumns: new Set<string>(),
+          playSessionColumns: new Set<string>(),
+          playSessionBookingColumns: new Set<string>(),
+          hasMemberHealthSnapshots: false,
+        } as any,
+      )
+
+      expect(filtered).toEqual([
+        { field: 'city', op: 'eq', value: 'Austin' },
+      ])
+    })
+  })
+
+  describe('Stored filter normalization', () => {
+    it('accepts wrapper objects with filters array', () => {
+      expect(normalizeStoredCohortFilters({
+        filters: [
+          { field: 'gender', op: 'eq', value: 'F' },
+          { nope: true },
+        ],
+      })).toEqual([
+        { field: 'gender', op: 'eq', value: 'F' },
+      ])
+    })
+
+    it('accepts JSON strings and legacy conditions arrays', () => {
+      expect(normalizeStoredCohortFilters(JSON.stringify({
+        conditions: [
+          { field: 'recency', op: 'lte', value: 30 },
+          { field: 42, op: 'eq', value: 'x' },
+        ],
+      }))).toEqual([
         { field: 'recency', op: 'lte', value: 30 },
       ])
+    })
+
+    it('returns empty array for malformed stored filters', () => {
+      expect(normalizeStoredCohortFilters('{bad json')).toEqual([])
+      expect(normalizeStoredCohortFilters({ something: 'else' })).toEqual([])
     })
   })
 })
