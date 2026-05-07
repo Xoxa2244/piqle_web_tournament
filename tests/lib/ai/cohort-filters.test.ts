@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCohortWhereClause, type CohortFilter } from '@/server/routers/intelligence'
+import { buildCohortWhereClause, filterCohortFiltersByCapabilities, type CohortFilter } from '@/server/routers/intelligence'
 
 describe('Cohort Filters — buildCohortWhereClause', () => {
   describe('Empty filters', () => {
@@ -199,6 +199,50 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
     it('returns TRUE for unknown fields', () => {
       const result = buildCohortWhereClause([{ field: 'unknown_field' as any, op: 'eq', value: 'test' }])
       expect(result).toBe('TRUE')
+    })
+  })
+
+  describe('Schema fallback', () => {
+    it('drops filters that rely on missing profile columns', () => {
+      const filtered = filterCohortFiltersByCapabilities(
+        [
+          { field: 'age', op: 'gte', value: 40 },
+          { field: 'gender', op: 'eq', value: 'F' },
+          { field: 'frequency', op: 'gte', value: 2 },
+          { field: 'userId', op: 'in', value: ['user-1'] },
+        ],
+        {
+          userColumns: new Set(['id', 'name', 'email']),
+          clubFollowerColumns: new Set(['club_id', 'user_id']),
+          memberHealthColumns: new Set<string>(),
+          hasMemberHealthSnapshots: false,
+        } as any,
+      )
+
+      expect(filtered).toEqual([
+        { field: 'frequency', op: 'gte', value: 2 },
+        { field: 'userId', op: 'in', value: ['user-1'] },
+      ])
+    })
+
+    it('drops health filters when member health snapshots are unavailable', () => {
+      const filtered = filterCohortFiltersByCapabilities(
+        [
+          { field: 'healthScore', op: 'gte', value: 80 },
+          { field: 'riskLevel', op: 'eq', value: 'watch' },
+          { field: 'recency', op: 'lte', value: 30 },
+        ],
+        {
+          userColumns: new Set(['id', 'name', 'email', 'date_of_birth']),
+          clubFollowerColumns: new Set(['club_id', 'user_id', 'created_at']),
+          memberHealthColumns: new Set<string>(),
+          hasMemberHealthSnapshots: false,
+        } as any,
+      )
+
+      expect(filtered).toEqual([
+        { field: 'recency', op: 'lte', value: 30 },
+      ])
     })
   })
 })

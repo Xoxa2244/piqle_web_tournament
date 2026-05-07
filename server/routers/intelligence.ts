@@ -61,6 +61,7 @@ const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCo
 
 // ── In-memory caches (per serverless instance, 5 min TTL) ──
 const calendarCache = new Map<string, { data: any; ts: number }>()
+const cohortSchemaCache = new Map<string, { data: CohortSchemaCapabilities; ts: number }>()
 
 // ── Helper: Check club admin access ──
 async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
@@ -665,6 +666,89 @@ export interface CohortFilter {
   value: string | number | string[]
 }
 
+interface CohortSchemaCapabilities {
+  userColumns: Set<string>
+  clubFollowerColumns: Set<string>
+  memberHealthColumns: Set<string>
+  hasMemberHealthSnapshots: boolean
+}
+
+function createDefaultCohortSchemaCapabilities(): CohortSchemaCapabilities {
+  return {
+    userColumns: new Set([
+      'id',
+      'name',
+      'email',
+      'gender',
+      'city',
+      'phone',
+      'sms_opt_in',
+      'date_of_birth',
+      'membership_type',
+      'membership_status',
+      'skill_level',
+      'zip_code',
+      'dupr_rating_doubles',
+      'dupr_rating_singles',
+      'image',
+    ]),
+    clubFollowerColumns: new Set(['club_id', 'user_id', 'created_at']),
+    memberHealthColumns: new Set(['club_id', 'user_id', 'date', 'health_score', 'risk_level']),
+    hasMemberHealthSnapshots: true,
+  }
+}
+
+async function getCohortSchemaCapabilities(prisma: any): Promise<CohortSchemaCapabilities> {
+  const cacheKey = 'public'
+  const now = Date.now()
+  const cached = cohortSchemaCache.get(cacheKey)
+  if (cached && now - cached.ts < 5 * 60 * 1000) return cached.data
+
+  const fallback = createDefaultCohortSchemaCapabilities()
+
+  try {
+    const rows: Array<{ table_name: string; column_name: string }> = await prisma.$queryRawUnsafe(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND (
+          (table_name = 'users' AND column_name IN (
+            'id', 'name', 'email', 'gender', 'city', 'phone', 'sms_opt_in',
+            'date_of_birth', 'membership_type', 'membership_status',
+            'skill_level', 'zip_code', 'dupr_rating_doubles',
+            'dupr_rating_singles', 'image'
+          ))
+          OR (table_name = 'club_followers' AND column_name IN ('club_id', 'user_id', 'created_at'))
+          OR (table_name = 'member_health_snapshots' AND column_name IN ('club_id', 'user_id', 'date', 'health_score', 'risk_level'))
+        )
+    `)
+
+    const userColumns = new Set<string>()
+    const clubFollowerColumns = new Set<string>()
+    const memberHealthColumns = new Set<string>()
+
+    for (const row of rows) {
+      if (row.table_name === 'users') userColumns.add(row.column_name)
+      if (row.table_name === 'club_followers') clubFollowerColumns.add(row.column_name)
+      if (row.table_name === 'member_health_snapshots') memberHealthColumns.add(row.column_name)
+    }
+
+    const capabilities: CohortSchemaCapabilities = {
+      userColumns,
+      clubFollowerColumns,
+      memberHealthColumns,
+      hasMemberHealthSnapshots: memberHealthColumns.size > 0,
+    }
+
+    cohortSchemaCache.set(cacheKey, { data: capabilities, ts: now })
+    return capabilities
+  } catch (error) {
+    log.warn('[Cohorts] schema capability probe failed, falling back to assumed schema:', error instanceof Error ? error.message : String(error))
+    cohortSchemaCache.set(cacheKey, { data: fallback, ts: now })
+    return fallback
+  }
+}
+
 // Allowlist of fields/ops that buildCohortWhereClause understands. Any value
 // outside this list returns TRUE (no-op filter) — defense-in-depth on top of
 // the Zod schema at the tRPC procedure boundary. Stored cohort filters come
@@ -738,6 +822,76 @@ function splitCohortFilters(filters: CohortFilter[]) {
   }
 
   return { sqlFilters, enrichedFilters }
+}
+
+function hasMemberHealthSnapshotSupport(capabilities: CohortSchemaCapabilities) {
+  return capabilities.hasMemberHealthSnapshots
+    && capabilities.memberHealthColumns.has('club_id')
+    && capabilities.memberHealthColumns.has('user_id')
+    && capabilities.memberHealthColumns.has('date')
+    && capabilities.memberHealthColumns.has('health_score')
+    && capabilities.memberHealthColumns.has('risk_level')
+}
+
+function isCohortFilterSupportedBySchema(filter: CohortFilter, capabilities: CohortSchemaCapabilities) {
+  switch (filter.field) {
+    case 'age':
+    case 'birthdayMonth':
+      return capabilities.userColumns.has('date_of_birth')
+    case 'gender':
+      return capabilities.userColumns.has('gender')
+    case 'membershipType':
+    case 'normalizedMembershipType':
+      return capabilities.userColumns.has('membership_type')
+    case 'membershipStatus':
+    case 'normalizedMembershipStatus':
+      return capabilities.userColumns.has('membership_status')
+    case 'skillLevel':
+      return capabilities.userColumns.has('skill_level')
+    case 'zipCode':
+      return capabilities.userColumns.has('zip_code')
+    case 'city':
+      return capabilities.userColumns.has('city')
+    case 'duprRating':
+      return capabilities.userColumns.has('dupr_rating_doubles')
+        && capabilities.userColumns.has('dupr_rating_singles')
+        && capabilities.userColumns.has('skill_level')
+    case 'healthScore':
+    case 'riskLevel':
+      return hasMemberHealthSnapshotSupport(capabilities)
+    case 'joinedDaysAgo':
+      return capabilities.clubFollowerColumns.has('created_at')
+    default:
+      return true
+  }
+}
+
+export function filterCohortFiltersByCapabilities(filters: CohortFilter[], capabilities: CohortSchemaCapabilities) {
+  return filters.filter((filter) => isCohortFilterSupportedBySchema(filter, capabilities))
+}
+
+function sqlColumnOrNull(
+  source: string,
+  columnName: string,
+  alias: string,
+  availableColumns: Set<string>,
+  nullCast: string,
+) {
+  return availableColumns.has(columnName)
+    ? `${source}.${columnName} as "${alias}"`
+    : `NULL::${nullCast} as "${alias}"`
+}
+
+function sqlExpressionOrNull(expression: string, alias: string, isAvailable: boolean, nullCast: string) {
+  return isAvailable
+    ? `${expression} as "${alias}"`
+    : `NULL::${nullCast} as "${alias}"`
+}
+
+function sqlBigIntCountOrZero(expression: string, alias: string, isAvailable: boolean) {
+  return isAvailable
+    ? `${expression}::bigint as ${alias}`
+    : `0::bigint as ${alias}`
 }
 
 function matchesEnrichedStringFilter(actualValue: string | null | undefined, filter: CohortFilter) {
@@ -952,35 +1106,26 @@ async function fetchCohortBaseMembers(
   filters: CohortFilter[],
   limit: number | null = 500,
 ): Promise<any[]> {
-  const where = buildCohortWhereClause(filters)
+  const capabilities = await getCohortSchemaCapabilities(prisma)
+  const supportedFilters = filterCohortFiltersByCapabilities(filters, capabilities)
+  const where = buildCohortWhereClause(supportedFilters)
   const limitClause = typeof limit === 'number' && limit > 0
     ? `LIMIT ${Math.floor(limit)}`
     : ''
-
-  return prisma.$queryRawUnsafe(`
-    SELECT u.id, u.name, u.email, u.gender, u.city, u.phone,
-           u.sms_opt_in as "smsOptIn",
-           u.date_of_birth as "dateOfBirth",
-           CASE WHEN u.date_of_birth IS NOT NULL
-             THEN EXTRACT(YEAR FROM age(CURRENT_DATE, u.date_of_birth))::int
-             ELSE NULL END as age,
-           u.membership_type as "membershipType",
-           u.membership_status as "membershipStatus",
-           u.skill_level as "skillLevel",
-           u.zip_code as "zipCode",
-           COALESCE(u.dupr_rating_doubles, 0) as "duprRating",
-           u.image,
-           latest_health.health_score as "healthScore",
-           latest_health.risk_level as "riskLevel",
-           (CURRENT_DATE - cf.created_at::date)::int as "joinedDaysAgo",
-           recent_activity.sessions_last_30 as "sessionsLast30",
-           recent_activity.previous_sessions_30 as "previousSessions30",
-           recent_activity.days_since_last_visit as "daysSinceLastVisit",
-           recent_activity.total_confirmed_sessions as "totalConfirmedSessions",
-           recent_activity.total_revenue as "totalRevenue"
-    FROM club_followers cf
-    JOIN users u ON u.id = cf.user_id
-    ${ACTIVE_MEMBER_JOIN}
+  const hasMemberHealth = hasMemberHealthSnapshotSupport(capabilities)
+  const hasDateOfBirth = capabilities.userColumns.has('date_of_birth')
+  const hasCreatedAt = capabilities.clubFollowerColumns.has('created_at')
+  const hasDuprDoubles = capabilities.userColumns.has('dupr_rating_doubles')
+  const hasDuprSingles = capabilities.userColumns.has('dupr_rating_singles')
+  const duprExpression = hasDuprDoubles && hasDuprSingles
+    ? 'COALESCE(u.dupr_rating_doubles, u.dupr_rating_singles, 0)'
+    : hasDuprDoubles
+      ? 'COALESCE(u.dupr_rating_doubles, 0)'
+      : hasDuprSingles
+        ? 'COALESCE(u.dupr_rating_singles, 0)'
+        : '0'
+  const latestHealthJoin = hasMemberHealth
+    ? `
     LEFT JOIN LATERAL (
       SELECT
         mhs.health_score,
@@ -990,7 +1135,47 @@ async function fetchCohortBaseMembers(
         AND mhs.user_id = u.id
       ORDER BY mhs.date DESC
       LIMIT 1
-    ) latest_health ON TRUE
+    ) latest_health ON TRUE`
+    : `
+    LEFT JOIN LATERAL (
+      SELECT
+        NULL::int as health_score,
+        NULL::text as risk_level
+    ) latest_health ON TRUE`
+
+  return prisma.$queryRawUnsafe(`
+    SELECT u.id, u.name, u.email,
+           ${sqlColumnOrNull('u', 'gender', 'gender', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'city', 'city', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'phone', 'phone', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'sms_opt_in', 'smsOptIn', capabilities.userColumns, 'boolean')},
+           ${sqlColumnOrNull('u', 'date_of_birth', 'dateOfBirth', capabilities.userColumns, 'date')},
+           ${sqlExpressionOrNull(
+             `CASE WHEN u.date_of_birth IS NOT NULL
+               THEN EXTRACT(YEAR FROM age(CURRENT_DATE, u.date_of_birth))::int
+               ELSE NULL END`,
+             'age',
+             hasDateOfBirth,
+             'int',
+           )},
+           ${sqlColumnOrNull('u', 'membership_type', 'membershipType', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'membership_status', 'membershipStatus', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'skill_level', 'skillLevel', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'zip_code', 'zipCode', capabilities.userColumns, 'text')},
+           ${duprExpression} as "duprRating",
+           ${sqlColumnOrNull('u', 'image', 'image', capabilities.userColumns, 'text')},
+           latest_health.health_score as "healthScore",
+           latest_health.risk_level as "riskLevel",
+           ${sqlExpressionOrNull('(CURRENT_DATE - cf.created_at::date)::int', 'joinedDaysAgo', hasCreatedAt, 'int')},
+           recent_activity.sessions_last_30 as "sessionsLast30",
+           recent_activity.previous_sessions_30 as "previousSessions30",
+           recent_activity.days_since_last_visit as "daysSinceLastVisit",
+           recent_activity.total_confirmed_sessions as "totalConfirmedSessions",
+           recent_activity.total_revenue as "totalRevenue"
+    FROM club_followers cf
+    JOIN users u ON u.id = cf.user_id
+    ${ACTIVE_MEMBER_JOIN}
+    ${latestHealthJoin}
     LEFT JOIN LATERAL (
       SELECT
         COUNT(*) FILTER (
@@ -1035,7 +1220,9 @@ async function resolveCohortMembers(
   filters: CohortFilter[],
   limit: number | null = 500,
 ): Promise<any[]> {
-  const { sqlFilters, enrichedFilters } = splitCohortFilters(filters)
+  const capabilities = await getCohortSchemaCapabilities(prisma)
+  const supportedFilters = filterCohortFiltersByCapabilities(filters, capabilities)
+  const { sqlFilters, enrichedFilters } = splitCohortFilters(supportedFilters)
 
   if (enrichedFilters.length === 0) {
     const rows = await fetchCohortBaseMembers(prisma, clubId, sqlFilters, limit)
@@ -1056,7 +1243,9 @@ async function resolveCohortMembers(
 }
 
 async function countCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<number> {
-  const { sqlFilters, enrichedFilters } = splitCohortFilters(filters)
+  const capabilities = await getCohortSchemaCapabilities(prisma)
+  const supportedFilters = filterCohortFiltersByCapabilities(filters, capabilities)
+  const { sqlFilters, enrichedFilters } = splitCohortFilters(supportedFilters)
 
   if (enrichedFilters.length === 0) {
     const where = buildCohortWhereClause(sqlFilters)
@@ -7055,6 +7244,7 @@ Spirit: ${guidance.spirit}`
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const capabilities = await getCohortSchemaCapabilities(ctx.prisma)
       const rows: [{ total: bigint; has_gender: bigint; has_dob: bigint; has_skill: bigint; has_membership: bigint; has_city: bigint }] = await ctx.prisma.$queryRawUnsafe(`
         WITH active AS (
           SELECT DISTINCT psb."userId"
@@ -7064,11 +7254,11 @@ Spirit: ${guidance.spirit}`
         )
         SELECT
           COUNT(*)::bigint as total,
-          SUM(CASE WHEN u.gender IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_gender,
-          SUM(CASE WHEN u.date_of_birth IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dob,
-          SUM(CASE WHEN u.skill_level IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_skill,
-          SUM(CASE WHEN u.membership_type IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_membership,
-          SUM(CASE WHEN u.city IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_city
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.gender IS NOT NULL THEN 1 ELSE 0 END)', 'has_gender', capabilities.userColumns.has('gender'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.date_of_birth IS NOT NULL THEN 1 ELSE 0 END)', 'has_dob', capabilities.userColumns.has('date_of_birth'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.skill_level IS NOT NULL THEN 1 ELSE 0 END)', 'has_skill', capabilities.userColumns.has('skill_level'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.membership_type IS NOT NULL THEN 1 ELSE 0 END)', 'has_membership', capabilities.userColumns.has('membership_type'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.city IS NOT NULL THEN 1 ELSE 0 END)', 'has_city', capabilities.userColumns.has('city'))}
         FROM active a
         JOIN users u ON u.id = a."userId"
       `, input.clubId)
