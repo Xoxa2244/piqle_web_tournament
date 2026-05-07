@@ -121,6 +121,8 @@ async function dispatchSequenceStepZeroNow(
       reasoning: {
         campaignName: input.campaignName,
         totalSteps: input.steps.length,
+        sequenceStep: 0,
+        stepNumber: 1,
       },
     })),
     skipDuplicates: true,
@@ -233,6 +235,8 @@ async function dispatchSequenceStepZeroNow(
           reasoning: {
             campaignName: input.campaignName,
             totalSteps: input.steps.length,
+            sequenceStep: 0,
+            stepNumber: 1,
             lastError: message,
           },
         },

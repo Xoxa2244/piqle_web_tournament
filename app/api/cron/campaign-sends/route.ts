@@ -92,6 +92,20 @@ interface CampaignForCron {
   channels: string[]
 }
 
+function getSequenceSteps(campaign: CampaignForCron): SequenceStepData[] {
+  if (Array.isArray(campaign.steps)) {
+    return campaign.steps as SequenceStepData[]
+  }
+
+  const snapshot = campaign.cohortSnapshot && typeof campaign.cohortSnapshot === 'object' && !Array.isArray(campaign.cohortSnapshot)
+    ? campaign.cohortSnapshot as Record<string, unknown>
+    : {}
+
+  return Array.isArray(snapshot.steps)
+    ? snapshot.steps as SequenceStepData[]
+    : []
+}
+
 // ── Recurring runner — minimal in-tree cron matcher ────────────────────────
 // Supports the small set of patterns the Wizard generates:
 //   "0 H * * *"  — daily at H:00 (in tz)
@@ -253,7 +267,7 @@ function resolveContentForLog(
   sequenceStep: number | null,
 ): { subject: string | null; body: string | null; ctaLabel: string | null; ctaUrl: string | null } {
   if (campaign.format === 'sequence') {
-    const steps: SequenceStepData[] = Array.isArray(campaign.steps) ? campaign.steps : []
+    const steps = getSequenceSteps(campaign)
     const idx = sequenceStep ?? 0
     const step = steps[idx]
     if (!step) {
@@ -295,7 +309,7 @@ const FAN_OUT_LIMIT = 200
 
 async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: number; exited: number }> {
   if (campaign.format !== 'sequence') return { created: 0, exited: 0 }
-  const steps: SequenceStepData[] = Array.isArray(campaign.steps) ? campaign.steps : []
+  const steps = getSequenceSteps(campaign)
   if (steps.length <= 1) return { created: 0, exited: 0 }
 
   // For each non-final source step N, find logs at sequence_step=N whose
@@ -325,7 +339,7 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
       WHERE log.campaign_id = ${campaign.id}::uuid
         AND log.type = 'CAMPAIGN_SEND'
         AND log.sent_at IS NOT NULL
-        AND log.status = 'sent'
+        AND log.status IN ('sent', 'delivered', 'opened', 'clicked', 'converted')
         AND log.sequence_step = ${n}
         AND log.sent_at <= NOW() - (${delayDays} * INTERVAL '1 day')
         AND NOT EXISTS (
@@ -396,7 +410,12 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
       campaignId: campaign.id,
       sequenceStep: c.sequenceStep + 1,
       parentLogId: c.logId,
-      reasoning: { campaignName: campaign.name, totalSteps: steps.length },
+      reasoning: {
+        campaignName: campaign.name,
+        totalSteps: steps.length,
+        sequenceStep: c.sequenceStep + 1,
+        stepNumber: c.sequenceStep + 2,
+      },
     })),
     skipDuplicates: true,
   })
