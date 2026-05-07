@@ -18,6 +18,12 @@ import React, { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { X, Filter as FilterIcon, RotateCcw } from 'lucide-react'
 
+export interface FilterChipOption {
+  key: string
+  label: string
+  count?: number
+}
+
 interface MembersFilterDrawerProps {
   open: boolean
   onClose: () => void
@@ -40,6 +46,14 @@ interface MembersFilterDrawerProps {
 
   filterValue: string
   setFilterValue: (v: string) => void
+
+  // Optional dynamic chip lists. When omitted the drawer falls back to the
+  // hardcoded 9-bucket taxonomy (STATUS_OPTIONS / TIER_OPTIONS) — the cohort
+  // builder still uses that path. The Members page passes real CR tags
+  // pulled from intelligence.getMembershipFacets, so admins see the exact
+  // tiers their club uses.
+  statusOptions?: FilterChipOption[]
+  tierOptions?: FilterChipOption[]
 
   isDark?: boolean
 }
@@ -104,7 +118,7 @@ const VALUE_OPTIONS = [
 interface ChipGroupProps {
   label: string
   hint: string
-  options: { key: string; label: string }[]
+  options: FilterChipOption[]
   value: string
   onChange: (v: string) => void
   isDark?: boolean
@@ -128,7 +142,8 @@ function ChipGroup({ label, hint, options, value, onChange, isDark }: ChipGroupP
             <button
               key={o.key}
               onClick={() => onChange(o.key)}
-              className="px-3 py-1.5 rounded-lg text-xs transition-all"
+              title={o.label}
+              className="px-3 py-1.5 rounded-lg text-xs transition-all max-w-full"
               style={{
                 background: active ? 'var(--pill-active)' : 'transparent',
                 color: active ? (isDark ? '#C4B5FD' : '#7C3AED') : 'var(--t3)',
@@ -136,7 +151,21 @@ function ChipGroup({ label, hint, options, value, onChange, isDark }: ChipGroupP
                 border: `1px solid ${active ? (isDark ? 'rgba(139,92,246,0.35)' : 'rgba(139,92,246,0.2)') : 'var(--card-border)'}`,
               }}
             >
-              {o.label}
+              <span className="inline-flex items-center gap-1.5">
+                <span className="truncate max-w-[260px] inline-block align-bottom">{o.label}</span>
+                {typeof o.count === 'number' && o.count > 0 && (
+                  <span
+                    className="px-1.5 rounded-full text-[10px] tabular-nums"
+                    style={{
+                      background: active ? 'rgba(139,92,246,0.25)' : 'var(--card-border)',
+                      color: active ? (isDark ? '#DDD6FE' : '#7C3AED') : 'var(--t4)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {o.count}
+                  </span>
+                )}
+              </span>
             </button>
           )
         })}
@@ -161,8 +190,12 @@ export function MembersFilterDrawer({
   setFilterTrend,
   filterValue,
   setFilterValue,
+  statusOptions,
+  tierOptions,
   isDark,
 }: MembersFilterDrawerProps) {
+  const effectiveStatusOptions = statusOptions ?? STATUS_OPTIONS
+  const effectiveTierOptions = tierOptions ?? TIER_OPTIONS
   const [tab, setTab] = useState<'status' | 'behavior'>('status')
 
   // Esc closes
@@ -301,15 +334,15 @@ export function MembersFilterDrawer({
                   <ChipGroup
                     label="Membership State"
                     hint="В каком состоянии находится подписка участника прямо сейчас"
-                    options={STATUS_OPTIONS}
+                    options={effectiveStatusOptions}
                     value={filterMembershipStatus}
                     onChange={setFilterMembershipStatus}
                     isDark={isDark}
                   />
                   <ChipGroup
                     label="Membership Tier"
-                    hint="По какому тарифу участник платит (или не платит)"
-                    options={TIER_OPTIONS}
+                    hint="По какому тарифу участник платит (или не платит) — реальные значения из CourtReserve"
+                    options={effectiveTierOptions}
                     value={filterMembershipType}
                     onChange={setFilterMembershipType}
                     isDark={isDark}

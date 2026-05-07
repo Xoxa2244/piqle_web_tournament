@@ -515,7 +515,7 @@ export function createChatTools(clubId: string) {
 
     getMembershipBreakdown: defineTool({
       description:
-        'Get membership SUBSCRIPTION status breakdown: how many followers have active / trial / expired / suspended / cancelled / guest / no-membership subscriptions. These are categorical subscription states from the club_management software (e.g. CourtReserve), NOT booking activity — for "who actually played in the last 30 days" use getClubMetrics.activePlayers30d.',
+        'Get membership SUBSCRIPTION status breakdown: how many followers have active / trial / expired / suspended / cancelled / guest / no-membership subscriptions. These are categorical subscription states from the club_management software (e.g. CourtReserve), NOT booking activity — for "who actually played in the last 30 days" use getClubMetrics.activePlayers30d. Returns BOTH normalised buckets (byNormalizedStatus) AND the raw CR tier strings as they appear in CourtReserve (allRawTiers — full breakdown of every distinct membership_type with counts, plus byRawStatus for membership_status). When the user asks specifically about a tier name like "Open Play Pass" or "VIP Pass", use the exact strings from allRawTiers, not normalised buckets.',
       parameters: z.object({}),
       execute: async () => {
         try {
@@ -546,10 +546,18 @@ export function createChatTools(clubId: string) {
           }
           const rawBreakdown: Record<string, number> = {}
           const typeAmongActive: Record<string, number> = {}
+          // Full raw tier breakdown — every membership_type across every
+          // follower regardless of subscription status. The LLM uses this
+          // to answer questions like "how many people are on the Open Play
+          // Pass" or "what tiers do we offer" with the exact CR strings.
+          const rawTierBreakdown: Record<string, number> = {}
 
           for (const r of rows) {
             const rawStatus = r.membership_status || 'Unknown'
             rawBreakdown[rawStatus] = (rawBreakdown[rawStatus] || 0) + 1
+
+            const rawTier = r.membership_type || '(no tier)'
+            rawTierBreakdown[rawTier] = (rawTierBreakdown[rawTier] || 0) + 1
 
             const normalized = normalizeMembership({
               membershipType: r.membership_type,
@@ -570,6 +578,15 @@ export function createChatTools(clubId: string) {
             .slice(0, 10)
             .map(([type, count]) => ({ type, count }))
 
+          // Full breakdown — sorted, no slicing. IPC clubs have ~22 distinct
+          // tier strings (incl. "Network" variants); other clubs have fewer.
+          // 50 is a generous cap that protects context-window if some club
+          // ends up with hundreds of one-off tier strings.
+          const allRawTiers = Object.entries(rawTierBreakdown)
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 50)
+            .map(([tier, count]) => ({ tier, count }))
+
           // Note: the Members page UI's "Active Players" tile is now aligned
           // with Dashboard / Advisor booking activity. This tool still
           // returns subscription-status counts, which intentionally answer a
@@ -580,6 +597,7 @@ export function createChatTools(clubId: string) {
             byNormalizedStatus: normalizedBreakdown,
             byRawStatus: rawBreakdown,
             membershipTypesAmongActive: membershipTypes,
+            allRawTiers,
             statusDefinition: 'Subscription category sourced from users.membership_status. This is different from recent play activity. For "people who actually played in the Dashboard period" use getClubMetrics.activePlayers30d.',
           }
         } catch (err) {

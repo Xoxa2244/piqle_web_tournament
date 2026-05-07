@@ -653,8 +653,8 @@ function buildMembersAudienceContext(input: {
     input.filterRisk !== 'all' ? `risk ${input.filterRisk}` : null,
     input.filterTrend !== 'all' ? `trend ${input.filterTrend}` : null,
     input.filterValue !== 'all' ? `value ${input.filterValue}` : null,
-    input.filterMembershipType !== 'all' ? `membership tier ${formatNormalizedMembershipType(input.filterMembershipType)}` : null,
-    input.filterMembershipStatus !== 'all' ? `membership state ${formatNormalizedMembershipStatus(input.filterMembershipStatus)}` : null,
+    input.filterMembershipType !== 'all' ? `membership tier ${input.filterMembershipType === '__null__' ? 'No tier' : input.filterMembershipType}` : null,
+    input.filterMembershipStatus !== 'all' ? `membership state ${input.filterMembershipStatus === '__null__' ? 'No status' : input.filterMembershipStatus}` : null,
   ].filter(Boolean)
 
   return parts.length > 0 ? parts.join(', ') : null
@@ -1264,6 +1264,39 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const [filterValue, setFilterValue] = useState<string>("all");
   const [filterMembershipType, setFilterMembershipType] = useState<string>("all");
   const [filterMembershipStatus, setFilterMembershipStatus] = useState<string>("all");
+
+  // Real CR membership facets (raw membership_type / membership_status values
+  // with counts) for the filter drawer chips. Replaces the legacy 9-bucket
+  // hardcoded taxonomy on the Members page — admins now filter by the exact
+  // tier strings their CourtReserve account uses.
+  const membershipFacetsQuery = trpc.intelligence.getMembershipFacets.useQuery(
+    { clubId: clubId || '' },
+    { enabled: !!clubId, staleTime: 5 * 60_000 },
+  );
+  const dynamicTierOptions = useMemo(() => {
+    const base = [{ key: 'all', label: 'All' }] as Array<{ key: string; label: string; count?: number }>
+    if (!membershipFacetsQuery.data?.tiers) return base
+    for (const t of membershipFacetsQuery.data.tiers) {
+      base.push({
+        key: t.value ?? '__null__',
+        label: t.value ?? 'No tier',
+        count: t.count,
+      })
+    }
+    return base
+  }, [membershipFacetsQuery.data])
+  const dynamicStatusOptions = useMemo(() => {
+    const base = [{ key: 'all', label: 'All' }] as Array<{ key: string; label: string; count?: number }>
+    if (!membershipFacetsQuery.data?.states) return base
+    for (const s of membershipFacetsQuery.data.states) {
+      base.push({
+        key: s.value ?? '__null__',
+        label: s.value ?? 'No status',
+        count: s.count,
+      })
+    }
+    return base
+  }, [membershipFacetsQuery.data])
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "health" | "revenue" | "sessions">("health");
   // P2-T2: viewMode defaults to "list" (compact rows, scales to 500+ members),
@@ -1335,7 +1368,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       chips.push({
         key: 'state',
         group: 'State',
-        label: formatNormalizedMembershipStatus(filterMembershipStatus) || filterMembershipStatus,
+        label: filterMembershipStatus === '__null__' ? 'No status' : filterMembershipStatus,
         onClear: () => setFilterMembershipStatus('all'),
       })
     }
@@ -1343,7 +1376,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       chips.push({
         key: 'tier',
         group: 'Tier',
-        label: formatNormalizedMembershipType(filterMembershipType) || filterMembershipType,
+        label: filterMembershipType === '__null__' ? 'No tier' : filterMembershipType,
         onClear: () => setFilterMembershipType('all'),
       })
     }
@@ -1393,8 +1426,15 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     if (activeFilterCount === 1) {
       if (filterRisk === 'at-risk') return 'At-Risk'
       if (filterRisk === 'critical') return 'Critical'
-      if (filterMembershipType === 'unlimited') return 'VIP'
-      if (filterMembershipType === 'trial') return 'Trial members'
+      // Smart aliases for the most-used real CR tiers (case-insensitive
+      // substring match — works regardless of pricing tier suffix).
+      if (filterMembershipType !== 'all' && filterMembershipType !== '__null__') {
+        const t = filterMembershipType.toLowerCase()
+        if (t.includes('vip')) return 'VIP'
+        if (t.includes('trial') || t.includes('intro')) return 'Trial members'
+        if (t.includes('open play')) return 'Open Play'
+        if (t.includes('guest')) return 'Guest passes'
+      }
       if (filterActivity === 'occasional') return 'Inactive'
       if (filterActivity === 'power') return 'Power players'
     }
@@ -1507,8 +1547,26 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       if (filterRisk !== "all" && m.segment !== filterRisk) return false;
       if (filterTrend !== "all" && m.engagementTrend !== filterTrend) return false;
       if (filterValue !== "all" && m.valueTier !== filterValue) return false;
-      if (filterMembershipType !== "all" && m.normalizedMembershipType !== filterMembershipType) return false;
-      if (filterMembershipStatus !== "all" && m.normalizedMembershipStatus !== filterMembershipStatus) return false;
+      // Match raw CR membership_type / membership_status verbatim. The
+      // legacy normalised-bucket comparison (m.normalizedMembershipType
+      // === filterMembershipType) was replaced because the bucket
+      // taxonomy didn't match what admins actually see in their CR
+      // dashboard. "__null__" is the sentinel for rows where the field
+      // is null (members with no tier/status assigned).
+      if (filterMembershipType !== "all") {
+        if (filterMembershipType === "__null__") {
+          if (m.membershipType != null) return false;
+        } else if (m.membershipType !== filterMembershipType) {
+          return false;
+        }
+      }
+      if (filterMembershipStatus !== "all") {
+        if (filterMembershipStatus === "__null__") {
+          if (m.membershipStatus != null) return false;
+        } else if (m.membershipStatus !== filterMembershipStatus) {
+          return false;
+        }
+      }
       if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase()) && !m.email.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;
     })
@@ -4049,8 +4107,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           filterTrend !== 'all' ? `Trend: ${filterTrend}` : '',
           filterValue !== 'all' ? `Value: ${filterValue}` : '',
           filterActivity !== 'all' ? `Activity: ${filterActivity}` : '',
-          filterMembershipStatus !== 'all' ? `Membership state: ${formatNormalizedMembershipStatus(filterMembershipStatus)}` : '',
-          filterMembershipType !== 'all' ? `Membership tier: ${formatNormalizedMembershipType(filterMembershipType)}` : '',
+          filterMembershipStatus !== 'all' ? `Membership state: ${filterMembershipStatus === '__null__' ? 'No status' : filterMembershipStatus}` : '',
+          filterMembershipType !== 'all' ? `Membership tier: ${filterMembershipType === '__null__' ? 'No tier' : filterMembershipType}` : '',
         ].filter(Boolean).join(', ')} count={filtered.length} />
       )}
 
@@ -4373,6 +4431,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         setFilterTrend={setFilterTrend}
         filterValue={filterValue}
         setFilterValue={setFilterValue}
+        statusOptions={dynamicStatusOptions}
+        tierOptions={dynamicTierOptions}
         isDark={isDark}
       />
 

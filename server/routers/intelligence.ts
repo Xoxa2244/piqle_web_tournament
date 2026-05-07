@@ -1390,6 +1390,46 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
+  // ── Members Filter Facets ──
+  //
+  // Distinct membership_type / membership_status values for this club, with
+  // counts. Powers the Members → Filter drawer chips: instead of a 9-bucket
+  // hardcoded taxonomy (most of which is empty for any given club), the UI
+  // shows the exact CR tier strings that actually exist in the club's data.
+  //
+  // The normalised buckets in lib/ai/membership-intelligence.ts stay in
+  // place — they're used by ENGAGE detectors to make broad bucket decisions
+  // ("is this member a monthly subscriber?"). This procedure exists purely
+  // for the UI filter, where we want pixel-accurate raw labels.
+  getMembershipFacets: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const tierRows = await ctx.prisma.$queryRaw<Array<{ value: string | null; count: bigint }>>`
+        SELECT u.membership_type AS value, COUNT(*)::bigint AS count
+        FROM users u
+        JOIN club_followers cf ON cf.user_id = u.id
+        WHERE cf.club_id = ${input.clubId}::uuid
+        GROUP BY u.membership_type
+        ORDER BY COUNT(*) DESC, u.membership_type ASC
+      `
+
+      const stateRows = await ctx.prisma.$queryRaw<Array<{ value: string | null; count: bigint }>>`
+        SELECT u.membership_status AS value, COUNT(*)::bigint AS count
+        FROM users u
+        JOIN club_followers cf ON cf.user_id = u.id
+        WHERE cf.club_id = ${input.clubId}::uuid
+        GROUP BY u.membership_status
+        ORDER BY COUNT(*) DESC, u.membership_status ASC
+      `
+
+      return {
+        tiers: tierRows.map((r) => ({ value: r.value, count: Number(r.count) })),
+        states: stateRows.map((r) => ({ value: r.value, count: Number(r.count) })),
+      }
+    }),
+
   // ── Slot Filler: Recommend members for underfilled sessions ──
   getSlotFillerRecommendations: protectedProcedure
     .input(z.object({

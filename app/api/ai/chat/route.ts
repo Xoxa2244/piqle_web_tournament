@@ -434,6 +434,7 @@ ${sessions.length > 0
         const norm = membershipData.byNormalizedStatus as Record<string, number> | undefined
         const raw = membershipData.byRawStatus as Record<string, number> | undefined
         const types = membershipData.membershipTypesAmongActive as Array<{ type: string; count: number }> | undefined
+        const allTiers = membershipData.allRawTiers as Array<{ tier: string; count: number }> | undefined
         parts.push(`## Membership Subscription Breakdown (subscription status, NOT booking activity)
 Total followers scanned: ${membershipData.totalFollowersScanned ?? 0}
 Active subscriptions (users.membership_status normalized to 'active'): ${membershipData.activeSubscriptions ?? 0}
@@ -442,8 +443,9 @@ By normalized status:
 ${norm ? Object.entries(norm).filter(([, c]) => c > 0).map(([status, count]) => `- ${status}: ${count}`).join('\n') : '(none)'}
 
 NOTE: Membership subscription status is a different metric from recent play activity. For "people who actually played in the Dashboard period" use Active Players from the Club Metrics block.
-${raw ? `\nRaw status values (pre-normalization, for context):\n${Object.entries(raw).slice(0, 10).map(([status, count]) => `- ${status}: ${count}`).join('\n')}` : ''}
-${types?.length ? `\nMembership types among active subscriptions (top 10):\n${types.map((t) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
+${raw ? `\nRaw status values (full list — exact CR strings, with counts):\n${Object.entries(raw).sort(([, a], [, b]) => (b as number) - (a as number)).map(([status, count]) => `- ${status}: ${count}`).join('\n')}` : ''}
+${allTiers?.length ? `\nReal CourtReserve membership tiers in this club (full breakdown — every distinct tier string with counts, sorted by size; use these EXACT strings when answering tier questions, not normalised buckets):\n${allTiers.map((t) => `- ${t.tier}: ${t.count}`).join('\n')}` : ''}
+${types?.length ? `\nTier breakdown among ACTIVE subscriptions only (top 10):\n${types.map((t) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
       }
 
       if (ratedPlayers && !('error' in ratedPlayers)) {
