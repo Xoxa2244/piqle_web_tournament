@@ -216,7 +216,7 @@ function getClarificationOptionUi(field: PendingClarification['field'], option: 
   }
 
   if (field === 'audience' || field === 'audience_mode') {
-    if (lower.includes('current audience') || lower.includes('текущ') || lower.includes('actual')) {
+    if (lower.includes('current audience') || lower.includes('actual')) {
       return { icon: CheckCircle2, tone: 'primary' as const };
     }
     return { icon: Users, tone: 'default' as const };
@@ -260,13 +260,13 @@ function getClarificationOptionStyles(tone: ClarificationTone) {
 
 function describeAudienceOption(option: string) {
   const lower = option.toLowerCase()
-  if (lower.includes('inactive') || lower.includes('неактив') || lower.includes('inactiv')) {
+  if (lower.includes('inactive') || lower.includes('inactiv')) {
     return 'Focus on members who have recently cooled off and need a win-back nudge.'
   }
-  if (lower.includes('weekday evening') || lower.includes('будня') || lower.includes('entre semana')) {
+  if (lower.includes('weekday evening') || lower.includes('entre semana')) {
     return 'Useful when you want to fill after-work sessions with your most relevant players.'
   }
-  if (lower.includes('55') || lower.includes('женщ') || lower.includes('mujeres')) {
+  if (lower.includes('55') || lower.includes('mujeres')) {
     return 'A narrower segment the agent can build directly into a campaign or audience.'
   }
   return 'Use this as a ready-made audience brief and let the agent keep going.'
@@ -277,10 +277,10 @@ function describeScheduleOption(option: string) {
   if (lower.includes('6pm') || lower.includes('18:00')) {
     return 'A strong after-work send window for most outreach.'
   }
-  if (lower.includes('9am') || lower.includes('9 утра')) {
+  if (lower.includes('9am')) {
     return 'A morning delivery window that is good for inbox visibility.'
   }
-  if (lower.includes('tuesday') || lower.includes('вторник') || lower.includes('martes')) {
+  if (lower.includes('tuesday') || lower.includes('martes')) {
     return 'Queue a timed send and let the agent handle delivery later.'
   }
   return 'Use this time window and let the platform schedule it.'
@@ -292,7 +292,7 @@ function buildClarificationChoices(pending: PendingClarification): Clarification
     const optionUi = getClarificationOptionUi(pending.field, option)
 
     if (pending.field === 'audience_mode') {
-      const isCurrent = lower.includes('current audience') || lower.includes('текущ') || lower.includes('actual')
+      const isCurrent = lower.includes('current audience') || lower.includes('actual')
       return {
         value: option,
         label: isCurrent ? 'Use current audience' : option,
@@ -365,9 +365,9 @@ function buildClarificationChoices(pending: PendingClarification): Clarification
         value: option,
         label: option,
         description: describeAudienceOption(option),
-        impact: lower.includes('inactive') || lower.includes('неактив') || lower.includes('inactiv')
+        impact: lower.includes('inactive') || lower.includes('inactiv')
           ? 'Pushes the agent toward win-back logic and member health signals.'
-          : lower.includes('weekday evening') || lower.includes('будня') || lower.includes('entre semana')
+          : lower.includes('weekday evening') || lower.includes('entre semana')
             ? 'Re-centers the plan around after-work demand and likely session-fit members.'
             : 'Narrows the segment so the agent can produce a more specific audience or campaign next.',
         icon: Users,

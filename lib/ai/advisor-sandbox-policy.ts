@@ -71,7 +71,6 @@ function shouldMergeRecipients(message: string) {
   const lower = message.toLowerCase()
   return containsAny(lower, [
     /\b(add|also|include|plus|append|another)\b/,
-    /\b(добавь|еще|ещё|также|плюс)\b/,
     /\b(agrega|añade|también|además)\b/,
   ])
 }
@@ -81,7 +80,6 @@ function wantsClearAll(message: string) {
   return containsAny(lower, [
     /\b(clear|remove|delete|reset)\s+(all\s+)?(sandbox|test)\s+recipients\b/,
     /\b(no test recipients|no sandbox recipients)\b/,
-    /\b(очисти|убери|сбрось)\s+(всех\s+)?(test|sandbox)\s+получател\w+\b/,
     /\b(sin destinatarios de prueba|borra todos los destinatarios de prueba)\b/,
   ])
 }
@@ -91,7 +89,6 @@ function wantsClearEmailRecipients(message: string) {
   return containsAny(lower, [
     /\b(clear|remove|delete)\s+(all\s+)?(email|mail)\s+test recipients\b/,
     /\bno\s+(email|mail)\s+test recipients\b/,
-    /\b(очисти|убери)\s+email\s+test\b/,
     /\b(sin destinatarios de prueba por email|borra los destinatarios de email)\b/,
   ])
 }
@@ -101,7 +98,6 @@ function wantsClearSmsRecipients(message: string) {
   return containsAny(lower, [
     /\b(clear|remove|delete)\s+(all\s+)?(sms|text|phone)\s+test recipients\b/,
     /\bno\s+(sms|text)\s+test recipients\b/,
-    /\b(очисти|убери)\s+(sms|смс)\s+test\b/,
     /\b(sin destinatarios de prueba por sms|borra los destinatarios de sms)\b/,
   ])
 }
@@ -111,7 +107,6 @@ function parseSandboxMode(message: string): AdvisorSandboxRoutingDraft['mode'] |
 
   if (containsAny(lower, [
     /\b(preview only|preview mode|preview inbox only|just preview|do not route)\b/,
-    /\b(только preview|режим preview|только превью|без routing|не маршрутизируй)\b/,
     /\b(solo preview|modo preview|solo vista previa)\b/,
   ])) {
     return 'preview_only'
@@ -119,7 +114,6 @@ function parseSandboxMode(message: string): AdvisorSandboxRoutingDraft['mode'] |
 
   if (containsAny(lower, [
     /\b(test recipients?|route sandbox|sandbox routing|whitelist|qa recipients?)\b/,
-    /\b(тестов\w+\s+получател\w+|sandbox routing|маршрутиз\w+ sandbox|whitelist)\b/,
     /\b(destinatarios de prueba|sandbox routing|whitelist)\b/,
   ])) {
     return 'test_recipients'
@@ -149,13 +143,11 @@ export function isAdvisorSandboxRoutingRequest(message: string) {
   const mentionsSandbox = containsAny(lower, [
     /\b(sandbox|preview inbox|preview mode|test recipients?|whitelist|qa recipients?)\b/,
     /\b(preview only|route sandbox)\b/,
-    /\b(sandbox|превью|preview|тестов\w+\s+получател\w+|whitelist)\b/,
     /\b(destinatarios de prueba|sandbox|vista previa|whitelist)\b/,
   ]) || extractEmails(message).length > 0
 
   const wantsChange = containsAny(lower, [
     /\b(set|change|update|use|route|send|add|remove|clear|switch|keep)\b/,
-    /\b(поставь|измени|обнови|используй|маршрутиз\w+|добавь|убери|очисти|оставь)\b/,
     /\b(usa|cambia|actualiza|agrega|borra|mantén|enruta)\b/,
   ])
 

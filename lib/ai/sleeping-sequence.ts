@@ -1,5 +1,5 @@
 /**
- * Sleeping-Member Sequence — ENGAGE Segment #5 "Спящий".
+ * Sleeping-Member Sequence — ENGAGE Segment #5 "Sleeping".
  *
  * Two-step recovery chain for active-subscription members who haven't
  * booked in 30–90 days. Spec from docs:
@@ -15,7 +15,7 @@
  * Distinct from declining-sequence:
  *   - Tone is calmer (member already disengaged for a month)
  *   - 2 steps not 3 (less escalation — no incentive at the end; we save
- *     incentives for segment #6 "Ушедший" if they keep going silent)
+ *     incentives for segment #6 "Lapsed" if they keep going silent)
  *   - Survey options reflect deeper detachment
  *     (DECLINING used: injury / busy / schedule / pause)
  *     (SLEEPING uses: planschanged / time / schedule / other)

@@ -153,9 +153,9 @@ function parseTimeToken(raw: string | undefined | null): number | null {
 function parseTimeRange(message: string) {
   const timePattern = '(\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?|\\d{1,2}:\\d{2})'
   const rangePatterns = [
-    new RegExp(`(?:quiet hours?|do not send|don't send|no messages?|stop messaging|avoid outreach|тихие часы|не писать|не отправлять).*?${timePattern}\\s*(?:to|until|through|\\-|–|—|до|и)\\s*${timePattern}`, 'i'),
+    new RegExp(`(?:quiet hours?|do not send|don't send|no messages?|stop messaging|avoid outreach).*?${timePattern}\\s*(?:to|until|through|\\-|–|—)\\s*${timePattern}`, 'i'),
     new RegExp(`\\bfrom\\s*${timePattern}\\s*(?:to|until|through|\\-|–|—)\\s*${timePattern}\\b`, 'i'),
-    new RegExp(`\\b${timePattern}\\s*(?:to|until|through|\\-|–|—|до|и)\\s*${timePattern}\\b`, 'i'),
+    new RegExp(`\\b${timePattern}\\s*(?:to|until|through|\\-|–|—)\\s*${timePattern}\\b`, 'i'),
   ]
 
   for (const pattern of rangePatterns) {
@@ -212,12 +212,10 @@ export function isAdvisorContactPolicyRequest(message: string) {
   const mentionsPolicy = containsAny(lower, [
     /\b(contact policy|messaging policy|outreach policy|communication policy|quiet hours?|cooldown|frequency cap|daily cap|weekly cap|recent booking)\b/,
     /\b(max\s+\d+\s+(messages?|touches?).*(day|week)|messages?\s+per\s+(day|week)|do not send after|don't send after)\b/,
-    /\b(тихие часы|политик\w+ сообщений|политик\w+ контактов|кулдаун|лимит сообщений|не писать после|не отправлять после|недавн\w+ бронир)\b/,
   ])
   const wantsChange = containsAny(lower, [
     /\b(set|change|update|adjust|tighten|relax|use|limit|make|apply|turn|enable|disable)\b/,
     /\b(do not send after|don't send after|quiet hours? from|limit outreach|messages? per day|messages? per week)\b/,
-    /\b(измени|поменяй|обнови|сделай|ограничи|поставь|включи|выключи|не писать после|не отправлять после)\b/,
   ])
   return mentionsPolicy && wantsChange
 }
@@ -243,17 +241,17 @@ export function updateAdvisorContactPolicyFromMessage(opts: {
     next.quietHours = quietHoursRange
     changed = true
   } else {
-    const afterMatch = lower.match(/\b(?:after|start(?:ing)?(?: quiet hours?)?(?: at)?|после|с)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/i)
-    const beforeMatch = lower.match(/\b(?:before|until|resume(?: at)?|end(?: quiet hours?)?(?: at)?|до)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/i)
+    const afterMatch = lower.match(/\b(?:after|start(?:ing)?(?: quiet hours?)?(?: at)?)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/i)
+    const beforeMatch = lower.match(/\b(?:before|until|resume(?: at)?|end(?: quiet hours?)?(?: at)?)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\b/i)
     const startHour = parseTimeToken(afterMatch?.[1])
     const endHour = parseTimeToken(beforeMatch?.[1])
 
-    if (startHour !== null && containsAny(lower, [/\b(after|start|после|с)\b/, /\b(quiet hours|тихие часы|не писать|do not send)\b/])) {
+    if (startHour !== null && containsAny(lower, [/\b(after|start)\b/, /\b(quiet hours|do not send)\b/])) {
       next.quietHours.startHour = startHour
       changed = true
     }
 
-    if (endHour !== null && containsAny(lower, [/\b(before|until|resume|end|до)\b/, /\b(quiet hours|тихие часы|не писать|do not send)\b/])) {
+    if (endHour !== null && containsAny(lower, [/\b(before|until|resume|end)\b/, /\b(quiet hours|do not send)\b/])) {
       next.quietHours.endHour = endHour
       changed = true
     }
@@ -261,8 +259,7 @@ export function updateAdvisorContactPolicyFromMessage(opts: {
 
   const cooldownMatch =
     lower.match(/\b(?:cooldown(?: of)?|use a)\s*(\d{1,2})\s*(?:hours?|hrs?|h)\b/) ||
-    lower.match(/\b(\d{1,2})\s*(?:hours?|hrs?|h)\s*cooldown\b/) ||
-    lower.match(/\b(\d{1,2})\s*час\w*\s*(?:кулдаун|перерыв)\b/)
+    lower.match(/\b(\d{1,2})\s*(?:hours?|hrs?|h)\s*cooldown\b/)
   if (cooldownMatch) {
     next.cooldownHours = clampInt(cooldownMatch[1], 1, 24, currentPolicy.cooldownHours)
     changed = true
@@ -270,8 +267,7 @@ export function updateAdvisorContactPolicyFromMessage(opts: {
 
   const dailyMatch =
     lower.match(/\b(?:max(?:imum)?|limit)?\s*(\d{1,2})\s*(?:messages?|touch(?:es)?)\s*(?:per|a|\/)\s*(?:day|24\s*hours?)\b/) ||
-    lower.match(/\b(\d{1,2})\s*\/\s*day\b/) ||
-    lower.match(/\b(\d{1,2})\s*сообщен\w+\s*(?:в|за)\s*(?:день|24\s*час)\b/)
+    lower.match(/\b(\d{1,2})\s*\/\s*day\b/)
   if (dailyMatch) {
     next.max24h = clampInt(dailyMatch[1], 1, 10, currentPolicy.max24h)
     changed = true
@@ -279,8 +275,7 @@ export function updateAdvisorContactPolicyFromMessage(opts: {
 
   const weeklyMatch =
     lower.match(/\b(?:max(?:imum)?|limit)?\s*(\d{1,2})\s*(?:messages?|touch(?:es)?)\s*(?:per|a|\/)\s*week\b/) ||
-    lower.match(/\b(\d{1,2})\s*\/\s*week\b/) ||
-    lower.match(/\b(\d{1,2})\s*сообщен\w+\s*(?:в|за)\s*недел\w+\b/)
+    lower.match(/\b(\d{1,2})\s*\/\s*week\b/)
   if (weeklyMatch) {
     next.max7d = clampInt(weeklyMatch[1], 1, 20, currentPolicy.max7d)
     changed = true
@@ -288,8 +283,7 @@ export function updateAdvisorContactPolicyFromMessage(opts: {
 
   const bookingLookbackMatch =
     lower.match(/\b(?:recent booking|booking lookback|booking window|recent-booking window|recent bookings? for)\s*(\d{1,2})\s*(?:days?|d)\b/) ||
-    lower.match(/\b(\d{1,2})\s*(?:days?|d)\s*(?:recent booking|booking window|lookback)\b/) ||
-    lower.match(/\b(\d{1,2})\s*дн\w*\s*(?:для|окно|недавн\w+ бронир)\b/)
+    lower.match(/\b(\d{1,2})\s*(?:days?|d)\s*(?:recent booking|booking window|lookback)\b/)
   if (bookingLookbackMatch) {
     next.recentBookingLookbackDays = clampInt(bookingLookbackMatch[1], 1, 30, currentPolicy.recentBookingLookbackDays)
     changed = true

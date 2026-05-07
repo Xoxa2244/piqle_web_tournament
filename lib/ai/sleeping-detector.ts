@@ -1,10 +1,10 @@
 /**
- * Sleeping-Member Detector — ENGAGE Segment #5 "Спящий".
+ * Sleeping-Member Detector — ENGAGE Segment #5 "Sleeping".
  *
  * Identifies members whose last confirmed booking is between 30 and 90 days
  * ago and whose subscription is still active. These are the "warm" pool
  * just past the DECLINING_REACTIVATION window (0–30d) and before they tip
- * into segment #6 "Ушедший" (90+ days, deep winback).
+ * into segment #6 "Lapsed" (90+ days, deep winback).
  *
  * Membership criteria:
  *   - Subscription active (membership_status = 'Active')

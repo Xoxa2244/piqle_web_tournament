@@ -37,7 +37,7 @@ type ClarificationResolution = {
   clarification?: ClarificationResponse
 }
 
-const COPY: Record<'en' | 'ru' | 'es', {
+const COPY: Record<'en' | 'es', {
   needAudienceForAudience: string
   needAudienceForCampaign: string
   needAudienceMode: string
@@ -52,20 +52,6 @@ const COPY: Record<'en' | 'ru' | 'es', {
   scheduleOptions: string[]
 }> = {
   en: {
-    needAudienceForAudience: 'Who should be included in this audience?',
-    needAudienceForCampaign: 'Who should this campaign target?',
-    needAudienceMode: 'Should I use the current audience or build a new one for this campaign?',
-    needChannel: 'Which channel should I use for this campaign?',
-    needSchedule: 'When should I send this campaign?',
-    repeatAudience: 'I still need the audience to continue. Tell me who should be included or targeted.',
-    repeatChannel: 'I still need the delivery channel. Choose email, SMS, or both.',
-    repeatSchedule: 'I still need a send time. Tell me something like "tomorrow at 6pm" or "Friday at 9am".',
-    audienceOptions: ['Inactive members', 'Weekday evening players', 'Women 55+'],
-    audienceModeOptions: ['Use current audience', 'Inactive members', 'Weekday evening players'],
-    channelOptions: ['Email', 'SMS', 'Both email and SMS'],
-    scheduleOptions: ['Tomorrow at 6pm', 'Friday at 9am', 'Next Tuesday at 3pm'],
-  },
-  ru: {
     needAudienceForAudience: 'Who should be included in this audience?',
     needAudienceForCampaign: 'Who should this campaign target?',
     needAudienceMode: 'Should I use the current audience or build a new one for this campaign?',
@@ -96,7 +82,7 @@ const COPY: Record<'en' | 'ru' | 'es', {
 }
 
 function getCopy(language: SupportedLanguage | string) {
-  return COPY[language === 'ru' || language === 'es' ? language : 'en']
+  return COPY[language === 'es' ? 'es' : 'en']
 }
 
 function containsAny(text: string, patterns: RegExp[]) {
@@ -106,9 +92,9 @@ function containsAny(text: string, patterns: RegExp[]) {
 export function extractExplicitAdvisorChannel(message: string): z.infer<typeof advisorChannelEnum> | null {
   const lower = message.toLowerCase()
   if (containsAny(lower, [/\b(email|e-mail)\b/]) && containsAny(lower, [/\b(sms|text)\b/])) return 'both'
-  if (containsAny(lower, [/\b(both|both channels|all channels)\b/, /\b(оба канала|и email и sms)\b/, /\b(email y sms|ambos)\b/])) return 'both'
-  if (containsAny(lower, [/\b(sms|text)\b/, /\b(смс|sms)\b/])) return 'sms'
-  if (containsAny(lower, [/\b(email|e-mail)\b/, /\b(имейл|емейл|почта)\b/])) return 'email'
+  if (containsAny(lower, [/\b(both|both channels|all channels)\b/, /\b(email y sms|ambos)\b/])) return 'both'
+  if (containsAny(lower, [/\b(sms|text)\b/])) return 'sms'
+  if (containsAny(lower, [/\b(email|e-mail)\b/])) return 'email'
   return null
 }
 
@@ -117,7 +103,6 @@ function wantsCurrentAudience(message: string) {
   return containsAny(lower, [
     /\b(use|keep|reuse)\s+(the\s+)?(current|existing|same)\s+(audience|segment|group|list)\b/,
     /\b(use|keep)\s+them\b/,
-    /\b(используй|оставь)\s+(текущую|эту)\s+аудитори\w+\b/,
     /\b(current audience|same audience|that audience|this audience)\b/,
   ])
 }
@@ -127,7 +112,6 @@ function wantsNewAudience(message: string) {
   return containsAny(lower, [
     /\b(new|different|another)\s+(audience|segment|group|list)\b/,
     /\b(create|build)\s+(a\s+)?new\s+(audience|segment)\b/,
-    /\b(новую|другую)\s+аудитори\w+\b/,
   ])
 }
 
@@ -135,7 +119,6 @@ function isLikelyFreshRequest(message: string) {
   const lower = message.toLowerCase()
   return containsAny(lower, [
     /\b(create|build|draft|launch|send|show|analyze|compare|find|why|what|how)\b/,
-    /\b(создай|подготовь|отправь|покажи|проанализируй|почему|что|как)\b/,
   ])
 }
 
@@ -152,7 +135,6 @@ function hasMeaningfulAudienceDescription(text: string) {
     /\b(age|over \d{2}|under \d{2}|\d{2}\+)\b/,
     /\b(skill|dupr|rating|membership|zip|city)\b/,
     /\b(members?|players?)\s+(who|with|from|in)\b/,
-    /\b(неактивн|риск|утр|вечер|будн|выходн|женщин|мужчин|новых участников|возвращающихся игроков|игроков \d{2}\+)\b/,
     /\b(inactivos|riesgo|manana|tarde|noche|mujeres|hombres|nuevos miembros|\d{2}\+)\b/,
   ])
 }

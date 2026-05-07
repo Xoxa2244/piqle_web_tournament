@@ -1,5 +1,5 @@
 /**
- * Birthday Gift Offer — ENGAGE Segment #8 "День рождения".
+ * Birthday Gift Offer — ENGAGE Segment #8 "Birthday".
  *
  * Single email fired 7 days before a member's birthday with 3 gift-choice
  * buttons. The member's choice is captured via MicroSurveyResponse and

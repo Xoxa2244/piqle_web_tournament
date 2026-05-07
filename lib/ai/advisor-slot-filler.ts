@@ -65,7 +65,6 @@ function wantsCurrentSession(message: string) {
   return containsAny(lower, [
     /\b(this|that|the)\s+(session|slot|match)\b/,
     /\b(fill it|invite them to it|for this one|for that one)\b/,
-    /\b(эту|эту сессию|этот слот|ее)\b/,
   ])
 }
 
@@ -74,15 +73,14 @@ function wantsMostUnderfilled(message: string) {
   return containsAny(lower, [
     /\b(most underfilled|most urgent|worst occupancy|largest gap|biggest gap)\b/,
     /\b(best session to fill|next underfilled session)\b/,
-    /\b(самую пустую|самую недозаполненную|самую проблемную)\b/,
   ])
 }
 
 function resolveOrdinalSelection(message: string, sessions: AdvisorSlotSessionOption[]) {
   const lower = message.toLowerCase()
-  if (containsAny(lower, [/\b(first|1st|number one|#1)\b/, /\b(перв\w+)\b/])) return sessions[0] || null
-  if (containsAny(lower, [/\b(second|2nd|number two|#2)\b/, /\b(втор\w+)\b/])) return sessions[1] || null
-  if (containsAny(lower, [/\b(third|3rd|number three|#3)\b/, /\b(трет\w+)\b/])) return sessions[2] || null
+  if (containsAny(lower, [/\b(first|1st|number one|#1)\b/])) return sessions[0] || null
+  if (containsAny(lower, [/\b(second|2nd|number two|#2)\b/])) return sessions[1] || null
+  if (containsAny(lower, [/\b(third|3rd|number three|#3)\b/])) return sessions[2] || null
   return null
 }
 

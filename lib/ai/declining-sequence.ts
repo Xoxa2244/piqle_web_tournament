@@ -1,5 +1,5 @@
 /**
- * Declining-Activity Sequence — ENGAGE Segment #4 "Снижение активности".
+ * Declining-Activity Sequence — ENGAGE Segment #4 "Declining activity".
  *
  * Three-step recovery chain for members who just dropped from regular to
  * near-zero activity. Spec from docs in repo:

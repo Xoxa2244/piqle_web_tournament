@@ -5,8 +5,8 @@
  * for one survey type. Currently rendered on Settings → Automation for the
  * Newcomer Day-12 survey ("what's holding new members back?").
  *
- * Same component shape will work for all future surveys (Снижение
- * активности, Спящий, etc.) — pass a different surveyType prop and a
+ * Same component shape will work for all future surveys (Declining
+ * activity, Sleeping, etc.) — pass a different surveyType prop and a
  * different label dictionary.
  *
  * Empty state: shows a friendly "no responses yet" panel rather than
