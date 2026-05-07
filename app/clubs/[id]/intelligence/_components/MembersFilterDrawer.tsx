@@ -333,7 +333,7 @@ export function MembersFilterDrawer({
                 <>
                   <ChipGroup
                     label="Membership State"
-                    hint="В каком состоянии находится подписка участника прямо сейчас"
+                    hint="Current subscription state — what the member's membership looks like right now"
                     options={effectiveStatusOptions}
                     value={filterMembershipStatus}
                     onChange={setFilterMembershipStatus}
@@ -341,7 +341,7 @@ export function MembersFilterDrawer({
                   />
                   <ChipGroup
                     label="Membership Tier"
-                    hint="По какому тарифу участник платит (или не платит) — реальные значения из CourtReserve"
+                    hint="Which package the member pays for (or doesn't) — exact values pulled from CourtReserve"
                     options={effectiveTierOptions}
                     value={filterMembershipType}
                     onChange={setFilterMembershipType}
@@ -354,7 +354,7 @@ export function MembersFilterDrawer({
                 <>
                   <ChipGroup
                     label="Activity"
-                    hint="Как часто участник играет — посчитано по бронированиям за последние 30 дней"
+                    hint="How often the member plays — based on bookings over the last 30 days"
                     options={ACTIVITY_OPTIONS}
                     value={filterActivity}
                     onChange={setFilterActivity}
@@ -362,7 +362,7 @@ export function MembersFilterDrawer({
                   />
                   <ChipGroup
                     label="Risk"
-                    hint="Уровень риска оттока — health-score, посчитанный AI-моделью"
+                    hint="Churn risk level — health-score computed by the AI model"
                     options={RISK_OPTIONS}
                     value={filterRisk}
                     onChange={(v) => {
@@ -374,7 +374,7 @@ export function MembersFilterDrawer({
                   />
                   <ChipGroup
                     label="Trend"
-                    hint="Куда движется активность — растёт, держится, падает или уже почти ушёл"
+                    hint="Where activity is heading — growing, holding, declining, or nearly churned"
                     options={TREND_OPTIONS}
                     value={filterTrend}
                     onChange={setFilterTrend}
@@ -382,7 +382,7 @@ export function MembersFilterDrawer({
                   />
                   <ChipGroup
                     label="Value"
-                    hint="Сегмент по выручке — High LTV это верхняя треть платящих"
+                    hint="Revenue segment — High LTV is the top third of paying members"
                     options={VALUE_OPTIONS}
                     value={filterValue}
                     onChange={setFilterValue}

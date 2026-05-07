@@ -2647,7 +2647,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <Mail className="w-4 h-4" style={{ color: '#EF4444' }} />
-                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Win-Back бывших</h3>
+                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Win-Back former members</h3>
               </div>
               <p className="text-[11px]" style={{ color: "var(--t4)", maxWidth: 760 }}>
                 This lane treats former and drifting members differently: expired memberships, cancelled memberships, and high-value players who quietly lapsed each get their own comeback motion.
