@@ -46,6 +46,7 @@ import {
   type ProgrammingStrategyPresetId,
 } from './programming-iq-strategy'
 import { applyRegenerateHint } from './programming-iq-regenerate'
+import { makeSlotSignature } from './programming-iq-decision-log'
 import type {
   DayOfWeek,
   PlaySessionFormat,
@@ -233,6 +234,26 @@ export interface BuildWeeklyGridResult {
     saturations: number
     avgProjectedOccupancy: number
   }
+  /** Phase A.1 — per-(slot × candidate) records for the decision log.
+   *  Caller (tRPC procedure) persists these via persistDecisions.
+   *  buildWeeklyGrid stays pure / sync; persistence is fire-and-forget
+   *  on the caller side. */
+  decisionLog: Array<{
+    slotSignature: string
+    candidateId: string
+    candidateFormat: string
+    candidateSkill: string
+    totalScore: number
+    goalScores: Record<string, number>
+    decision:
+      | 'selected'
+      | 'risk'
+      | 'rejected_floor'
+      | 'rejected_blocked'
+      | 'rejected_filter'
+      | 'no_court'
+    reason?: string | null
+  }>
   insights: string[]
   /** Pass through to the UI transparency row. */
   signalSummary: {
@@ -1706,6 +1727,71 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const assignmentNoCourtCount = assignments.filter((assignment) => assignment.failed === 'no_court').length
   const assignmentOutsideHoursCount = assignments.filter((assignment) => assignment.failed === 'outside_hours').length
 
+  // 4.5. Build decision log records (Phase A.1 telemetry — no behaviour
+  //      change; just captures what we considered for each (slot ×
+  //      candidate) pair so the outcomes cron and Phase D backtest can
+  //      measure precision/recall later. Caller persists via
+  //      persistDecisions; buildWeeklyGrid stays sync.
+  const eligibleIdsSet = new Set(eligible.map((p) => p.id))
+  const assignmentByProposalId = new Map<string, (typeof assignments)[number]>()
+  for (const a of assignments) assignmentByProposalId.set(a.proposal.id, a)
+
+  const decisionLog: BuildWeeklyGridResult['decisionLog'] = []
+  for (const proposal of expanded) {
+    const goals = getGoalScores(proposal, [], scoringContext)
+    const rawScore = getGreedySelectionScore(proposal, [], scoringContext)
+    const totalScore = Number.isFinite(rawScore) ? rawScore : Number.NEGATIVE_INFINITY
+
+    const assignment = assignmentByProposalId.get(proposal.id)
+    const placed = assignment && !assignment.failed
+
+    let decision: BuildWeeklyGridResult['decisionLog'][number]['decision']
+    let reason: string | null = null
+    if (eligibleIdsSet.has(proposal.id)) {
+      if (placed) {
+        decision = 'selected'
+      } else {
+        decision = 'no_court'
+        reason = assignment?.failed === 'outside_hours'
+          ? 'No active court has operating hours covering this window'
+          : 'Every active court already booked or conflicting in this window'
+      }
+    } else if (riskIds.has(proposal.id)) {
+      if (placed) {
+        decision = 'risk'
+        reason = `Score ${Math.round(totalScore)} in risk band [${strategyProfile.behaviorProfile.riskScoreFloor}, ${strategyProfile.behaviorProfile.selectionScoreFloor})`
+      } else {
+        decision = 'no_court'
+        reason = 'Risk-pass candidate could not be placed on any free court'
+      }
+    } else if (goals.blocked) {
+      decision = 'rejected_blocked'
+      reason = 'Portfolio policy blocked this candidate (canShareWindow / canDuplicate)'
+    } else {
+      decision = 'rejected_floor'
+      reason = `Score ${Math.round(totalScore)} below risk floor ${strategyProfile.behaviorProfile.riskScoreFloor}`
+    }
+
+    const placedCourtId = placed ? assignment!.courtId : null
+    decisionLog.push({
+      slotSignature: makeSlotSignature(placedCourtId, proposal.dayOfWeek, proposal.startTime),
+      candidateId: proposal.id,
+      candidateFormat: proposal.format,
+      candidateSkill: proposal.skillLevel,
+      totalScore,
+      goalScores: {
+        demandFit: goals.demandFit,
+        utilization: goals.utilization,
+        audienceProtection: goals.audienceProtection,
+        portfolioBalance: goals.portfolioBalance,
+        operationalFit: goals.operationalFit,
+        adminIntent: goals.adminIntent,
+      },
+      decision,
+      reason,
+    })
+  }
+
   // 5. Emit suggested / risk cells for successful assignments.
   const cells: GridCell[] = []
   let suggestedCount = 0
@@ -2016,6 +2102,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       saturations: saturationCount,
       avgProjectedOccupancy: avgProjected,
     },
+    decisionLog,
     insights,
     signalSummary: {
       monthsOfBookingData,

@@ -8973,6 +8973,29 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         ]
       }
 
+      // Phase A.1 — fire-and-forget decision log persistence. Bounded
+      // 5s timeout inside persistDecisions so a slow write can't stretch
+      // regenerate latency. Errors are swallowed and warned; we do not
+      // want telemetry to block UX. See lib/ai/programming-iq-decision-log.
+      void (async () => {
+        try {
+          const { persistDecisions } = await import('@/lib/ai/programming-iq-decision-log')
+          await persistDecisions(ctx.prisma as any, {
+            clubId: input.clubId,
+            generationId: grid.generationId,
+            weekStartDate: input.weekStartDate,
+            selectedPresetIds: input.selectedPresetIds || [],
+            isV2: false,
+            decisions: grid.decisionLog,
+          })
+        } catch (err: any) {
+          log.warn(
+            '[programming-iq] decision log persist threw:',
+            err?.message?.slice(0, 160),
+          )
+        }
+      })()
+
       // Bug-fix 2026-05-01: previously this deleted ALL programming_iq
       // drafts for the club regardless of which week they belonged to.
       // That meant Generate-on-week-B silently nuked week-A's pending
@@ -10914,6 +10937,186 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           code: 'INTERNAL_SERVER_ERROR',
           message: `Test send failed: ${message}`,
         })
+      }
+    }),
+
+  /**
+   * Programming IQ — Diagnostics endpoint (Phase A.3).
+   *
+   * Aggregates the Phase A.1 decision log with the Phase A.2 outcome log
+   * so we (and the admin) can answer: out of all candidates the scheduler
+   * looked at last week, how many got selected, how many got rejected
+   * (and why), and how did the published sessions actually perform?
+   *
+   * The endpoint stays read-only and tolerates empty tables — clubs that
+   * have not regenerated since Phase A shipped get zeroes back, not 500s.
+   *
+   * Response shape is intentionally flat / boring so the future
+   * Programming IQ admin diagnostics panel can render it without
+   * extra normalization.
+   */
+  programmingIQDiagnostics: protectedProcedure
+    .input(z.object({
+      clubId: z.string(),
+      /** Optional ISO YYYY-MM-DD. When omitted, aggregates the last `weeksBack` weeks. */
+      weekStartDate: z.string().optional(),
+      weeksBack: z.number().int().min(1).max(26).optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Determine date range. Single week if weekStartDate given, else
+      // last N Mondays (weeksBack defaults to 4).
+      const weeksBack = input.weeksBack ?? 4
+      const today = new Date()
+      const upper = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()))
+      upper.setUTCDate(upper.getUTCDate() + 1) // exclusive upper bound = tomorrow
+      let lower: Date
+      if (input.weekStartDate) {
+        lower = new Date(input.weekStartDate)
+        const upperWeek = new Date(lower)
+        upperWeek.setUTCDate(upperWeek.getUTCDate() + 7)
+        upper.setTime(upperWeek.getTime())
+      } else {
+        lower = new Date(upper)
+        lower.setUTCDate(lower.getUTCDate() - weeksBack * 7)
+      }
+
+      // ── Decision aggregates ────────────────────────────────────────
+      const decisions = await (ctx.prisma as any).programmingIQDecisionLog.findMany({
+        where: {
+          clubId: input.clubId,
+          weekStartDate: { gte: lower, lt: upper },
+        },
+        select: {
+          decision: true,
+          totalScore: true,
+          candidateFormat: true,
+          candidateSkill: true,
+          isV2: true,
+          createdAt: true,
+        },
+        take: 5000,
+      }).catch(() => [])
+
+      const decisionsByKind: Record<string, number> = {
+        selected: 0,
+        risk: 0,
+        rejected_floor: 0,
+        rejected_blocked: 0,
+        rejected_filter: 0,
+        no_court: 0,
+      }
+      const decisionsByVersion = { v1: 0, v2: 0 }
+      let scoreSum = 0
+      let scoreCount = 0
+      for (const d of decisions as Array<{ decision: string; totalScore: number; isV2: boolean }>) {
+        decisionsByKind[d.decision] = (decisionsByKind[d.decision] ?? 0) + 1
+        if (d.isV2) decisionsByVersion.v2 += 1
+        else decisionsByVersion.v1 += 1
+        if (Number.isFinite(d.totalScore)) {
+          scoreSum += d.totalScore
+          scoreCount += 1
+        }
+      }
+      const avgScore = scoreCount > 0 ? scoreSum / scoreCount : 0
+
+      // ── Outcome aggregates ─────────────────────────────────────────
+      const outcomes = await (ctx.prisma as any).programmingIQOutcomeLog.findMany({
+        where: {
+          clubId: input.clubId,
+          weekStartDate: { gte: lower, lt: upper },
+        },
+        select: {
+          attendanceClass: true,
+          actualAttendance: true,
+          predictedOccupancy: true,
+          capacity: true,
+          attendedPct: true,
+          format: true,
+          skill: true,
+          dayOfWeek: true,
+          startTime: true,
+          newMemberCount: true,
+          atRiskMemberCount: true,
+        },
+        take: 1000,
+      }).catch(() => [])
+
+      const outcomesByClass: Record<string, number> = {
+        over: 0,
+        full: 0,
+        partial: 0,
+        low: 0,
+        no_show: 0,
+      }
+      let predictedSum = 0
+      let actualSum = 0
+      let capacitySum = 0
+      let outcomeCount = 0
+      let newMembersTotal = 0
+      let atRiskMembersTotal = 0
+      for (const o of outcomes as Array<{
+        attendanceClass: string
+        actualAttendance: number
+        predictedOccupancy: number
+        capacity: number
+        newMemberCount: number
+        atRiskMemberCount: number
+      }>) {
+        outcomesByClass[o.attendanceClass] = (outcomesByClass[o.attendanceClass] ?? 0) + 1
+        predictedSum += o.predictedOccupancy
+        actualSum += o.actualAttendance
+        capacitySum += o.capacity
+        newMembersTotal += o.newMemberCount
+        atRiskMembersTotal += o.atRiskMemberCount
+        outcomeCount += 1
+      }
+
+      // ── Health rollup ──────────────────────────────────────────────
+      // "Filter health" answers the diagnostic question we keep asking:
+      // are most ideas being rejected for hard reasons (no court / blocked),
+      // for score reasons (under floor), or for upstream filter reasons
+      // (fillGapMinDemand etc., which we control)?
+      const totalDecisions = (decisions as any[]).length
+      const filterHealth = totalDecisions === 0
+        ? { rejectedFilterPct: 0, rejectedFloorPct: 0, rejectedBlockedPct: 0, noCourtPct: 0 }
+        : {
+            rejectedFilterPct: (decisionsByKind.rejected_filter / totalDecisions) * 100,
+            rejectedFloorPct: (decisionsByKind.rejected_floor / totalDecisions) * 100,
+            rejectedBlockedPct: (decisionsByKind.rejected_blocked / totalDecisions) * 100,
+            noCourtPct: (decisionsByKind.no_court / totalDecisions) * 100,
+          }
+
+      const meanPredicted = outcomeCount > 0 ? predictedSum / outcomeCount : 0
+      const meanActual = outcomeCount > 0 ? actualSum / outcomeCount : 0
+      const meanGap = outcomeCount > 0 ? (predictedSum - actualSum) / outcomeCount : 0
+      const meanCapacityUtilPct = capacitySum > 0 ? (actualSum / capacitySum) * 100 : 0
+
+      return {
+        range: {
+          lower: lower.toISOString().slice(0, 10),
+          upper: upper.toISOString().slice(0, 10),
+          weeksBack: input.weekStartDate ? 1 : weeksBack,
+        },
+        totals: {
+          decisions: totalDecisions,
+          outcomes: outcomeCount,
+        },
+        decisionsByKind,
+        decisionsByVersion,
+        avgDecisionScore: avgScore,
+        filterHealth,
+        outcomesByClass,
+        outcomeRollup: {
+          meanPredicted,
+          meanActual,
+          /** Positive => over-predicted (we expected more than showed up). */
+          meanGap,
+          meanCapacityUtilPct,
+          newMembersAttended: newMembersTotal,
+          atRiskMembersAttended: atRiskMembersTotal,
+        },
       }
     }),
 })

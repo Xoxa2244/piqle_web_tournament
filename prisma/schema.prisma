@@ -2128,6 +2128,84 @@ model MemberHealthSnapshot {
   @@map("member_health_snapshots")
 }
 
+// ── Programming IQ — Decision log (Phase A.1 of slot-driven refactor).
+//    Captures one row per (slot × candidate) considered by buildWeeklyGrid.
+//    Used to (a) measure precision of v1 vs v2 in backtests, (b) explain
+//    in the UI why a slot was filled or left empty, (c) feed the outcome
+//    aggregator (programming-iq-outcomes cron) which joins on
+//    (clubId, weekStartDate, slotSignature) when a published session
+//    materialises later. Sample policy: log everything for now; if
+//    volume becomes an issue, drop "rejected_filter" rows first.
+model ProgrammingIQDecisionLog {
+  id                  String   @id @default(uuid())
+  clubId              String   @map("club_id")
+  /** uuid that ties all decisions made in one buildWeeklyGrid call. */
+  generationId        String   @map("generation_id")
+  weekStartDate       DateTime @map("week_start_date") @db.Date
+  /** Stable key "court=<id>|day=<DOW>|hour=<HH>" so outcomes can join later. */
+  slotSignature       String   @map("slot_signature")
+  candidateId         String   @map("candidate_id")
+  candidateFormat     String   @map("candidate_format")
+  candidateSkill      String   @map("candidate_skill")
+  totalScore          Float    @map("total_score")
+  /** Per-goal breakdown — { demandFit, utilization, audienceProtection, portfolioBalance, operationalFit, adminIntent }. */
+  goalScores          Json     @map("goal_scores")
+  /** 'selected' | 'risk' | 'rejected_floor' | 'rejected_blocked' | 'rejected_filter' | 'no_court' */
+  decision            String
+  /** One-line human-readable reason. */
+  reason              String?
+  selectedPresetIds   String[] @map("selected_preset_ids")
+  /** false = current pipeline (v1), true = slot-driven pipeline (v2 once Phase B ships). */
+  isV2                Boolean  @default(false) @map("is_v2")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  @@index([clubId, weekStartDate])
+  @@index([generationId])
+  @@index([clubId, candidateFormat, candidateSkill])
+  @@map("programming_iq_decision_log")
+}
+
+// ── Programming IQ — Outcome log (Phase A.2 of slot-driven refactor).
+//    One row per published-and-passed session produced by Programming IQ.
+//    Daily cron (programming-iq-outcomes) computes actual attendance,
+//    new-vs-regular split, and attendance class. Joins back to the
+//    decision log on (clubId, weekStartDate, slotSignature) when
+//    available. Used by the diagnostics endpoint and by the Phase D
+//    backtest harness.
+model ProgrammingIQOutcomeLog {
+  id                  String   @id @default(uuid())
+  clubId              String   @map("club_id")
+  /** Optional FK back to the decision log row. Null when the session
+   *  was published manually (not from a Programming IQ suggestion). */
+  decisionLogId       String?  @map("decision_log_id")
+  /** play_session.id this outcome refers to. */
+  sessionId           String   @map("session_id")
+  weekStartDate       DateTime @map("week_start_date") @db.Date
+  format              String
+  skill               String
+  dayOfWeek           String   @map("day_of_week")
+  startTime           String   @map("start_time")
+  predictedOccupancy  Int      @map("predicted_occupancy")
+  /** Confirmed bookings at the time the cron ran. */
+  actualAttendance    Int      @map("actual_attendance")
+  capacity            Int
+  /** actual_attendance / capacity * 100 — precomputed for indexing. */
+  attendedPct         Float    @map("attended_pct")
+  /** 'over' (>capacity) | 'full' (>=80%) | 'partial' (40-80%) | 'low' (<40%) | 'no_show' (=0) */
+  attendanceClass     String   @map("attendance_class")
+  /** Members who joined this club within 30 days before the session. */
+  newMemberCount      Int      @default(0) @map("new_member_count")
+  /** Members in at_risk or critical health segment at session time. */
+  atRiskMemberCount   Int      @default(0) @map("at_risk_member_count")
+  observedAt          DateTime @default(now()) @map("observed_at")
+
+  @@unique([sessionId])
+  @@index([clubId, weekStartDate])
+  @@index([clubId, attendanceClass])
+  @@index([decisionLogId])
+  @@map("programming_iq_outcome_log")
+}
+
 // ── P5-T2: Campaign aggregate (replaces ad-hoc AdvisorDraft for v1 campaigns).
 //    Created by Campaign Wizard (P4) on Launch. Cohort linkage is nullable
 //    so legacy/orphan campaigns keep working. Attribution JSON written by
