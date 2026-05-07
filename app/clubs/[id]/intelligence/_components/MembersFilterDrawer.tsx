@@ -251,7 +251,7 @@ export function MembersFilterDrawer({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="fixed inset-0 z-40"
+            className="fixed inset-0 z-[60]"
             style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
           />
           <motion.aside
@@ -260,7 +260,7 @@ export function MembersFilterDrawer({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-            className="fixed top-0 right-0 z-50 h-screen flex flex-col"
+            className="fixed top-0 right-0 z-[70] h-screen flex flex-col"
             style={{
               width: 'min(480px, 100vw)',
               background: 'var(--bg, #0B0B14)',

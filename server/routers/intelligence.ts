@@ -1406,11 +1406,15 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
+      // No ::uuid cast on cf.club_id — the iqsport-prod schema stores
+      // club_followers.club_id as TEXT (not UUID), unlike the older
+      // piqle_web_tournament DB. Prisma binds the parameter as text, which
+      // matches the column type without a cast.
       const tierRows = await ctx.prisma.$queryRaw<Array<{ value: string | null; count: bigint }>>`
         SELECT u.membership_type AS value, COUNT(*)::bigint AS count
         FROM users u
         JOIN club_followers cf ON cf.user_id = u.id
-        WHERE cf.club_id = ${input.clubId}::uuid
+        WHERE cf.club_id = ${input.clubId}
         GROUP BY u.membership_type
         ORDER BY COUNT(*) DESC, u.membership_type ASC
       `
@@ -1419,7 +1423,7 @@ export const intelligenceRouter = createTRPCRouter({
         SELECT u.membership_status AS value, COUNT(*)::bigint AS count
         FROM users u
         JOIN club_followers cf ON cf.user_id = u.id
-        WHERE cf.club_id = ${input.clubId}::uuid
+        WHERE cf.club_id = ${input.clubId}
         GROUP BY u.membership_status
         ORDER BY COUNT(*) DESC, u.membership_status ASC
       `
