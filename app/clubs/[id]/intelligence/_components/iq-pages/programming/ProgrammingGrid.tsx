@@ -235,13 +235,15 @@ function formatHour(h: number): string {
   return `${h - 12}p`
 }
 
-function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'saturation' | 'conflict' {
+function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'explore' | 'saturation' | 'conflict' | 'empty-with-reason' {
   const explicitKind = draft.metadata?.cellKind
   if (
     explicitKind === 'suggested'
     || explicitKind === 'risk'
+    || explicitKind === 'explore'
     || explicitKind === 'saturation'
     || explicitKind === 'conflict'
+    || explicitKind === 'empty-with-reason'
   ) {
     return explicitKind
   }
@@ -590,11 +592,13 @@ function DraftCell({
   onClick: () => void
 }) {
   const draftKind = getDraftCellKind(draft)
-  // Three amber-ish states the cell can be in:
-  //   - 'risk': new risk-pass cell, weak signal but court is empty
-  //   - 'saturation': audience already over-targeted, demand at risk
-  //   - 'suggested' / 'conflict': normal flow
+  // Cell tier colours:
+  //   - 'risk': amber-light, weak signal but slot empty (v1 risk pass + v2 risk band)
+  //   - 'explore' (v2): cyan, below risk floor — surfaced experimentally
+  //   - 'saturation': amber-darker, audience over-targeted
+  //   - 'suggested' / 'conflict': purple (default)
   const isRiskPass = draftKind === 'risk'
+  const isExplore = draftKind === 'explore'
   const isSaturation = draftKind === 'saturation'
   const showAmber = isRiskPass || isSaturation
   const tier = classifyTier({
@@ -604,17 +608,22 @@ function DraftCell({
   })
   const skillBadge = SKILL_BADGE_STYLES[tier]
   // Lighter amber tint for risk-pass than saturation so admins can
-  // distinguish them at a glance even when both are amber.
+  // distinguish them at a glance even when both are amber. Explore tier
+  // uses cyan to read as "experimental / measurement candidate".
   const fill = isRiskPass
     ? 'rgba(251,191,36,0.10)'
-    : isSaturation
-      ? 'rgba(245,158,11,0.12)'
-      : 'rgba(139,92,246,0.14)'
+    : isExplore
+      ? 'rgba(56,189,248,0.10)'
+      : isSaturation
+        ? 'rgba(245,158,11,0.12)'
+        : 'rgba(139,92,246,0.14)'
   const border = isRiskPass
     ? 'rgba(251,191,36,0.50)'
-    : isSaturation
-      ? 'rgba(245,158,11,0.55)'
-      : 'rgba(139,92,246,0.52)'
+    : isExplore
+      ? 'rgba(56,189,248,0.55)'
+      : isSaturation
+        ? 'rgba(245,158,11,0.55)'
+        : 'rgba(139,92,246,0.52)'
   const linkedLiveOptimization = draft.metadata?.liveOptimization
   return (
     <div
@@ -650,6 +659,15 @@ function DraftCell({
               title="Risk pass — weaker signal, evaluate before publishing"
             >
               Risk
+            </span>
+          )}
+          {isExplore && (
+            <span
+              className="rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide"
+              style={{ background: 'rgba(56,189,248,0.18)', color: '#0369A1' }}
+              title="Explore tier — below risk floor; experimental pick. Try and measure."
+            >
+              Explore
             </span>
           )}
         </div>

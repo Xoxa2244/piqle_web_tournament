@@ -8697,6 +8697,11 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       prioritizeRequest: z.boolean().optional(),
       courtIds: z.array(z.string()).max(50).optional(),
       targetSuggestionCount: z.number().int().min(1).max(100).optional(),
+      /** Phase B opt-in. 'v1' (default) keeps the legacy idea-driven
+       *  pipeline; 'v2' switches to slot-driven iteration. UI gates this
+       *  behind a feature toggle on the Programming IQ page so admins
+       *  can A/B compare. */
+      engineVersion: z.enum(['v1', 'v2']).optional(),
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
@@ -8964,6 +8969,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         prioritizeRequest: input.prioritizeRequest,
         previousSuggestionSignatures,
         timezone: clubTimezone,
+        engineVersion: input.engineVersion,
       })
 
       if (regenerateHint?.reasoning) {
@@ -8985,7 +8991,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             generationId: grid.generationId,
             weekStartDate: input.weekStartDate,
             selectedPresetIds: input.selectedPresetIds || [],
-            isV2: false,
+            isV2: input.engineVersion === 'v2',
             decisions: grid.decisionLog,
           })
         } catch (err: any) {
@@ -9068,7 +9074,15 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
       const draftRows: any[] = []
       for (const cell of grid.cells) {
-        if (cell.kind === 'live' || cell.kind === 'empty') continue
+        // Skip non-actionable cells. 'live' is a read-only echo of an
+        // existing PlaySession; 'empty' / 'empty-with-reason' are
+        // intentional gaps the v2 path surfaces with a why-not message
+        // (no draft to publish).
+        if (
+          cell.kind === 'live'
+          || cell.kind === 'empty'
+          || cell.kind === 'empty-with-reason'
+        ) continue
         const row = await (ctx.prisma as any).opsSessionDraft.create({
           data: {
             clubId: input.clubId,

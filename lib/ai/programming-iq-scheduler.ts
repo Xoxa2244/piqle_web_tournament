@@ -47,6 +47,7 @@ import {
 } from './programming-iq-strategy'
 import { applyRegenerateHint } from './programming-iq-regenerate'
 import { makeSlotSignature } from './programming-iq-decision-log'
+import { runSlotDrivenSelection } from './programming-iq-slot-driven'
 import type {
   DayOfWeek,
   PlaySessionFormat,
@@ -106,7 +107,27 @@ export interface SchedulerContactPolicy {
   inviteCapPerMemberPerWeek: number
 }
 
-export type GridCellKind = 'live' | 'suggested' | 'risk' | 'empty' | 'conflict' | 'saturation'
+export type GridCellKind =
+  | 'live'
+  | 'suggested'
+  | 'risk'
+  /** Phase B.5 — below risk floor but above explore floor. UI surfaces
+   *  with explicit "experimental — try and measure" framing. Only
+   *  emitted by the v2 slot-driven pipeline. */
+  | 'explore'
+  | 'empty'
+  /** Phase B.5 — slot considered but no candidate cleared even the
+   *  explore floor. UI shows the slot greyed out with a tooltip
+   *  explaining why ("no feasible candidate for this hour" / "all
+   *  candidates over saturation cap" etc). v2-only. */
+  | 'empty-with-reason'
+  | 'conflict'
+  | 'saturation'
+
+/** Phase B — engine selector. v1 keeps the legacy idea-driven greedy
+ *  + bin-pack pipeline; v2 iterates over empty slots directly. Default
+ *  v1 so production behaviour is unchanged until Phase E rollout. */
+export type ProgrammingIQEngineVersion = 'v1' | 'v2'
 
 export interface GridCell {
   /** Stable key for React: `${courtId}__${dayOfWeek}__${startTime}`. */
@@ -217,6 +238,14 @@ export interface BuildWeeklyGridInput {
    *  check between AI proposals and live PlaySessions misfires near
    *  UTC midnight (the EST → UTC offset shifts day boundaries). */
   timezone?: string
+  /** Phase B — pipeline selector. 'v1' keeps the legacy idea-driven
+   *  greedy + bin-pack flow (default; production unchanged). 'v2'
+   *  switches to slot-driven iteration: for each empty (court × day ×
+   *  hour), pick the best candidate by score. Both paths share the
+   *  upstream candidate generator (buildAdvisorProgrammingPlan) and
+   *  the scoring function (getGreedySelectionScore) so swapping the
+   *  flag never silently changes scoring behaviour. */
+  engineVersion?: ProgrammingIQEngineVersion
 }
 
 export interface BuildWeeklyGridResult {
@@ -248,6 +277,8 @@ export interface BuildWeeklyGridResult {
     decision:
       | 'selected'
       | 'risk'
+      /** v2 only — score in [exploreScoreFloor, riskScoreFloor). */
+      | 'explore'
       | 'rejected_floor'
       | 'rejected_blocked'
       | 'rejected_filter'
@@ -1012,9 +1043,9 @@ function canShareWindow(
  * places; now named so its semantics are obvious. Documents what
  * the previous code's comment merely hinted at as "Infinity".
  */
-const PORTFOLIO_PENALTY_BLOCKED = 999
+export const PORTFOLIO_PENALTY_BLOCKED = 999
 
-function getPortfolioPenalty(
+export function getPortfolioPenalty(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
   pinnedProposalIds: Set<string> = new Set<string>(),
@@ -1066,7 +1097,7 @@ function getPortfolioPenalty(
   return Math.round(penalty * behaviorProfile.portfolioPenaltyMultiplier)
 }
 
-type SelectionScoringContext = {
+export type SelectionScoringContext = {
   goalWeights: ReturnType<typeof computeProgrammingStrategyProfile>['goalWeights']
   behaviorProfile: ProgrammingBehaviorProfile
   request: ReturnType<typeof parseAdvisorProgrammingRequest> | null
@@ -1086,7 +1117,7 @@ function isFillIdleExperimentCandidate(
   )
 }
 
-function getGoalScores(
+export function getGoalScores(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
   context: SelectionScoringContext,
@@ -1171,7 +1202,7 @@ function getGoalScores(
   }
 }
 
-function getGreedySelectionScore(
+export function getGreedySelectionScore(
   proposal: AdvisorProgrammingProposalDraft,
   selected: AdvisorProgrammingProposalDraft[],
   context: SelectionScoringContext,
@@ -1653,17 +1684,78 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
 
   // 3. Greedy portfolio selection. We deliberately stop early when the
   // next candidate no longer clears the minimum business-quality bar.
-  const eligible = selectBalancedProposals(
-    expanded,
-    selectionTargetCount,
-    pinnedProposalIds,
-    {
-      ...scoringContext,
-      pinnedProposalIds: new Set(pinnedProposalIds),
-    },
-  )
+  //
+  // ── Phase B fork ────────────────────────────────────────────────────
+  // engineVersion === 'v2' replaces the entire idea-driven greedy + bin-
+  // pack path with a slot-driven loop. Both paths share the upstream
+  // candidate generator (above) and converge below at "live cells +
+  // saturation" so the change is structurally minimal.
+  const useV2Engine = input.engineVersion === 'v2'
+  let eligible: AdvisorProgrammingProposalDraft[] = []
+  let v2SlotResult: ReturnType<typeof runSlotDrivenSelection> | null = null
+  if (useV2Engine) {
+    v2SlotResult = runSlotDrivenSelection({
+      weekStartDate: input.weekStartDate,
+      courts: input.courts,
+      existingWeekSessions: input.existingWeekSessions,
+      historicalSessions: input.historicalSessions,
+      historicalSessionsForShapes: input.lastNDaysSessions.map((s) => ({
+        courtId: null,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        dayOfWeek: dayOfWeekFromDate(new Date(s.date), input.timezone),
+        format: s.format as any,
+        skillLevel: s.skillLevel as any,
+      })),
+      candidates: expanded,
+      scoringContext,
+      selectionScoreFloor: strategyProfile.behaviorProfile.selectionScoreFloor,
+      riskScoreFloor: strategyProfile.behaviorProfile.riskScoreFloor,
+      emitDecisionLog: true,
+      timezone: input.timezone,
+    })
+    eligible = v2SlotResult.selectedProposals
+  } else {
+    eligible = selectBalancedProposals(
+      expanded,
+      selectionTargetCount,
+      pinnedProposalIds,
+      {
+        ...scoringContext,
+        pinnedProposalIds: new Set(pinnedProposalIds),
+      },
+    )
+  }
   const duplicateVariantsAdded = expanded.filter((proposal) => proposal.id.endsWith('__dup')).length
 
+  // ── Shared output state (populated by either v1 or v2 branch below).
+  //    Declared up here so the post-branch live-cell + saturation passes
+  //    can read/write a single `cells` array regardless of engine.
+  const cells: GridCell[] = []
+  let decisionLog: BuildWeeklyGridResult['decisionLog'] = []
+  let suggestedCount = 0
+  let riskCount = 0
+  let exploreCount = 0
+  let conflictCount = 0
+  let emptyWithReasonCount = 0
+  let assignmentPlacedCount = 0
+  let assignmentNoCourtCount = 0
+  let assignmentOutsideHoursCount = 0
+
+  if (useV2Engine) {
+    // ── v2 path: slot-driven results were computed above.
+    if (!v2SlotResult) throw new Error('v2 engine selected but slot result missing')
+    cells.push(...v2SlotResult.cells)
+    decisionLog = v2SlotResult.decisionLog
+    suggestedCount = v2SlotResult.stats.suggested
+    riskCount = v2SlotResult.stats.risk
+    exploreCount = v2SlotResult.stats.explore
+    emptyWithReasonCount = v2SlotResult.stats.emptyWithReason
+    assignmentPlacedCount = suggestedCount + riskCount + exploreCount
+    // v2 doesn't bin-pack, so no_court / outside_hours don't apply.
+    // (The slot-map records 'outside_hours' separately for diagnostics
+    // but those are slot statuses, not failed candidate placements.)
+  } else {
   // 3.5. Risk pass — for clubs / weeks where the strict greedy under-
   //      delivers (e.g. moderate history + dominant single-format like
   //      80% Open Play), promote weaker-but-plausible candidates to
@@ -1723,9 +1815,9 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     input.weekStartDate,
     input.timezone,
   )
-  const assignmentPlacedCount = assignments.filter((assignment) => !assignment.failed).length
-  const assignmentNoCourtCount = assignments.filter((assignment) => assignment.failed === 'no_court').length
-  const assignmentOutsideHoursCount = assignments.filter((assignment) => assignment.failed === 'outside_hours').length
+  assignmentPlacedCount = assignments.filter((assignment) => !assignment.failed).length
+  assignmentNoCourtCount = assignments.filter((assignment) => assignment.failed === 'no_court').length
+  assignmentOutsideHoursCount = assignments.filter((assignment) => assignment.failed === 'outside_hours').length
 
   // 4.5. Build decision log records (Phase A.1 telemetry — no behaviour
   //      change; just captures what we considered for each (slot ×
@@ -1736,7 +1828,6 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const assignmentByProposalId = new Map<string, (typeof assignments)[number]>()
   for (const a of assignments) assignmentByProposalId.set(a.proposal.id, a)
 
-  const decisionLog: BuildWeeklyGridResult['decisionLog'] = []
   for (const proposal of expanded) {
     const goals = getGoalScores(proposal, [], scoringContext)
     const rawScore = getGreedySelectionScore(proposal, [], scoringContext)
@@ -1793,10 +1884,6 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   }
 
   // 5. Emit suggested / risk cells for successful assignments.
-  const cells: GridCell[] = []
-  let suggestedCount = 0
-  let riskCount = 0
-  let conflictCount = 0
   for (const a of assignments) {
     const isRisk = riskIds.has(a.proposal.id)
     if (a.failed) {
@@ -1872,6 +1959,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       suggestedCount += 1
     }
   }
+  } // ── end useV2Engine guard (v1 path)
 
   // 6. Emit live cells (read-only in UI) from existing week sessions.
   let liveKept = 0

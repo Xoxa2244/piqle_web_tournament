@@ -35,6 +35,7 @@ const SCORE_CLAMP_FLOOR = -1000
 export type ProgrammingIQDecisionKind =
   | 'selected'        // chose for the suggested tier
   | 'risk'            // chose for the risk/backup tier (Phase A.0 risk pass)
+  | 'explore'         // v2 only — picked in explore band [exploreFloor, riskFloor)
   | 'rejected_floor'  // score below selectionScoreFloor and not picked up by risk pass
   | 'rejected_blocked' // portfolioPenalty == BLOCKED, hard-filtered
   | 'rejected_filter' // dropped at candidate generation (fillGapMinDemand etc.)

@@ -78,13 +78,15 @@ function formatWeekRange(weekStart: string): string {
   return `${sMon} – ${eMon}`
 }
 
-function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'saturation' | 'conflict' {
+function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'explore' | 'saturation' | 'conflict' | 'empty-with-reason' {
   const explicitKind = draft.metadata?.cellKind
   if (
     explicitKind === 'suggested'
     || explicitKind === 'risk'
+    || explicitKind === 'explore'
     || explicitKind === 'saturation'
     || explicitKind === 'conflict'
+    || explicitKind === 'empty-with-reason'
   ) {
     return explicitKind
   }
@@ -241,33 +243,33 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
 
   // ── Actions ──
 
+  // Phase B opt-in. Reads `?engine=v2` from the URL so admins can A/B
+  // compare without shipping a UI toggle. Default is v1 (legacy).
+  const engineVersion = typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).get('engine') === 'v2'
+    ? 'v2' as const
+    : 'v1' as const
+
   const handleGenerate = async () => {
     setGenerating(true)
     try {
       const result: any = await new Promise((resolve, reject) => {
         const mutation: any = generateMutation as any
+        const payload = {
+          clubId,
+          weekStartDate: weekStart,
+          regeneratePrompt: regeneratePrompt.trim() || undefined,
+          selectedPresetIds,
+          prioritizeRequest: regeneratePrompt.trim() ? prioritizeRequest : false,
+          engineVersion,
+        }
         if (mutation.mutateAsync) {
           mutation
-            .mutateAsync({
-              clubId,
-              weekStartDate: weekStart,
-              regeneratePrompt: regeneratePrompt.trim() || undefined,
-              selectedPresetIds,
-              prioritizeRequest: regeneratePrompt.trim() ? prioritizeRequest : false,
-            })
+            .mutateAsync(payload)
             .then(resolve)
             .catch(reject)
         } else {
-          mutation.mutate(
-            {
-              clubId,
-              weekStartDate: weekStart,
-              regeneratePrompt: regeneratePrompt.trim() || undefined,
-              selectedPresetIds,
-              prioritizeRequest: regeneratePrompt.trim() ? prioritizeRequest : false,
-            },
-            { onSuccess: resolve, onError: reject },
-          )
+          mutation.mutate(payload, { onSuccess: resolve, onError: reject })
         }
       })
       setLastGeneratedAt(new Date())

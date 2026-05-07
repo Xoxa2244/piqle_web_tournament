@@ -53,13 +53,15 @@ export function CellEditPopover(props: CellEditPopoverProps) {
   )
 }
 
-function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'saturation' | 'conflict' {
+function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'explore' | 'saturation' | 'conflict' | 'empty-with-reason' {
   const explicitKind = draft.metadata?.cellKind
   if (
     explicitKind === 'suggested'
     || explicitKind === 'risk'
+    || explicitKind === 'explore'
     || explicitKind === 'saturation'
     || explicitKind === 'conflict'
+    || explicitKind === 'empty-with-reason'
   ) {
     return explicitKind
   }
