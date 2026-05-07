@@ -70,7 +70,12 @@ function AcceptAdminInviteContent() {
       }
 
       setState('accepting')
-      acceptMutation.mutate({ token })
+      // Always attach the admin role to the signed-in user. On the happy
+      // path this is the same as invite.inviteeEmail; on the "Accept
+      // anyway" path it overrides invite.inviteeEmail so the role lands
+      // on the actual logged-in account, not on a stub user matched by
+      // invite email. See server/routers/club.ts → acceptAdminInvite.
+      acceptMutation.mutate({ token, attachToSessionUser: true })
     }
   }, [token, sessionStatus, state, inviteQuery.isLoading, inviteQuery.data])
 
@@ -106,7 +111,14 @@ function AcceptAdminInviteContent() {
               Switch Account
             </button>
             <button
-              onClick={() => { setState('accepting'); acceptMutation.mutate({ token: token! }) }}
+              onClick={() => {
+                setState('accepting')
+                // Force-attach to the current session user — overrides
+                // invite.inviteeEmail. Without this flag the role would
+                // silently land on a stub user matched by the invite
+                // email, leaving the signed-in user without admin access.
+                acceptMutation.mutate({ token: token!, attachToSessionUser: true })
+              }}
               style={{ padding: '12px 32px', background: 'transparent', color: '#6b7280', border: '1px solid #e5e7eb', borderRadius: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
             >
               Accept with current account anyway
