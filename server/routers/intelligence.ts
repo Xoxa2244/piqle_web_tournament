@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { detectLeagueFamily } from '@/lib/ai/league-family-detector'
+import { classifyProgrammingTier } from '@/lib/ai/programming-tier-classifier'
+import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
 import type { DayOfWeek, PlaySessionFormat } from '@/types/intelligence'
@@ -684,6 +686,10 @@ const COHORT_ALLOWED_FIELDS = new Set([
   'activityLevel', 'engagementTrend', 'valueTier',
   // P3-T3 D7 additions:
   'healthScore', 'riskLevel', 'joinedDaysAgo', 'birthdayMonth',
+  // S2 P2.4 — programming-aware attendance filters. Not handled by
+  // buildCohortWhereClause (need joins on bookings + classifier
+  // post-processing); listed here so existing storage doesn't fail Zod.
+  'attendedLeagueFamily', 'attendedProgrammingTier', 'attendedIntroProgram',
 ])
 const COHORT_ALLOWED_OPS = new Set(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in'])
 
@@ -699,6 +705,8 @@ export const cohortFilterSchema = z.object({
     'activityLevel', 'engagementTrend', 'valueTier',
     // P3-T3 D7 additions:
     'healthScore', 'riskLevel', 'joinedDaysAgo', 'birthdayMonth',
+    // S2 P2.4 — programming-aware attendance filters:
+    'attendedLeagueFamily', 'attendedProgrammingTier', 'attendedIntroProgram',
   ]),
   op: z.enum(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
   value: z.union([z.string().max(200), z.number(), z.array(z.string().max(200)).max(200)]),
@@ -727,19 +735,32 @@ const ENRICHED_COHORT_FIELDS = new Set<CohortFilter['field']>([
   'valueTier',
 ])
 
+// S2 P2.4 — fields that need a separate booking-attendance lookup
+// (one query per club, then in-memory match per row). Distinct from
+// enriched filters because they need access to the prisma client +
+// clubId, and run *after* the SQL+enriched pipeline.
+const ATTENDANCE_COHORT_FIELDS = new Set<CohortFilter['field']>([
+  'attendedLeagueFamily',
+  'attendedProgrammingTier',
+  'attendedIntroProgram',
+])
+
 function splitCohortFilters(filters: CohortFilter[]) {
   const sqlFilters: CohortFilter[] = []
   const enrichedFilters: CohortFilter[] = []
+  const attendanceFilters: CohortFilter[] = []
 
   for (const filter of filters) {
     if (ENRICHED_COHORT_FIELDS.has(filter.field)) {
       enrichedFilters.push(filter)
+    } else if (ATTENDANCE_COHORT_FIELDS.has(filter.field)) {
+      attendanceFilters.push(filter)
     } else {
       sqlFilters.push(filter)
     }
   }
 
-  return { sqlFilters, enrichedFilters }
+  return { sqlFilters, enrichedFilters, attendanceFilters }
 }
 
 function matchesEnrichedStringFilter(actualValue: string | null | undefined, filter: CohortFilter) {
@@ -799,6 +820,95 @@ function applyEnrichedCohortFilters(rows: any[], filters: CohortFilter[]) {
           return matchesEnrichedStringFilter(row.engagementTrend, filter)
         case 'valueTier':
           return matchesEnrichedStringFilter(row.valueTier, filter)
+        default:
+          return true
+      }
+    })
+  })
+}
+
+/**
+ * S2 P2.4 — programming-aware attendance filters.
+ *
+ * Pre-fetches every CONFIRMED booking the club has had in the lookback
+ * window (180 days), classifies each session via the league-family /
+ * tier / intro detectors, and builds a userId → {families, tiers,
+ * hadIntro} index. Then filters rows in O(1) per check.
+ *
+ * Lookback intentionally bounded so the query stays cheap on big clubs
+ * (IPC South: ~3k members, ~5k bookings in 180 days = small).
+ */
+async function applyAttendanceCohortFilters(
+  prisma: any,
+  clubId: string,
+  rows: any[],
+  filters: CohortFilter[],
+): Promise<any[]> {
+  if (filters.length === 0) return rows
+
+  const since = new Date(Date.now() - 180 * 86400000)
+
+  const bookings = await prisma.$queryRaw<Array<{
+    user_id: string
+    title: string | null
+    format: string | null
+    category: string | null
+  }>>`
+    SELECT psb."userId" AS user_id, ps.title, ps.format::text AS format, ps.category
+    FROM play_session_bookings psb
+    JOIN play_sessions ps ON ps.id = psb."sessionId"
+    WHERE ps."clubId" = ${clubId}
+      AND ps.date >= ${since}
+      AND psb.status = 'CONFIRMED'
+  `
+
+  // Build per-user index
+  const families = new Map<string, Set<string>>()
+  const tiers = new Map<string, Set<string>>()
+  const hadIntro = new Set<string>()
+
+  for (const b of bookings) {
+    const det = detectLeagueFamily(b.title)
+    if (det.family) {
+      let bucket = families.get(b.user_id)
+      if (!bucket) { bucket = new Set(); families.set(b.user_id, bucket) }
+      bucket.add(det.family)
+    }
+    const tier = classifyProgrammingTier({ title: b.title, format: b.format, category: b.category })
+    let tbucket = tiers.get(b.user_id)
+    if (!tbucket) { tbucket = new Set(); tiers.set(b.user_id, tbucket) }
+    tbucket.add(tier)
+    if (isIntroSession(b.title)) {
+      hadIntro.add(b.user_id)
+    }
+  }
+
+  return rows.filter((row) => {
+    const userId = row.userId || row.id
+    if (!userId) return false
+    return filters.every((filter) => {
+      const expected = String(Array.isArray(filter.value) ? filter.value[0] ?? '' : filter.value)
+      switch (filter.field) {
+        case 'attendedLeagueFamily': {
+          const userFamilies = families.get(userId)
+          if (!userFamilies) return false
+          if (filter.op === 'eq') return userFamilies.has(expected)
+          if (filter.op === 'contains') {
+            return Array.from(userFamilies).some((f) => f.toLowerCase().includes(expected.toLowerCase()))
+          }
+          return false
+        }
+        case 'attendedProgrammingTier': {
+          const userTiers = tiers.get(userId)
+          if (!userTiers) return false
+          return userTiers.has(expected)
+        }
+        case 'attendedIntroProgram': {
+          const member = hadIntro.has(userId)
+          if (expected === 'true' || expected === '1') return member
+          if (expected === 'false' || expected === '0') return !member
+          return member // default truthy
+        }
         default:
           return true
       }
@@ -1037,30 +1147,40 @@ async function resolveCohortMembers(
   filters: CohortFilter[],
   limit: number | null = 500,
 ): Promise<any[]> {
-  const { sqlFilters, enrichedFilters } = splitCohortFilters(filters)
+  const { sqlFilters, enrichedFilters, attendanceFilters } = splitCohortFilters(filters)
 
-  if (enrichedFilters.length === 0) {
+  // Fast path — no enriched + no attendance filters: just SQL.
+  if (enrichedFilters.length === 0 && attendanceFilters.length === 0) {
     const rows = await fetchCohortBaseMembers(prisma, clubId, sqlFilters, limit)
     return decorateCohortMembers(rows)
   }
 
+  // Otherwise: SQL → decorate → enriched → attendance, then trim to limit.
+  // Pull all matching base rows first (no SQL limit) because enriched and
+  // attendance filters can reduce the set further.
   const baseRows = await fetchCohortBaseMembers(prisma, clubId, sqlFilters, null)
   const needsGlobalRevenue = enrichedFilters.some((filter) => filter.field === 'valueTier') && sqlFilters.length > 0
   const revenueRows = needsGlobalRevenue
     ? await fetchCohortBaseMembers(prisma, clubId, [], null)
     : baseRows
-  const enrichedRows = decorateCohortMembers(baseRows, revenueRows)
-  const filteredRows = applyEnrichedCohortFilters(enrichedRows, enrichedFilters)
+  let workingRows = decorateCohortMembers(baseRows, revenueRows)
+  if (enrichedFilters.length > 0) {
+    workingRows = applyEnrichedCohortFilters(workingRows, enrichedFilters)
+  }
+  if (attendanceFilters.length > 0) {
+    workingRows = await applyAttendanceCohortFilters(prisma, clubId, workingRows, attendanceFilters)
+  }
 
   return typeof limit === 'number' && limit > 0
-    ? filteredRows.slice(0, limit)
-    : filteredRows
+    ? workingRows.slice(0, limit)
+    : workingRows
 }
 
 async function countCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<number> {
-  const { sqlFilters, enrichedFilters } = splitCohortFilters(filters)
+  const { sqlFilters, enrichedFilters, attendanceFilters } = splitCohortFilters(filters)
 
-  if (enrichedFilters.length === 0) {
+  // Fast path: no post-SQL filters → exact COUNT() in DB.
+  if (enrichedFilters.length === 0 && attendanceFilters.length === 0) {
     const where = buildCohortWhereClause(sqlFilters)
     const result: [{ count: bigint }] = await prisma.$queryRawUnsafe(`
       SELECT COUNT(DISTINCT cf.user_id) as count
@@ -1072,6 +1192,8 @@ async function countCohortMembers(prisma: any, clubId: string, filters: CohortFi
     return Number(result[0]?.count ?? 0)
   }
 
+  // Otherwise: resolve full member list and count. Enriched and
+  // attendance filters can't be expressed in SQL alone.
   const members = await resolveCohortMembers(prisma, clubId, filters, null)
   return members.length
 }
