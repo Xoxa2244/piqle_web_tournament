@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
+import { detectLeagueFamily } from '@/lib/ai/league-family-detector'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
 import type { DayOfWeek, PlaySessionFormat } from '@/types/intelligence'
@@ -1650,6 +1651,163 @@ export const intelligenceRouter = createTRPCRouter({
         windowStart: sinceDate.toISOString(),
         totalSessions: sessions.length,
         breakdown,
+      }
+    }),
+
+  // ── League Catalog (Sprint 2 P2.1) ──
+  //
+  // CourtReserve doesn't model leagues as first-class objects — they
+  // exist as a series of PlaySession rows with format='LEAGUE_PLAY'
+  // and a shared title prefix ("Casual League (Session 2)" /
+  // "Casual League (Session 3)" / etc.). This procedure derives a
+  // virtual catalog by grouping those sessions into families via the
+  // detector in lib/ai/league-family-detector.ts.
+  //
+  // For each family we surface:
+  //   - sponsors detected from "presented by X" / "provided by X"
+  //   - last session date + days-since
+  //   - next session date + days-until
+  //   - continuity status (active / gap_warning / gap_critical / ended)
+  //   - fill rate across all sessions in window
+  //
+  // Status thresholds calibrated to IPC's "leagues are always active,
+  // never between sessions" expectation:
+  //   active        — there's an upcoming session, OR last past < 7d ago
+  //   gap_warning   — no upcoming, last past 7-14d ago
+  //   gap_critical  — no upcoming, last past 14-60d ago
+  //   ended         — no upcoming, last past 60d+ ago
+  getLeaguesCatalog: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(7).max(365).optional().default(180),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const since = new Date(Date.now() - input.windowDays * 86400000)
+
+      const sessions = await ctx.prisma.$queryRaw<Array<{
+        id: string
+        title: string
+        date: Date
+        registered_count: number | null
+        max_players: number | null
+      }>>`
+        SELECT id, title, date, registered_count, "maxPlayers" AS max_players
+        FROM play_sessions
+        WHERE "clubId" = ${input.clubId}
+          AND date >= ${since}
+          AND (format = 'LEAGUE_PLAY' OR LOWER(title) LIKE '%league%')
+        ORDER BY date DESC
+      `
+
+      // Group by family
+      type FamilyBucket = {
+        family: string
+        sessions: Array<{ id: string; title: string; date: Date; registered: number; capacity: number }>
+        sponsors: Set<string>
+        totalRegistered: number
+        totalCapacity: number
+      }
+      const families = new Map<string, FamilyBucket>()
+
+      for (const s of sessions) {
+        const det = detectLeagueFamily(s.title)
+        if (!det.family) continue
+
+        let bucket = families.get(det.family)
+        if (!bucket) {
+          bucket = {
+            family: det.family,
+            sessions: [],
+            sponsors: new Set<string>(),
+            totalRegistered: 0,
+            totalCapacity: 0,
+          }
+          families.set(det.family, bucket)
+        }
+        const reg = s.registered_count ?? 0
+        const cap = s.max_players ?? 0
+        bucket.sessions.push({ id: s.id, title: s.title, date: s.date, registered: reg, capacity: cap })
+        if (det.sponsor) bucket.sponsors.add(det.sponsor)
+        bucket.totalRegistered += reg
+        bucket.totalCapacity += cap
+      }
+
+      const now = new Date()
+      const result = Array.from(families.values()).map((bucket) => {
+        const past = bucket.sessions.filter((s) => s.date.getTime() < now.getTime())
+        const future = bucket.sessions.filter((s) => s.date.getTime() >= now.getTime())
+
+        const lastPast = past.length > 0 ? past.reduce((a, b) => (a.date.getTime() > b.date.getTime() ? a : b)) : null
+        const nextFuture = future.length > 0 ? future.reduce((a, b) => (a.date.getTime() < b.date.getTime() ? a : b)) : null
+
+        const daysSinceLast = lastPast ? Math.floor((now.getTime() - lastPast.date.getTime()) / 86400000) : null
+        const daysUntilNext = nextFuture ? Math.ceil((nextFuture.date.getTime() - now.getTime()) / 86400000) : null
+
+        // Continuity status — see comment above for thresholds.
+        let status: 'active' | 'gap_warning' | 'gap_critical' | 'ended' = 'active'
+        if (!nextFuture && daysSinceLast != null) {
+          if (daysSinceLast >= 60) status = 'ended'
+          else if (daysSinceLast >= 14) status = 'gap_critical'
+          else if (daysSinceLast >= 7) status = 'gap_warning'
+        }
+
+        const fillRate = bucket.totalCapacity > 0
+          ? Math.round((bucket.totalRegistered / bucket.totalCapacity) * 100)
+          : null
+
+        return {
+          family: bucket.family,
+          sponsors: Array.from(bucket.sponsors).sort(),
+          sessionCount: bucket.sessions.length,
+          pastSessionCount: past.length,
+          futureSessionCount: future.length,
+          lastSessionDate: lastPast?.date.toISOString() ?? null,
+          nextSessionDate: nextFuture?.date.toISOString() ?? null,
+          daysSinceLast,
+          daysUntilNext,
+          totalRegistered: bucket.totalRegistered,
+          totalCapacity: bucket.totalCapacity,
+          fillRate,
+          status,
+          // Sample sessions for drilldown — last 5 by date
+          recentSessions: [...bucket.sessions]
+            .sort((a, b) => b.date.getTime() - a.date.getTime())
+            .slice(0, 5)
+            .map((s) => ({
+              id: s.id,
+              title: s.title,
+              date: s.date.toISOString(),
+              registered: s.registered,
+              capacity: s.capacity,
+            })),
+        }
+      })
+
+      // Sort: critical gaps first, then warnings, then active, then ended.
+      // Within each group: most recent activity first.
+      const statusOrder: Record<string, number> = {
+        gap_critical: 0,
+        gap_warning: 1,
+        active: 2,
+        ended: 3,
+      }
+      result.sort((a, b) => {
+        const so = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99)
+        if (so !== 0) return so
+        return (b.lastSessionDate || '').localeCompare(a.lastSessionDate || '')
+      })
+
+      return {
+        windowDays: input.windowDays,
+        windowStart: since.toISOString(),
+        totalFamilies: result.length,
+        activeCount: result.filter((r) => r.status === 'active').length,
+        gapWarningCount: result.filter((r) => r.status === 'gap_warning').length,
+        gapCriticalCount: result.filter((r) => r.status === 'gap_critical').length,
+        endedCount: result.filter((r) => r.status === 'ended').length,
+        families: result,
       }
     }),
 
