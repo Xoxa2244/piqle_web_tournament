@@ -9,7 +9,7 @@ import {
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
   Menu, X, CreditCard, Plug, Activity, Bot, Mail, Rocket, Sparkles,
-  Trophy,
+  Trophy, FileBarChart,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -54,6 +54,7 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
       { icon: LayoutDashboard, label: "Dashboard", path: "" },
       { icon: CalendarDays, label: "Schedule", path: "/sessions" },
       { icon: Trophy, label: "Leagues", path: "/leagues" },
+      { icon: FileBarChart, label: "Scorecard", path: "/scorecard" },
     ],
   },
   {
