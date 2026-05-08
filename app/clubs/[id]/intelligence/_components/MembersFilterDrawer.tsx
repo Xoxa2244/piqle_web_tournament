@@ -22,6 +22,10 @@ export interface FilterChipOption {
   key: string
   label: string
   count?: number
+  // When true the chip renders in a secondary, collapsible section
+  // ("Inactive tiers (in catalog)") so admins can still see / select
+  // packages that exist in CR but have zero subscribers.
+  inactive?: boolean
 }
 
 interface MembersFilterDrawerProps {
@@ -124,7 +128,60 @@ interface ChipGroupProps {
   isDark?: boolean
 }
 
+function Chip({
+  o,
+  active,
+  onChange,
+  isDark,
+  faded,
+}: {
+  o: FilterChipOption
+  active: boolean
+  onChange: (v: string) => void
+  isDark?: boolean
+  faded?: boolean
+}) {
+  return (
+    <button
+      onClick={() => onChange(o.key)}
+      title={o.label}
+      className="px-3 py-1.5 rounded-lg text-xs transition-all max-w-full"
+      style={{
+        background: active ? 'var(--pill-active)' : 'transparent',
+        color: active ? (isDark ? '#C4B5FD' : '#7C3AED') : 'var(--t3)',
+        fontWeight: active ? 600 : 500,
+        border: `1px solid ${active ? (isDark ? 'rgba(139,92,246,0.35)' : 'rgba(139,92,246,0.2)') : 'var(--card-border)'}`,
+        opacity: faded && !active ? 0.6 : 1,
+      }}
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <span className="truncate max-w-[260px] inline-block align-bottom">{o.label}</span>
+        {typeof o.count === 'number' && o.count > 0 && (
+          <span
+            className="px-1.5 rounded-full text-[10px] tabular-nums"
+            style={{
+              background: active ? 'rgba(139,92,246,0.25)' : 'var(--card-border)',
+              color: active ? (isDark ? '#DDD6FE' : '#7C3AED') : 'var(--t4)',
+              fontWeight: 600,
+            }}
+          >
+            {o.count}
+          </span>
+        )}
+      </span>
+    </button>
+  )
+}
+
 function ChipGroup({ label, hint, options, value, onChange, isDark }: ChipGroupProps) {
+  // Split into "active" (any with count > 0 or no inactive flag) and
+  // "inactive" (explicit inactive flag — package exists in CR catalog
+  // but no current subscribers). Inactive chips collapse behind a
+  // "Show N inactive" toggle so the primary list stays scannable.
+  const activeOptions = options.filter((o) => !o.inactive)
+  const inactiveOptions = options.filter((o) => o.inactive)
+  const [showInactive, setShowInactive] = useState(false)
+
   return (
     <div className="space-y-2">
       <div>
@@ -136,40 +193,28 @@ function ChipGroup({ label, hint, options, value, onChange, isDark }: ChipGroupP
         </p>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {options.map((o) => {
-          const active = value === o.key
-          return (
-            <button
-              key={o.key}
-              onClick={() => onChange(o.key)}
-              title={o.label}
-              className="px-3 py-1.5 rounded-lg text-xs transition-all max-w-full"
-              style={{
-                background: active ? 'var(--pill-active)' : 'transparent',
-                color: active ? (isDark ? '#C4B5FD' : '#7C3AED') : 'var(--t3)',
-                fontWeight: active ? 600 : 500,
-                border: `1px solid ${active ? (isDark ? 'rgba(139,92,246,0.35)' : 'rgba(139,92,246,0.2)') : 'var(--card-border)'}`,
-              }}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <span className="truncate max-w-[260px] inline-block align-bottom">{o.label}</span>
-                {typeof o.count === 'number' && o.count > 0 && (
-                  <span
-                    className="px-1.5 rounded-full text-[10px] tabular-nums"
-                    style={{
-                      background: active ? 'rgba(139,92,246,0.25)' : 'var(--card-border)',
-                      color: active ? (isDark ? '#DDD6FE' : '#7C3AED') : 'var(--t4)',
-                      fontWeight: 600,
-                    }}
-                  >
-                    {o.count}
-                  </span>
-                )}
-              </span>
-            </button>
-          )
-        })}
+        {activeOptions.map((o) => (
+          <Chip key={o.key} o={o} active={value === o.key} onChange={onChange} isDark={isDark} />
+        ))}
       </div>
+      {inactiveOptions.length > 0 && (
+        <div className="pt-1">
+          <button
+            onClick={() => setShowInactive((v) => !v)}
+            className="text-[11px] flex items-center gap-1 hover:underline"
+            style={{ color: 'var(--t4)' }}
+          >
+            {showInactive ? '▾' : '▸'} {inactiveOptions.length} inactive {inactiveOptions.length === 1 ? 'tier' : 'tiers'} (in CR catalog, no members)
+          </button>
+          {showInactive && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {inactiveOptions.map((o) => (
+                <Chip key={o.key} o={o} active={value === o.key} onChange={onChange} isDark={isDark} faded />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -313,7 +313,42 @@ model Club {
   // AI usage tracking
   aiUsageLogs             AIUsageLog[]               @relation("ClubAIUsageLogs")
 
+  // CR membership-type catalog (read-only mirror of CourtReserve packages)
+  membershipTypes         ClubMembershipType[]       @relation("ClubMembershipTypes")
+
   @@map("clubs")
+}
+
+// Read-only mirror of CourtReserve's membership-package catalog for a
+// club. Synced from /api/v1/membershiptype/get on every CR sync run.
+//
+// Why we need this on top of users.membership_type: that column tells us
+// who's currently subscribed, but we lose visibility of packages that
+// are in the CR catalog but have zero subscribers (newly created tier,
+// retired tier, edge-case pass). The Members → Filter UI now shows
+// "Active tiers (X members)" + "Inactive tiers (in catalog)" — both
+// halves come from this table joined against users.membership_type.
+//
+// Synced fields are intentionally minimal — name + shortCode is enough
+// to identify and label tiers in the UI. Anything we might want later
+// (price, capacity, online signup flag, etc.) can be lifted from rawData
+// without a schema change.
+model ClubMembershipType {
+  id          String   @id @default(uuid())
+  clubId      String   @map("club_id")
+  name        String
+  shortCode   String?  @map("short_code")
+  crEntityId  String?  @map("cr_entity_id")
+  rawData     Json?    @map("raw_data")
+  syncedAt    DateTime @default(now()) @map("synced_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  club        Club     @relation("ClubMembershipTypes", fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([clubId, name])
+  @@index([clubId])
+  @@map("club_membership_types")
 }
 
 model Subscription {

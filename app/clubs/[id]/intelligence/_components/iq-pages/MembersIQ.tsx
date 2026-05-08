@@ -1274,13 +1274,19 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     { enabled: !!clubId, staleTime: 5 * 60_000 },
   );
   const dynamicTierOptions = useMemo(() => {
-    const base = [{ key: 'all', label: 'All' }] as Array<{ key: string; label: string; count?: number }>
+    const base = [{ key: 'all', label: 'All' }] as Array<{ key: string; label: string; count?: number; inactive?: boolean }>
     if (!membershipFacetsQuery.data?.tiers) return base
     for (const t of membershipFacetsQuery.data.tiers) {
+      // A tier is "inactive" only when it lives in the CR catalog
+      // (inCatalog === true) AND has zero current subscribers (count === 0).
+      // Such tiers render in the collapsible "Inactive (in catalog)"
+      // section so the primary list stays focused on what's actually used.
+      const inactive = t.count === 0 && t.inCatalog === true
       base.push({
         key: t.value ?? '__null__',
         label: t.value ?? 'No tier',
         count: t.count,
+        inactive,
       })
     }
     return base

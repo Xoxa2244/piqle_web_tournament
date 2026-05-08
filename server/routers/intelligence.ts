@@ -1406,17 +1406,35 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
+      // Tiers come from two sources:
+      //   - users.membership_type — who's actually subscribed (with counts)
+      //   - club_membership_types — the full CR package catalog, including
+      //     packages with zero subscribers (so admins can see what's
+      //     available but unused)
+      // FULL OUTER JOIN unifies both — `inCatalog` distinguishes them.
       // No ::uuid cast on cf.club_id — the iqsport-prod schema stores
       // club_followers.club_id as TEXT (not UUID), unlike the older
-      // piqle_web_tournament DB. Prisma binds the parameter as text, which
-      // matches the column type without a cast.
-      const tierRows = await ctx.prisma.$queryRaw<Array<{ value: string | null; count: bigint }>>`
-        SELECT u.membership_type AS value, COUNT(*)::bigint AS count
-        FROM users u
-        JOIN club_followers cf ON cf.user_id = u.id
-        WHERE cf.club_id = ${input.clubId}
-        GROUP BY u.membership_type
-        ORDER BY COUNT(*) DESC, u.membership_type ASC
+      // piqle_web_tournament DB.
+      const tierRows = await ctx.prisma.$queryRaw<Array<{ value: string | null; count: bigint; in_catalog: boolean }>>`
+        WITH from_users AS (
+          SELECT u.membership_type AS value, COUNT(*)::bigint AS count
+          FROM users u
+          JOIN club_followers cf ON cf.user_id = u.id
+          WHERE cf.club_id = ${input.clubId}
+          GROUP BY u.membership_type
+        ),
+        from_catalog AS (
+          SELECT name AS value
+          FROM club_membership_types
+          WHERE club_id = ${input.clubId}
+        )
+        SELECT
+          COALESCE(fu.value, fc.value) AS value,
+          COALESCE(fu.count, 0::bigint) AS count,
+          (fc.value IS NOT NULL) AS in_catalog
+        FROM from_users fu
+        FULL OUTER JOIN from_catalog fc ON fu.value = fc.value
+        ORDER BY COALESCE(fu.count, 0) DESC, COALESCE(fu.value, fc.value) ASC
       `
 
       const stateRows = await ctx.prisma.$queryRaw<Array<{ value: string | null; count: bigint }>>`
@@ -1429,7 +1447,11 @@ export const intelligenceRouter = createTRPCRouter({
       `
 
       return {
-        tiers: tierRows.map((r) => ({ value: r.value, count: Number(r.count) })),
+        tiers: tierRows.map((r) => ({
+          value: r.value,
+          count: Number(r.count),
+          inCatalog: r.in_catalog === true,
+        })),
         states: stateRows.map((r) => ({ value: r.value, count: Number(r.count) })),
       }
     }),
