@@ -1576,6 +1576,83 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
+  // ── Programming Tier Breakdown (Sprint 1 P1.4) ──
+  //
+  // Aggregates club sessions in a period into IPC's 7-tier Programming
+  // OS taxonomy (T1 Core / T2 League / T3 Signature / T4 Social /
+  // T5 Tournament / T6 Premium / T7 Youth). Pure derivation — no
+  // schema field, classifier is the source of truth.
+  //
+  // The classifier runs server-side on raw session rows. SQL pulls the
+  // sessions cheaply, JS classifies. Volumes are small (a few hundred
+  // sessions per club per month) so this is fine.
+  getProgrammingTierBreakdown: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(1).max(365).optional().default(7),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const { classifyProgrammingTier, PROGRAMMING_TIER_META } = await import('@/lib/ai/programming-tier-classifier')
+
+      const sinceDate = new Date(Date.now() - input.windowDays * 86400000)
+
+      const sessions = await ctx.prisma.$queryRaw<Array<{
+        id: string
+        title: string | null
+        format: string | null
+        category: string | null
+        max_players: number | null
+        registered_count: number | null
+      }>>`
+        SELECT id, title, format::text AS format, category, "maxPlayers" AS max_players, registered_count
+        FROM play_sessions
+        WHERE "clubId" = ${input.clubId}
+          AND date >= ${sinceDate}
+      `
+
+      const buckets: Record<string, { count: number; registrations: number; capacity: number }> = {}
+      for (const tier of Object.keys(PROGRAMMING_TIER_META)) {
+        buckets[tier] = { count: 0, registrations: 0, capacity: 0 }
+      }
+      for (const s of sessions) {
+        const tier = classifyProgrammingTier({
+          title: s.title,
+          format: s.format,
+          category: s.category,
+        })
+        buckets[tier].count += 1
+        buckets[tier].registrations += s.registered_count ?? 0
+        buckets[tier].capacity += s.max_players ?? 0
+      }
+
+      const breakdown = (Object.keys(PROGRAMMING_TIER_META) as Array<keyof typeof PROGRAMMING_TIER_META>).map((tier) => {
+        const b = buckets[tier]
+        const fillRate = b.capacity > 0 ? Math.round((b.registrations / b.capacity) * 100) : null
+        return {
+          tier,
+          label: PROGRAMMING_TIER_META[tier].label,
+          shortLabel: PROGRAMMING_TIER_META[tier].shortLabel,
+          cadence: PROGRAMMING_TIER_META[tier].cadence,
+          color: PROGRAMMING_TIER_META[tier].color,
+          bg: PROGRAMMING_TIER_META[tier].bg,
+          border: PROGRAMMING_TIER_META[tier].border,
+          emoji: PROGRAMMING_TIER_META[tier].emoji,
+          count: b.count,
+          registrations: b.registrations,
+          fillRate,
+        }
+      })
+
+      return {
+        windowDays: input.windowDays,
+        windowStart: sinceDate.toISOString(),
+        totalSessions: sessions.length,
+        breakdown,
+      }
+    }),
+
   // ── Slot Filler: Recommend members for underfilled sessions ──
   getSlotFillerRecommendations: protectedProcedure
     .input(z.object({

@@ -23,6 +23,7 @@ import { trpc } from "@/lib/trpc";
 import { CourtReserveConnector } from "./shared/CourtReserveConnector";
 import { AIRevenueTile } from "../ai-revenue-tile";
 import { IntroFunnelTile } from "../intro-funnel-tile";
+import { TierBreakdownTile } from "../tier-breakdown-tile";
 
 type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
 
@@ -1033,6 +1034,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           their top-of-funnel acquisition story before churn analytics.
           Tier 1.3 of IPC's Programming OS. */}
       <IntroFunnelTile clubId={clubId} />
+
+      {/* P1.4 (Sprint 1) — 7-tier programming breakdown across IPC's
+          Programming OS taxonomy (T1 Core → T7 Youth). Lets the
+          operator see "what kind of programming did we actually run
+          this week?" without scanning the schedule. */}
+      <TierBreakdownTile clubId={clubId} />
 
       {/* Player Health Overview */}
       <div className="space-y-4">

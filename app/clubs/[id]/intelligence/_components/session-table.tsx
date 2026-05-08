@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { OccupancyBar, OccupancyBadge } from './charts'
 import type { SessionRanking } from '@/types/intelligence'
 import { cn } from '@/lib/utils'
+import { getTierMeta } from '@/lib/ai/programming-tier-classifier'
 
 const formatLabels: Record<string, string> = {
   OPEN_PLAY: 'Open Play',
@@ -87,6 +88,27 @@ export function SessionTable({ sessions, variant, className }: SessionTableProps
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0 ml-3">
+                  {(() => {
+                    // P1.4 (Sprint 1): Programming Tier badge.
+                    // Auto-classifies the session against IPC's 7-tier
+                    // taxonomy. Helps admins eyeball "what kind of
+                    // programming am I running?" without parsing
+                    // session names.
+                    const tier = getTierMeta({ title: session.title, format: session.format })
+                    return (
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0"
+                        style={{
+                          background: tier.bg,
+                          color: tier.color,
+                          border: `1px solid ${tier.border}`,
+                        }}
+                        title={`${tier.label} · ${tier.cadence}`}
+                      >
+                        {tier.shortLabel.split(' ')[0]}
+                      </span>
+                    )
+                  })()}
                   <Badge variant="outline" className="text-[10px] font-medium border-border/40 text-muted-foreground">
                     {formatLabels[session.format] || session.format}
                   </Badge>
