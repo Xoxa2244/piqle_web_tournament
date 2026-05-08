@@ -4420,6 +4420,61 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         />
       )}
 
+      {/* P1.2 (Sprint 1): Sticky filter-result bar.
+          Anchored to the viewport bottom so admins always see how many
+          members the current filter set produces and can act on it without
+          scrolling. Hidden while the filter drawer itself is open (the
+          drawer already has its own "Show N results" footer) and when no
+          filter is applied (the chips area would be empty).
+          z-[55] sits above the floating chat (z-50) but below the drawer
+          (z-[70]) and its backdrop (z-[60]) — same layering used in the
+          drawer's "Show" button fix. */}
+      {!filterDrawerOpen && activeFilterCount > 0 && filtered.length > 0 && clubId && (
+        <div
+          className="fixed bottom-0 left-0 right-0 lg:left-[260px] z-[55] backdrop-blur-md"
+          style={{
+            background: 'var(--card-bg)',
+            borderTop: '1px solid var(--card-border)',
+            boxShadow: '0 -4px 16px rgba(0,0,0,0.18)',
+          }}
+        >
+          <div className="px-5 py-3 flex items-center justify-between gap-3">
+            <div className="text-sm" style={{ color: 'var(--t2)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--heading)' }}>{filtered.length}</span>{' '}
+              <span style={{ color: 'var(--t3)' }}>{filtered.length === 1 ? 'member' : 'members'} match</span>
+              <span className="hidden sm:inline" style={{ color: 'var(--t4)' }}> · {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'} applied</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={clearAllFilters}
+                className="text-xs px-3 py-1.5 rounded-lg"
+                style={{ color: 'var(--t4)' }}
+              >
+                Clear all
+              </button>
+              {dynamicCohortHref ? (
+                <a
+                  href={dynamicCohortHref}
+                  className="text-xs px-3 py-1.5 rounded-lg font-semibold"
+                  style={{ background: 'rgba(139,92,246,0.12)', color: '#7C3AED', border: '1px solid rgba(139,92,246,0.25)' }}
+                >
+                  Save as Cohort →
+                </a>
+              ) : null}
+              <a
+                href={`/clubs/${clubId}/intelligence/campaigns/new?cohortFilters=${encodeURIComponent(JSON.stringify({
+                  view, filterRisk, filterTrend, filterValue, filterActivity, filterMembershipType, filterMembershipStatus,
+                }))}`}
+                className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white"
+                style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)' }}
+              >
+                Launch Campaign →
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* P2-T8: Filter drawer — replaces 6-row inline filter strip. */}
       <MembersFilterDrawer
         open={filterDrawerOpen}
@@ -4512,12 +4567,58 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
             ? `$${(ltvTotalCents / 100_000).toFixed(1)}K`
             : `$${Math.round(ltvTotalCents / 100)}`;
 
+          // Each KPI carries a tooltip with its precise definition. We
+          // surface "Active Subscribers" (subscription_status='Active'
+          // in CR), distinct from "Active Players" (members who booked
+          // a session in the last 30 days — visible on the Dashboard
+          // KPI strip). Same word in two metrics is the #1 source of
+          // confusion per Chris's feedback notes §3-A.
           const kpis = [
-            { label: 'Active Members', value: String(active || allMembers.length), icon: Users, gradient: 'from-violet-500 to-purple-600', sub: `of ${allMembers.length} total`, delta: fmtDelta(kpiDeltas?.activeDelta) },
-            { label: 'Avg Health', value: String(avgHealth), icon: Heart, gradient: 'from-emerald-500 to-green-500', sub: 'engagement score', delta: fmtDelta(kpiDeltas?.avgHealthDelta, 'pts vs last') },
-            { label: 'At-Risk', value: String(atRisk), icon: AlertTriangle, gradient: 'from-orange-500 to-red-500', sub: atRisk > 0 ? 'need attention' : 'all healthy', delta: fmtDelta(kpiDeltas?.atRiskDelta) },
-            { label: 'LTV total', value: ltvDisplay, icon: DollarSign, gradient: 'from-amber-500 to-yellow-500', sub: 'cumulative revenue', delta: fmtMoneyDelta(kpiDeltas?.ltvDeltaCents) },
-            { label: 'VIP', value: String(vip), icon: Sparkles, gradient: 'from-cyan-500 to-blue-500', sub: `${packages} Package${packages !== 1 ? 's' : ''}`, delta: { text: '', color: 'transparent' } },
+            {
+              label: 'Active Subscribers',
+              value: String(active || allMembers.length),
+              icon: Users,
+              gradient: 'from-violet-500 to-purple-600',
+              sub: `of ${allMembers.length} members`,
+              delta: fmtDelta(kpiDeltas?.activeDelta),
+              tooltip: 'Members whose CourtReserve subscription_status is "Active". This is a billing metric — different from Active Players (booked in the last 30 days, see the Dashboard).',
+            },
+            {
+              label: 'Avg Health',
+              value: String(avgHealth),
+              icon: Heart,
+              gradient: 'from-emerald-500 to-green-500',
+              sub: 'engagement score',
+              delta: fmtDelta(kpiDeltas?.avgHealthDelta, 'pts vs last'),
+              tooltip: 'Average member health score (0–100). Computed by the AI model from booking frequency, recency, attendance ratio, and trend.',
+            },
+            {
+              label: 'At-Risk',
+              value: String(atRisk),
+              icon: AlertTriangle,
+              gradient: 'from-orange-500 to-red-500',
+              sub: atRisk > 0 ? 'need attention' : 'all healthy',
+              delta: fmtDelta(kpiDeltas?.atRiskDelta),
+              tooltip: 'Members in segment "at-risk" or "critical" — health score below the threshold or activity sharply declining. These are the people most likely to churn this month.',
+            },
+            {
+              label: 'LTV total',
+              value: ltvDisplay,
+              icon: DollarSign,
+              gradient: 'from-amber-500 to-yellow-500',
+              sub: 'cumulative revenue',
+              delta: fmtMoneyDelta(kpiDeltas?.ltvDeltaCents),
+              tooltip: 'Lifetime revenue across all members in the current view (sum of every booking + subscription charge captured in CourtReserve transactions).',
+            },
+            {
+              label: 'VIP',
+              value: String(vip),
+              icon: Sparkles,
+              gradient: 'from-cyan-500 to-blue-500',
+              sub: `${packages} Package${packages !== 1 ? 's' : ''}`,
+              delta: { text: '', color: 'transparent' },
+              tooltip: 'Members on a VIP / Unlimited tier (any CR package matched into the "unlimited" normalised bucket). Sub-count shows how many are on multi-session Packages.',
+            },
           ];
 
           return (
@@ -4527,14 +4628,31 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                 {kpis.map((kpi) => {
                   const Icon = kpi.icon;
                   return (
-                    <div key={kpi.label} className="rounded-2xl p-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                    <div
+                      key={kpi.label}
+                      className="rounded-2xl p-3 relative"
+                      style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+                      title={kpi.tooltip}
+                    >
                       <div className="flex items-center gap-2.5">
                         <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center shrink-0`}>
                           <Icon className="w-4 h-4 text-white" />
                         </div>
                         <div className="min-w-0">
                           <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--heading)', lineHeight: 1 }}>{kpi.value}</div>
-                          <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{kpi.label}</div>
+                          <div className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'var(--t3)' }}>
+                            <span className="truncate">{kpi.label}</span>
+                            {/* Native title= on the wrapper handles the actual
+                                tooltip; the dot is just a hint that hover
+                                reveals more. */}
+                            <span
+                              className="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] cursor-help shrink-0"
+                              style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}
+                              aria-hidden
+                            >
+                              ?
+                            </span>
+                          </div>
                         </div>
                       </div>
                       <div className="text-[10px] mt-2" style={{ color: 'var(--t4)' }}>{kpi.sub}</div>

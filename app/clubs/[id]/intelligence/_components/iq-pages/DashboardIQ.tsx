@@ -290,8 +290,28 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
       // Default to membership when pricingModel not configured
       const isMembership = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
       return [
-        { label: "Active Players", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
-        { label: "Court Occupancy", value: m.occupancy.value, change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`, up: m.occupancy.trend.direction === 'up', icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: m.occupancy.trend.sparkline || [] },
+        {
+          label: "Active Players",
+          value: m.members.value,
+          change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`,
+          up: m.members.trend.direction === 'up',
+          icon: Users,
+          gradient: "from-violet-500 to-purple-600",
+          href: "/members",
+          sparkData: m.members.trend.sparkline || [],
+          tooltip: 'Members who booked at least one session in the dashboard period (default: last 30 days). Different from Active Subscribers (a billing metric, see Members page).',
+        },
+        {
+          label: "Court Occupancy",
+          value: m.occupancy.value,
+          change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`,
+          up: m.occupancy.trend.direction === 'up',
+          icon: Target,
+          gradient: "from-cyan-500 to-teal-500",
+          href: "/sessions",
+          sparkData: m.occupancy.trend.sparkline || [],
+          tooltip: 'Average per-session occupancy — registered players ÷ max capacity, averaged across all sessions in the period. Same formula used by the Schedule page.',
+        },
         {
           label: "Player Sessions",
           value: m.bookings.value,
@@ -301,6 +321,7 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
           gradient: "from-emerald-500 to-green-500",
           href: "/sessions",
           sparkData: m.bookings.trend.sparkline || [],
+          tooltip: 'Total confirmed bookings in the dashboard period (one row per player per session). Counts all sessions, not just sessions that ran.',
         },
         isMembership
         ? (() => {
@@ -315,6 +336,7 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
               gradient: "from-amber-500 to-orange-500",
               href: "/members",
               sparkData: [],
+              tooltip: 'Followers whose CR subscription is Suspended, Expired, or set to "No Membership". These are recovery candidates for win-back campaigns.',
             };
           })()
         : {
@@ -322,6 +344,7 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
             value: m.lostRevenue.value,
             change: `${m.lostRevenue.trend.direction === 'up' ? '+' : '-'}${Math.abs(m.lostRevenue.trend.changePercent)}%`,
             up: m.lostRevenue.trend.direction === 'down',
+            tooltip: 'Estimated revenue lost to empty slots — empty slot count × average session price across the period. Shrinking this number is exactly what Slot Filler is for.',
             icon: AlertTriangle,
             gradient: "from-red-500 to-orange-500",
             href: "/slot-filler",
@@ -959,6 +982,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               onClick={() => router.push(`/clubs/${clubId}/intelligence${kpi.href}`)}
               className="cursor-pointer"
             >
+              <div title={(kpi as { tooltip?: string }).tooltip}>
               <Card className="relative overflow-hidden transition-shadow hover:shadow-lg hover:shadow-black/10">
                 <div className="flex items-start justify-between mb-3">
                   <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
@@ -968,13 +992,25 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 </div>
                 <div className="mb-1" style={{ fontSize: "28px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs" style={{ color: "var(--t3)" }}>{kpi.label}</span>
+                  <span className="text-xs flex items-center gap-1" style={{ color: "var(--t3)" }}>
+                    <span className="truncate">{kpi.label}</span>
+                    {(kpi as { tooltip?: string }).tooltip && (
+                      <span
+                        className="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] cursor-help shrink-0"
+                        style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}
+                        aria-hidden
+                      >
+                        ?
+                      </span>
+                    )}
+                  </span>
                   <div className={`flex items-center gap-1 text-xs ${kpi.up ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>
                     {kpi.up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
                     {kpi.change}
                   </div>
                 </div>
               </Card>
+              </div>
             </motion.div>
           );
         })}
