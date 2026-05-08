@@ -22,6 +22,7 @@ import { X, Check, ChevronRight, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { CourtReserveConnector } from "./shared/CourtReserveConnector";
 import { AIRevenueTile } from "../ai-revenue-tile";
+import { IntroFunnelTile } from "../intro-funnel-tile";
 
 type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
 
@@ -1026,6 +1027,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       >
         <AIRevenueTile clubId={clubId} />
       </motion.div>
+
+      {/* P1.3 (Sprint 1) — Pickleball 101 → Membership conversion funnel.
+          Sits between AI Revenue and Player Health so club owners see
+          their top-of-funnel acquisition story before churn analytics.
+          Tier 1.3 of IPC's Programming OS. */}
+      <IntroFunnelTile clubId={clubId} />
 
       {/* Player Health Overview */}
       <div className="space-y-4">

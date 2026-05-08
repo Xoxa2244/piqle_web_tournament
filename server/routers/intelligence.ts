@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { checkFeatureAccess } from '@/lib/subscription'
@@ -1453,6 +1454,125 @@ export const intelligenceRouter = createTRPCRouter({
           inCatalog: r.in_catalog === true,
         })),
         states: stateRows.map((r) => ({ value: r.value, count: Number(r.count) })),
+      }
+    }),
+
+  // ── Pickleball 101 → Membership Conversion Funnel (Sprint 1 P1.3) ──
+  //
+  // Programs in IPC's "Tier 1.3 — Pickleball 101" bucket are the primary
+  // top-of-funnel acquisition channel. This procedure measures how many
+  // people who attended an intro session in the last N weeks are now on
+  // a paying tier — answering "is my intro funnel working?" without
+  // leaving CourtReserve.
+  //
+  // Detection strategy: regex on PlaySession.title (canonical pattern
+  // list lives in lib/ai/intro-program-detection.ts). We deliberately
+  // exclude regular beginner play ("Open Play Beginner 2.0-2.49") and
+  // Learner League — those are already-onboarded members, not newcomers.
+  //
+  // Conversion rule: attendee is "converted" if their current
+  // users.membership_status = 'Active' AND their membership_type is
+  // not a guest/drop-in package. We don't have historical state, so
+  // the snapshot is "current paying member" rather than "paid within
+  // 30 days of intro" — the dashboard widget labels this trade-off
+  // explicitly.
+  getIntroConversionFunnel: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      weeks: z.number().int().min(1).max(52).optional().default(4),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Single-source-of-truth regex; mirrors lib/ai/intro-program-detection.ts.
+      // Postgres POSIX regex via ~* (case-insensitive).
+      const INTRO_REGEX =
+        '(pickleball\\s*101|pb\\s*101|intro\\s+to\\s+(pickleball|open\\s+play)|free\\s+beginner\\s+class|try\\s+pickleball|try,?\\s+compare,?\\s+learn|new\\s+to\\s+pickleball|first[-\\s]time|newcomer|newbie|rookie|paddle\\s+workshop)'
+
+      const sinceDate = new Date(Date.now() - input.weeks * 7 * 86400000)
+
+      const introSessionsRows = await ctx.prisma.$queryRaw<Array<{
+        id: string
+        title: string
+        date: Date
+        registered_count: number | null
+      }>>`
+        SELECT id, title, date, registered_count
+        FROM play_sessions
+        WHERE "clubId" = ${input.clubId}
+          AND date >= ${sinceDate}
+          AND title ~* ${INTRO_REGEX}
+        ORDER BY date DESC
+      `
+
+      const sessionIds = introSessionsRows.map((r) => r.id)
+
+      let attendees: Array<{ user_id: string; first_intro_date: Date }> = []
+      if (sessionIds.length > 0) {
+        attendees = await ctx.prisma.$queryRaw<Array<{ user_id: string; first_intro_date: Date }>>`
+          SELECT psb."userId" AS user_id, MIN(ps.date) AS first_intro_date
+          FROM play_session_bookings psb
+          JOIN play_sessions ps ON ps.id = psb."sessionId"
+          WHERE ps."clubId" = ${input.clubId}
+            AND ps.id IN (${Prisma.join(sessionIds)})
+            AND psb.status = 'CONFIRMED'
+          GROUP BY psb."userId"
+        `
+      }
+
+      const attendeeUserIds = attendees.map((a) => a.user_id)
+
+      let convertedRows: Array<{ id: string; membership_type: string | null }> = []
+      if (attendeeUserIds.length > 0) {
+        convertedRows = await ctx.prisma.$queryRaw<Array<{ id: string; membership_type: string | null }>>`
+          SELECT id, membership_type
+          FROM users
+          WHERE id IN (${Prisma.join(attendeeUserIds)})
+            AND membership_status = 'Active'
+            AND membership_type IS NOT NULL
+            AND membership_type NOT ILIKE '%guest pass%'
+            AND membership_type NOT ILIKE '%pay per%'
+        `
+      }
+
+      // Per-week breakdown for sparkline / trend display.
+      const weeklyBuckets: Array<{ weekStart: string; introSessions: number; attendees: number }> = []
+      const now = new Date()
+      for (let w = 0; w < input.weeks; w++) {
+        const weekEnd = new Date(now.getTime() - w * 7 * 86400000)
+        const weekStart = new Date(weekEnd.getTime() - 7 * 86400000)
+        const sessionsInWeek = introSessionsRows.filter(
+          (r) => r.date >= weekStart && r.date < weekEnd,
+        )
+        const attendeesInWeek = attendees.filter(
+          (a) => a.first_intro_date >= weekStart && a.first_intro_date < weekEnd,
+        )
+        weeklyBuckets.unshift({
+          weekStart: weekStart.toISOString().slice(0, 10),
+          introSessions: sessionsInWeek.length,
+          attendees: attendeesInWeek.length,
+        })
+      }
+
+      const conversionRate = attendees.length > 0
+        ? Math.round((convertedRows.length / attendees.length) * 1000) / 10
+        : 0
+
+      return {
+        windowWeeks: input.weeks,
+        windowStart: sinceDate.toISOString(),
+        totalIntroSessions: introSessionsRows.length,
+        totalAttendees: attendees.length,
+        convertedToPayingMember: convertedRows.length,
+        conversionRate,
+        weeklyBreakdown: weeklyBuckets,
+        sampleConvertedTiers: Array.from(
+          new Set(
+            convertedRows
+              .map((r) => r.membership_type)
+              .filter((t): t is string => Boolean(t)),
+          ),
+        ).slice(0, 6),
       }
     }),
 
