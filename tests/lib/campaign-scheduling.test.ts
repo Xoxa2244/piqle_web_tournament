@@ -4,6 +4,7 @@ import {
   buildRecurringCron,
   describeRecurringCron,
   formatSequenceDelayCompact,
+  getCampaignSequenceDueCandidates,
   parseRecurringCron,
   resolveSequenceDelay,
   shouldFireRecurringNow,
@@ -48,5 +49,117 @@ describe('campaign scheduling helpers', () => {
       unit: 'minutes',
     })
     expect(formatSequenceDelayCompact({ delayDays: 3, delayMinutes: 10 })).toBe('+10m')
+  })
+
+  it('fans out the next step once a minute-based delay has elapsed', () => {
+    const candidates = getCampaignSequenceDueCandidates(
+      [
+        { delayDays: 0 },
+        { delayDays: 1, delayMinutes: 5 },
+        { delayDays: 1, delayMinutes: 10 },
+      ],
+      [
+        {
+          id: 'log-0',
+          userId: 'member-1',
+          sequenceStep: 0,
+          status: 'sent',
+          createdAt: new Date('2026-05-12T12:34:07.396Z'),
+          sentAt: new Date('2026-05-12T12:34:07.396Z'),
+        },
+      ],
+      new Date('2026-05-12T12:40:30.000Z'),
+    )
+
+    expect(candidates).toEqual([
+      {
+        logId: 'log-0',
+        userId: 'member-1',
+        sequenceStep: 0,
+        nextStep: 1,
+        sentAt: new Date('2026-05-12T12:34:07.396Z'),
+      },
+    ])
+  })
+
+  it('falls back to createdAt when the root step has no sentAt yet', () => {
+    const candidates = getCampaignSequenceDueCandidates(
+      [
+        { delayDays: 0 },
+        { delayDays: 1, delayMinutes: 5 },
+      ],
+      [
+        {
+          id: 'log-0',
+          userId: 'member-1',
+          sequenceStep: 0,
+          status: 'sent',
+          createdAt: new Date('2026-05-12T12:34:07.396Z'),
+          sentAt: null,
+        },
+      ],
+      new Date('2026-05-12T12:40:30.000Z'),
+    )
+
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toMatchObject({
+      logId: 'log-0',
+      userId: 'member-1',
+      sequenceStep: 0,
+      nextStep: 1,
+    })
+  })
+
+  it('does not fan out when the latest step is already pending or exited', () => {
+    const now = new Date('2026-05-12T12:50:00.000Z')
+
+    expect(
+      getCampaignSequenceDueCandidates(
+        [
+          { delayDays: 0 },
+          { delayDays: 1, delayMinutes: 5 },
+        ],
+        [
+          {
+            id: 'log-pending',
+            userId: 'member-1',
+            sequenceStep: 1,
+            status: 'pending',
+            createdAt: new Date('2026-05-12T12:40:00.000Z'),
+            sentAt: null,
+          },
+          {
+            id: 'log-root',
+            userId: 'member-1',
+            sequenceStep: 0,
+            status: 'sent',
+            createdAt: new Date('2026-05-12T12:34:07.396Z'),
+            sentAt: new Date('2026-05-12T12:34:07.396Z'),
+          },
+        ],
+        now,
+      ),
+    ).toEqual([])
+
+    expect(
+      getCampaignSequenceDueCandidates(
+        [
+          { delayDays: 0 },
+          { delayDays: 1, delayMinutes: 5 },
+        ],
+        [
+          {
+            id: 'log-root',
+            userId: 'member-1',
+            sequenceStep: 0,
+            status: 'sent',
+            createdAt: new Date('2026-05-12T12:34:07.396Z'),
+            sentAt: new Date('2026-05-12T12:34:07.396Z'),
+            reasoning: { sequenceExit: 'booked_session' },
+          },
+        ],
+        now,
+      ),
+    ).toEqual([])
   })
 })

@@ -37,7 +37,7 @@ import { prisma } from '@/lib/prisma'
 import { cronLogger as log } from '@/lib/logger'
 import { buildOutreachTemplateValues, sendOutreachEmail, isBlockedEmail } from '@/lib/email'
 import { resolveAgentControlPlane } from '@/lib/ai/agent-control-plane'
-import { parseRecurringCron, resolveSequenceDelay, shouldFireRecurringNow } from '@/lib/campaign-scheduling'
+import { getCampaignSequenceDueCandidates, parseRecurringCron, shouldFireRecurringNow } from '@/lib/campaign-scheduling'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -221,86 +221,31 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
   const steps = getSequenceSteps(campaign)
   if (steps.length <= 1) return { created: 0, exited: 0 }
 
-  // Read the relevant source logs once, then resolve due-ness in JS.
-  // This is a little less "SQL-pure" than the original approach, but it
-  // avoids environment-specific raw-query edge cases that can prevent
-  // follow-up fan-out while the outer cron tick still returns 200.
+  // Rebuild each recipient's current sequence state from the actual logs.
+  // This is less brittle than separately querying "source" logs and then
+  // hoping the "next" step lookup agrees across retries / env quirks.
   const now = new Date()
-  const sourceSteps = Array.from({ length: steps.length - 1 }, (_, idx) => idx)
-  const eligibleStatuses = ['sent', 'delivered', 'opened', 'clicked', 'converted']
-  const sourceLogs = await prisma.aIRecommendationLog.findMany({
+  const sequenceLogs = await prisma.aIRecommendationLog.findMany({
     where: {
       campaignId: campaign.id,
       type: 'CAMPAIGN_SEND',
-      status: { in: eligibleStatuses },
-      sequenceStep: { in: sourceSteps },
+      sequenceStep: { not: null },
     },
     select: {
       id: true,
       userId: true,
+      status: true,
       sequenceStep: true,
       createdAt: true,
       sentAt: true,
-    },
-    orderBy: { sentAt: 'asc' },
-  })
-
-  if (sourceLogs.length === 0) return { created: 0, exited: 0 }
-
-  const sourceUserIds = Array.from(new Set(sourceLogs.map((log) => log.userId)))
-  const nextSteps = sourceSteps.map((step) => step + 1)
-  const existingNextLogs = await prisma.aIRecommendationLog.findMany({
-    where: {
-      campaignId: campaign.id,
-      userId: { in: sourceUserIds },
-      sequenceStep: { in: nextSteps },
-    },
-    select: {
-      userId: true,
-      sequenceStep: true,
+      reasoning: true,
     },
   })
-  const existingNextLogKeys = new Set(
-    existingNextLogs
-      .filter((log) => typeof log.sequenceStep === 'number')
-      .map((log) => `${log.userId}:${log.sequenceStep}`),
-  )
 
-  const candidates: Array<{
-    logId: string
-    userId: string
-    sequenceStep: number
-    sentAt: Date
-  }> = []
+  if (sequenceLogs.length === 0) return { created: 0, exited: 0 }
 
-  for (const log of sourceLogs) {
-    const currentStep = typeof log.sequenceStep === 'number' ? log.sequenceStep : null
-    if (currentStep === null) continue
-    if (currentStep < 0 || currentStep >= steps.length - 1) continue
-
-    const nextStep = currentStep + 1
-    if (existingNextLogKeys.has(`${log.userId}:${nextStep}`)) continue
-
-    const delay = resolveSequenceDelay(steps[nextStep])
-    if (delay.amount < 1) continue
-
-    const baseSentAt = log.sentAt ?? log.createdAt
-    const delayMs = delay.unit === 'minutes'
-      ? delay.amount * 60 * 1000
-      : delay.amount * 24 * 60 * 60 * 1000
-    const dueAt = new Date(baseSentAt.getTime() + delayMs)
-    if (dueAt > now) continue
-
-    candidates.push({
-      logId: log.id,
-      userId: log.userId,
-      sequenceStep: currentStep,
-      sentAt: baseSentAt,
-    })
-  }
-
-  candidates.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime())
-  const limitedCandidates = candidates.slice(0, FAN_OUT_LIMIT)
+  const sourceLogById = new Map(sequenceLogs.map((log) => [log.id, log] as const))
+  const limitedCandidates = getCampaignSequenceDueCandidates(steps, sequenceLogs, now).slice(0, FAN_OUT_LIMIT)
 
   if (limitedCandidates.length === 0) return { created: 0, exited: 0 }
 
@@ -337,39 +282,56 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
       if (!cur || b.bookedAt > cur) latestBookingByUser.set(b.userId, b.bookedAt)
     }
 
-    toCreate = candidates.filter((c) => {
-      const last = latestBookingByUser.get(c.userId)
-      if (last && last >= c.sentAt) {
-        exited++
-        return false
-      }
-      return true
-    })
+    const exitedLogIds = new Set<string>()
+    for (const candidate of limitedCandidates) {
+      const last = latestBookingByUser.get(candidate.userId)
+      if (!last || last < candidate.sentAt) continue
+
+      exited++
+      exitedLogIds.add(candidate.logId)
+
+      const sourceLog = sourceLogById.get(candidate.logId)
+      const rawReasoning = sourceLog?.reasoning
+      const baseReasoning = rawReasoning && typeof rawReasoning === 'object' && !Array.isArray(rawReasoning)
+        ? rawReasoning as Record<string, unknown>
+        : {}
+
+      await prisma.aIRecommendationLog.update({
+        where: { id: candidate.logId },
+        data: {
+          reasoning: {
+            ...baseReasoning,
+            sequenceExit: 'booked_session',
+            exitedAt: last.toISOString(),
+            exitedBeforeStep: candidate.nextStep + 1,
+          },
+        },
+      })
+    }
+
+    toCreate = limitedCandidates.filter((candidate) => !exitedLogIds.has(candidate.logId))
   }
 
   if (toCreate.length === 0) return { created: 0, exited }
 
   // Create the next-step logs. We tag each with parent_log_id pointing
   // to the previous step's log so analytics can walk the chain.
-  // primary channel: best-effort match the launchCampaign convention
-  // (email if 'email' is in campaign.channels, else sms).
-  // We don't know channels here without re-fetching; default to 'email'
-  // which is what the Wizard ships today.
+  const primaryChannel = campaign.channels.includes('email') ? 'email' : 'sms'
   await prisma.aIRecommendationLog.createMany({
     data: toCreate.map((c) => ({
       clubId: campaign.clubId,
       userId: c.userId,
       type: 'CAMPAIGN_SEND' as const,
-      channel: 'email',
+      channel: primaryChannel,
       status: 'pending',
       campaignId: campaign.id,
-      sequenceStep: c.sequenceStep + 1,
+      sequenceStep: c.nextStep,
       parentLogId: c.logId,
       reasoning: {
         campaignName: campaign.name,
         totalSteps: steps.length,
-        sequenceStep: c.sequenceStep + 1,
-        stepNumber: c.sequenceStep + 2,
+        sequenceStep: c.nextStep,
+        stepNumber: c.nextStep + 1,
       },
     })),
     skipDuplicates: true,

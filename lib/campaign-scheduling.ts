@@ -12,6 +12,24 @@ export interface ResolvedSequenceDelay {
   unit: SequenceDelayUnit
 }
 
+export interface CampaignSequenceLogSnapshot {
+  id: string
+  userId: string
+  sequenceStep: number | null
+  status: string
+  createdAt: Date
+  sentAt: Date | null
+  reasoning?: unknown
+}
+
+export interface CampaignSequenceDueCandidate {
+  logId: string
+  userId: string
+  sequenceStep: number
+  nextStep: number
+  sentAt: Date
+}
+
 export interface RecurringScheduleShape {
   format?: string | null
   recurringFrequency?: RecurringFrequency | null
@@ -61,6 +79,70 @@ export function resolveSequenceDelay(step: SequenceDelayShape): ResolvedSequence
 export function formatSequenceDelayCompact(step: SequenceDelayShape): string {
   const delay = resolveSequenceDelay(step)
   return `+${delay.amount}${delay.unit === 'minutes' ? 'm' : 'd'}`
+}
+
+function hasSequenceExit(reasoning: unknown) {
+  if (!reasoning || typeof reasoning !== 'object' || Array.isArray(reasoning)) return false
+  const value = (reasoning as Record<string, unknown>).sequenceExit
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+export function getCampaignSequenceDueCandidates(
+  steps: SequenceDelayShape[],
+  logs: CampaignSequenceLogSnapshot[],
+  now: Date,
+): CampaignSequenceDueCandidate[] {
+  if (steps.length <= 1) return []
+
+  const eligibleStatuses = new Set(['sent', 'delivered', 'opened', 'clicked', 'converted'])
+  const logsByUser = new Map<string, CampaignSequenceLogSnapshot[]>()
+
+  for (const log of logs) {
+    if (typeof log.sequenceStep !== 'number') continue
+    const existing = logsByUser.get(log.userId) ?? []
+    existing.push(log)
+    logsByUser.set(log.userId, existing)
+  }
+
+  const candidates: CampaignSequenceDueCandidate[] = []
+
+  for (const [userId, userLogs] of Array.from(logsByUser.entries())) {
+    const scopedLogs = userLogs
+      .filter((log: CampaignSequenceLogSnapshot) => typeof log.sequenceStep === 'number' && log.sequenceStep >= 0 && log.sequenceStep < steps.length)
+      .sort((a: CampaignSequenceLogSnapshot, b: CampaignSequenceLogSnapshot) => {
+        const stepDelta = (b.sequenceStep ?? -1) - (a.sequenceStep ?? -1)
+        if (stepDelta !== 0) return stepDelta
+        return b.createdAt.getTime() - a.createdAt.getTime()
+      })
+
+    const latest = scopedLogs[0]
+    if (!latest || typeof latest.sequenceStep !== 'number') continue
+    if (latest.status === 'exited' || hasSequenceExit(latest.reasoning)) continue
+    if (!eligibleStatuses.has(latest.status)) continue
+
+    const currentStep = latest.sequenceStep
+    const nextStep = currentStep + 1
+    if (nextStep >= steps.length) continue
+
+    const delay = resolveSequenceDelay(steps[nextStep] ?? {})
+    if (delay.amount < 1) continue
+
+    const baseSentAt = latest.sentAt ?? latest.createdAt
+    const delayMs = delay.unit === 'minutes'
+      ? delay.amount * 60 * 1000
+      : delay.amount * 24 * 60 * 60 * 1000
+    if (baseSentAt.getTime() + delayMs > now.getTime()) continue
+
+    candidates.push({
+      logId: latest.id,
+      userId,
+      sequenceStep: currentStep,
+      nextStep,
+      sentAt: baseSentAt,
+    })
+  }
+
+  return candidates.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime())
 }
 
 export function buildRecurringCron(schedule: RecurringScheduleShape): string | null {
