@@ -397,6 +397,7 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
   const where = opts?.campaignId
     ? { id: opts.campaignId }
     : {
+        format: 'one_time',
         status: { in: ['running', 'scheduled'] },
         sentCount: 0,
         failedCount: 0,
@@ -413,6 +414,7 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
       id: true,
       clubId: true,
       goal: true,
+      format: true,
       subject: true,
       body: true,
       channels: true,
@@ -428,7 +430,14 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
     ...(opts?.campaignId ? {} : { take: limit }),
   })
 
-  if (campaigns.length === 0) {
+  const eligibleCampaigns = campaigns.filter((campaign: any) => {
+    const snapshot = (campaign.cohortSnapshot || {}) as Record<string, unknown>
+    const snapshotFormat = typeof snapshot.sendFormat === 'string' ? snapshot.sendFormat : null
+    const format = typeof campaign.format === 'string' ? campaign.format : snapshotFormat
+    return (format || 'one_time') === 'one_time'
+  })
+
+  if (eligibleCampaigns.length === 0) {
     return {
       processed: 0,
       sent: 0,
@@ -464,7 +473,7 @@ export async function processCampaignSendQueue(prisma: any, opts?: { limit?: num
     smsSent: number
   }> = []
 
-  for (const campaign of campaigns) {
+  for (const campaign of eligibleCampaigns) {
     const snapshot = (campaign.cohortSnapshot || {}) as Record<string, unknown>
     const campaignCta = extractCampaignSnapshotCta(snapshot)
     const memberIds = extractCampaignSnapshotUserIds(snapshot)

@@ -15,9 +15,13 @@ const { sendOutreachEmail, sendSms, reportUsage, appendSmsOptOut } = vi.hoisted(
   appendSmsOptOut: vi.fn((body: string, url: string) => `${body} Reply STOP to opt out: ${url}`),
 }))
 
-vi.mock('@/lib/email', () => ({
-  sendOutreachEmail,
-}))
+vi.mock('@/lib/email', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/email')>()
+  return {
+    ...actual,
+    sendOutreachEmail,
+  }
+})
 
 vi.mock('@/lib/sms', () => ({
   sendSms,
@@ -28,12 +32,16 @@ vi.mock('@/lib/stripe-usage', () => ({
   reportUsage,
 }))
 
-import { processScheduledAdvisorCampaigns, sendCampaignNow } from '@/lib/ai/advisor-campaign-jobs'
+import { processCampaignSendQueue, processScheduledAdvisorCampaigns, sendCampaignNow } from '@/lib/ai/advisor-campaign-jobs'
 
 function createMockPrisma() {
   return {
     club: {
       findUnique: vi.fn().mockResolvedValue({ id: 'club-1', name: 'IQ Club', automationSettings: {} }),
+    },
+    campaign: {
+      findMany: vi.fn().mockResolvedValue([]),
+      update: vi.fn().mockResolvedValue({}),
     },
     user: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -190,5 +198,36 @@ describe('advisor campaign jobs', () => {
         }),
       }),
     )
+  })
+
+  it('ignores non-one-time campaigns in the legacy campaign send queue', async () => {
+    mockPrisma.campaign.findMany.mockResolvedValue([
+      {
+        id: 'campaign-seq-1',
+        clubId: 'club-1',
+        goal: 'reactivate_dormant',
+        format: 'sequence',
+        subject: 'Step 1',
+        body: 'Hello',
+        channels: ['email'],
+        status: 'running',
+        scheduledAt: null,
+        launchedAt: new Date('2026-05-12T14:00:05.318Z'),
+        createdAt: new Date('2026-05-12T14:00:05.320Z'),
+        sentCount: 0,
+        deliveredCount: 0,
+        failedCount: 0,
+        cohortSnapshot: {
+          sendFormat: 'sequence',
+          userIds: ['member-1'],
+        },
+      },
+    ])
+
+    const result = await processCampaignSendQueue(mockPrisma, { limit: 10 })
+
+    expect(result.processed).toBe(0)
+    expect(sendOutreachEmail).not.toHaveBeenCalled()
+    expect(mockPrisma.campaign.update).not.toHaveBeenCalled()
   })
 })

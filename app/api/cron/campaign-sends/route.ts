@@ -52,7 +52,8 @@ function getAuthorized(request: Request) {
     return { ok: false as const, status: 500, error: 'CRON_SECRET is not set' }
   }
   const authHeader = request.headers.get('authorization')
-  if (authHeader === `Bearer ${cronSecret}`) {
+  const forwardedAuthHeader = request.headers.get('upstash-forward-authorization')
+  if (authHeader === `Bearer ${cronSecret}` || forwardedAuthHeader === `Bearer ${cronSecret}`) {
     return { ok: true as const }
   }
   return { ok: false as const, status: 401, error: 'Unauthorized' }
