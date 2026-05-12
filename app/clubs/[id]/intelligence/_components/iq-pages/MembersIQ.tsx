@@ -4420,61 +4420,6 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         />
       )}
 
-      {/* P1.2 (Sprint 1): Sticky filter-result bar.
-          Anchored to the viewport bottom so admins always see how many
-          members the current filter set produces and can act on it without
-          scrolling. Hidden while the filter drawer itself is open (the
-          drawer already has its own "Show N results" footer) and when no
-          filter is applied (the chips area would be empty).
-          z-[55] sits above the floating chat (z-50) but below the drawer
-          (z-[70]) and its backdrop (z-[60]) — same layering used in the
-          drawer's "Show" button fix. */}
-      {!filterDrawerOpen && activeFilterCount > 0 && filtered.length > 0 && clubId && (
-        <div
-          className="fixed bottom-0 left-0 right-0 lg:left-[260px] z-[55] backdrop-blur-md"
-          style={{
-            background: 'var(--card-bg)',
-            borderTop: '1px solid var(--card-border)',
-            boxShadow: '0 -4px 16px rgba(0,0,0,0.18)',
-          }}
-        >
-          <div className="px-5 py-3 flex items-center justify-between gap-3">
-            <div className="text-sm" style={{ color: 'var(--t2)' }}>
-              <span style={{ fontWeight: 700, color: 'var(--heading)' }}>{filtered.length}</span>{' '}
-              <span style={{ color: 'var(--t3)' }}>{filtered.length === 1 ? 'member' : 'members'} match</span>
-              <span className="hidden sm:inline" style={{ color: 'var(--t4)' }}> · {activeFilterCount} {activeFilterCount === 1 ? 'filter' : 'filters'} applied</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={clearAllFilters}
-                className="text-xs px-3 py-1.5 rounded-lg"
-                style={{ color: 'var(--t4)' }}
-              >
-                Clear all
-              </button>
-              {dynamicCohortHref ? (
-                <a
-                  href={dynamicCohortHref}
-                  className="text-xs px-3 py-1.5 rounded-lg font-semibold"
-                  style={{ background: 'rgba(139,92,246,0.12)', color: '#7C3AED', border: '1px solid rgba(139,92,246,0.25)' }}
-                >
-                  Save as Cohort →
-                </a>
-              ) : null}
-              <a
-                href={`/clubs/${clubId}/intelligence/campaigns/new?cohortFilters=${encodeURIComponent(JSON.stringify({
-                  view, filterRisk, filterTrend, filterValue, filterActivity, filterMembershipType, filterMembershipStatus,
-                }))}`}
-                className="text-xs px-3 py-1.5 rounded-lg font-semibold text-white"
-                style={{ background: 'linear-gradient(135deg, #8B5CF6, #6366F1)' }}
-              >
-                Launch Campaign →
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* P2-T8: Filter drawer — replaces 6-row inline filter strip. */}
       <MembersFilterDrawer
         open={filterDrawerOpen}

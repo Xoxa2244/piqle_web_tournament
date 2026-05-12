@@ -104,7 +104,7 @@ function getPeriodLabel(p: Period): { current: string; previous: string } {
   return { current: "Selected range", previous: "Previous range" };
 }
 
-type KpiItem = { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[]; href: string };
+type KpiItem = { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[] };
 
 const emptyHealth = [
   { level: "Healthy", count: 0, pct: 0, color: "#10B981" },
@@ -299,7 +299,6 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
           up: m.members.trend.direction === 'up',
           icon: Users,
           gradient: "from-violet-500 to-purple-600",
-          href: "/members",
           sparkData: m.members.trend.sparkline || [],
           tooltip: 'Members who booked at least one session in the dashboard period (default: last 30 days). Different from Active Subscribers (a billing metric, see Members page).',
         },
@@ -310,7 +309,6 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
           up: m.occupancy.trend.direction === 'up',
           icon: Target,
           gradient: "from-cyan-500 to-teal-500",
-          href: "/sessions",
           sparkData: m.occupancy.trend.sparkline || [],
           tooltip: 'Average per-session occupancy — registered players ÷ max capacity, averaged across all sessions in the period. Same formula used by the Schedule page.',
         },
@@ -321,7 +319,6 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
           up: m.bookings.trend.direction === 'up',
           icon: Activity,
           gradient: "from-emerald-500 to-green-500",
-          href: "/sessions",
           sparkData: m.bookings.trend.sparkline || [],
           tooltip: 'Total confirmed bookings in the dashboard period (one row per player per session). Counts all sessions, not just sessions that ran.',
         },
@@ -336,7 +333,6 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
               up: false,
               icon: UserPlus,
               gradient: "from-amber-500 to-orange-500",
-              href: "/members",
               sparkData: [],
               tooltip: 'Followers whose CR subscription is Suspended, Expired, or set to "No Membership". These are recovery candidates for win-back campaigns.',
             };
@@ -349,7 +345,6 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
             tooltip: 'Estimated revenue lost to empty slots — empty slot count × average session price across the period. Shrinking this number is exactly what Slot Filler is for.',
             icon: AlertTriangle,
             gradient: "from-red-500 to-orange-500",
-            href: "/slot-filler",
             sparkData: m.lostRevenue.trend.sparkline || [],
           },
       ];
@@ -979,13 +974,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => router.push(`/clubs/${clubId}/intelligence${kpi.href}`)}
-              className="cursor-pointer"
             >
               <div title={(kpi as { tooltip?: string }).tooltip}>
-              <Card className="relative overflow-hidden transition-shadow hover:shadow-lg hover:shadow-black/10">
+              <Card className="relative overflow-hidden">
                 <div className="flex items-start justify-between mb-3">
                   <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
                     <Icon className="w-5 h-5 text-white" />
