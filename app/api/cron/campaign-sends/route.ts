@@ -232,7 +232,6 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
     where: {
       campaignId: campaign.id,
       type: 'CAMPAIGN_SEND',
-      sentAt: { not: null },
       status: { in: eligibleStatuses },
       sequenceStep: { in: sourceSteps },
     },
@@ -240,6 +239,7 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
       id: true,
       userId: true,
       sequenceStep: true,
+      createdAt: true,
       sentAt: true,
     },
     orderBy: { sentAt: 'asc' },
@@ -277,7 +277,6 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
     const currentStep = typeof log.sequenceStep === 'number' ? log.sequenceStep : null
     if (currentStep === null) continue
     if (currentStep < 0 || currentStep >= steps.length - 1) continue
-    if (!log.sentAt) continue
 
     const nextStep = currentStep + 1
     if (existingNextLogKeys.has(`${log.userId}:${nextStep}`)) continue
@@ -285,17 +284,18 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
     const delay = resolveSequenceDelay(steps[nextStep])
     if (delay.amount < 1) continue
 
+    const baseSentAt = log.sentAt ?? log.createdAt
     const delayMs = delay.unit === 'minutes'
       ? delay.amount * 60 * 1000
       : delay.amount * 24 * 60 * 60 * 1000
-    const dueAt = new Date(log.sentAt.getTime() + delayMs)
+    const dueAt = new Date(baseSentAt.getTime() + delayMs)
     if (dueAt > now) continue
 
     candidates.push({
       logId: log.id,
       userId: log.userId,
       sequenceStep: currentStep,
-      sentAt: log.sentAt,
+      sentAt: baseSentAt,
     })
   }
 
