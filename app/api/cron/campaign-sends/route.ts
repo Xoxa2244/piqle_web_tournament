@@ -221,9 +221,51 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
   const steps = getSequenceSteps(campaign)
   if (steps.length <= 1) return { created: 0, exited: 0 }
 
-  // For each non-final source step N, find logs at sequence_step=N whose
-  // delay to step N+1 has elapsed and have no follow-up log yet.
-  // Bounded loop — at most steps.length-1 queries per campaign per tick.
+  // Read the relevant source logs once, then resolve due-ness in JS.
+  // This is a little less "SQL-pure" than the original approach, but it
+  // avoids environment-specific raw-query edge cases that can prevent
+  // follow-up fan-out while the outer cron tick still returns 200.
+  const now = new Date()
+  const sourceSteps = Array.from({ length: steps.length - 1 }, (_, idx) => idx)
+  const eligibleStatuses = ['sent', 'delivered', 'opened', 'clicked', 'converted']
+  const sourceLogs = await prisma.aIRecommendationLog.findMany({
+    where: {
+      campaignId: campaign.id,
+      type: 'CAMPAIGN_SEND',
+      sentAt: { not: null },
+      status: { in: eligibleStatuses },
+      sequenceStep: { in: sourceSteps },
+    },
+    select: {
+      id: true,
+      userId: true,
+      sequenceStep: true,
+      sentAt: true,
+    },
+    orderBy: { sentAt: 'asc' },
+  })
+
+  if (sourceLogs.length === 0) return { created: 0, exited: 0 }
+
+  const sourceUserIds = Array.from(new Set(sourceLogs.map((log) => log.userId)))
+  const nextSteps = sourceSteps.map((step) => step + 1)
+  const existingNextLogs = await prisma.aIRecommendationLog.findMany({
+    where: {
+      campaignId: campaign.id,
+      userId: { in: sourceUserIds },
+      sequenceStep: { in: nextSteps },
+    },
+    select: {
+      userId: true,
+      sequenceStep: true,
+    },
+  })
+  const existingNextLogKeys = new Set(
+    existingNextLogs
+      .filter((log) => typeof log.sequenceStep === 'number')
+      .map((log) => `${log.userId}:${log.sequenceStep}`),
+  )
+
   const candidates: Array<{
     logId: string
     userId: string
@@ -231,69 +273,36 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
     sentAt: Date
   }> = []
 
-  for (let n = 0; n < steps.length - 1; n++) {
-    const delay = resolveSequenceDelay(steps[n + 1])
+  for (const log of sourceLogs) {
+    const currentStep = typeof log.sequenceStep === 'number' ? log.sequenceStep : null
+    if (currentStep === null) continue
+    if (currentStep < 0 || currentStep >= steps.length - 1) continue
+    if (!log.sentAt) continue
+
+    const nextStep = currentStep + 1
+    if (existingNextLogKeys.has(`${log.userId}:${nextStep}`)) continue
+
+    const delay = resolveSequenceDelay(steps[nextStep])
     if (delay.amount < 1) continue
 
-    const rows = delay.unit === 'minutes'
-      ? await prisma.$queryRaw<Array<{
-          logId: string
-          userId: string
-          sequenceStep: number
-          sentAt: Date
-        }>>`
-          SELECT
-            log.id            AS "logId",
-            log."userId"      AS "userId",
-            log.sequence_step AS "sequenceStep",
-            log.sent_at       AS "sentAt"
-          FROM ai_recommendation_logs log
-          WHERE log.campaign_id = ${campaign.id}::uuid
-            AND log.type = 'CAMPAIGN_SEND'
-            AND log.sent_at IS NOT NULL
-            AND log.status IN ('sent', 'delivered', 'opened', 'clicked', 'converted')
-            AND log.sequence_step = ${n}
-            AND log.sent_at <= NOW() - (${delay.amount} * INTERVAL '1 minute')
-            AND NOT EXISTS (
-              SELECT 1 FROM ai_recommendation_logs nl
-              WHERE nl.campaign_id = log.campaign_id
-                AND nl."userId" = log."userId"
-                AND nl.sequence_step = ${n + 1}
-            )
-          ORDER BY log.sent_at ASC
-          LIMIT ${FAN_OUT_LIMIT}
-        `
-      : await prisma.$queryRaw<Array<{
-          logId: string
-          userId: string
-          sequenceStep: number
-          sentAt: Date
-        }>>`
-          SELECT
-            log.id            AS "logId",
-            log."userId"      AS "userId",
-            log.sequence_step AS "sequenceStep",
-            log.sent_at       AS "sentAt"
-          FROM ai_recommendation_logs log
-          WHERE log.campaign_id = ${campaign.id}::uuid
-            AND log.type = 'CAMPAIGN_SEND'
-            AND log.sent_at IS NOT NULL
-            AND log.status IN ('sent', 'delivered', 'opened', 'clicked', 'converted')
-            AND log.sequence_step = ${n}
-            AND log.sent_at <= NOW() - (${delay.amount} * INTERVAL '1 day')
-            AND NOT EXISTS (
-              SELECT 1 FROM ai_recommendation_logs nl
-              WHERE nl.campaign_id = log.campaign_id
-                AND nl."userId" = log."userId"
-                AND nl.sequence_step = ${n + 1}
-            )
-          ORDER BY log.sent_at ASC
-          LIMIT ${FAN_OUT_LIMIT}
-        `
-    candidates.push(...rows)
+    const delayMs = delay.unit === 'minutes'
+      ? delay.amount * 60 * 1000
+      : delay.amount * 24 * 60 * 60 * 1000
+    const dueAt = new Date(log.sentAt.getTime() + delayMs)
+    if (dueAt > now) continue
+
+    candidates.push({
+      logId: log.id,
+      userId: log.userId,
+      sequenceStep: currentStep,
+      sentAt: log.sentAt,
+    })
   }
 
-  if (candidates.length === 0) return { created: 0, exited: 0 }
+  candidates.sort((a, b) => a.sentAt.getTime() - b.sentAt.getTime())
+  const limitedCandidates = candidates.slice(0, FAN_OUT_LIMIT)
+
+  if (limitedCandidates.length === 0) return { created: 0, exited: 0 }
 
   // exit_on_booking: bulk-fetch booking activity since each candidate's
   // sent_at. Doing one big query per (userId, since) pair is awkward in
@@ -301,10 +310,10 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
   // we filter in JS. Acceptable: a positive book is still a real signal
   // even if it happened slightly before the prior step's exact send time.
   let exited = 0
-  let toCreate = candidates
+  let toCreate = limitedCandidates
   if (campaign.exitOnBooking) {
-    const userIds = Array.from(new Set(candidates.map((c) => c.userId)))
-    const minSentAt = candidates.reduce<Date>((min, c) => (c.sentAt < min ? c.sentAt : min), candidates[0].sentAt)
+    const userIds = Array.from(new Set(limitedCandidates.map((c) => c.userId)))
+    const minSentAt = limitedCandidates.reduce<Date>((min, c) => (c.sentAt < min ? c.sentAt : min), limitedCandidates[0].sentAt)
 
     // Prisma `in` keeps the uuid/text coercion consistent across envs and
     // avoids raw-SQL array parameter edge cases that can silently short-circuit
