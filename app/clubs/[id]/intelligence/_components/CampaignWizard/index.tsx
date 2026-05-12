@@ -6,9 +6,8 @@
  * 4-step drawer rendered from CampaignsIQ when "+ New Campaign" is
  * clicked. State is held here and passed down to each step.
  *
- * NOTE: real Launch wiring (creating a Campaign DB row + queueing
- * sends) is gated by Live Mode. v1 ships the UX flow; the actual
- * submit path lands alongside the Campaign model in P5-T2.
+ * Launch writes a real Campaign row. Immediate sequence sends happen
+ * at launch; recurring and follow-up sequence steps continue via cron.
  */
 
 import { useState, useEffect, useMemo } from 'react'
@@ -514,7 +513,6 @@ export function CampaignWizard({
               />
             ) : step === 3 ? (
               <Step3Schedule
-                audienceKind={state.audience?.kind ?? null}
                 schedule={state.schedule}
                 onChange={(schedule: ScheduleSettings) => setState((s) => ({ ...s, schedule }))}
               />

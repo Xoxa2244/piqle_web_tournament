@@ -24,9 +24,7 @@ export type CampaignChannel = 'email' | 'sms' | 'email+sms'
 
 export type ScheduleMode = 'now' | 'scheduled' | 'triggered'
 
-/** P2-T9 / Phase 6 prep: send format. v1 ships only `one_time`; the other
- *  two are surfaced in the wizard as "Coming soon" placeholders. Real
- *  sequence runner + cron-based recurring runner land in a follow-up sprint. */
+/** Supported send formats for campaign launch and follow-up automation. */
 export type SendFormat = 'one_time' | 'sequence' | 'recurring'
 
 export type AudienceSourceKind = 'saved_cohort' | 'ai_suggested' | 'inline_userIds'

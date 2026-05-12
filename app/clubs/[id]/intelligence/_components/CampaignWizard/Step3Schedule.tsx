@@ -7,16 +7,12 @@
  * (Message) can render 1 vs N message editors based on the selected
  * SendFormat.
  *
- * v1 ships only `one_time`. `sequence` and `recurring` are visible
- * but disabled with a "Coming soon" pill — surfaces the future shape
- * of the product without lying about availability.
- *
  * Launch button lives on Step 4 (Message) — it's the natural final
  * action after writing copy.
  */
 
 import { Send, Calendar, Zap, Mail, MessageSquare, Layers, Repeat } from 'lucide-react'
-import type { AudienceSourceKind, ScheduleSettings, SendFormat, RecurringFrequency } from './types'
+import type { ScheduleSettings, SendFormat, RecurringFrequency } from './types'
 import { buildRecurringCron } from './types'
 
 /** Curated dropdown of timezones admins are likely to need. UTC at the
@@ -90,7 +86,6 @@ function describeRecurringSchedule(schedule: ScheduleSettings) {
 }
 
 interface Step3Props {
-  audienceKind?: AudienceSourceKind | null
   schedule: ScheduleSettings
   onChange: (next: ScheduleSettings) => void
 }
@@ -100,8 +95,6 @@ const FORMAT_OPTIONS: Array<{
   label: string
   hint: string
   icon: typeof Send
-  disabled?: boolean
-  comingSoon?: boolean
 }> = [
   {
     key: 'one_time',
@@ -123,12 +116,9 @@ const FORMAT_OPTIONS: Array<{
   },
 ]
 
-export function Step3Schedule({ audienceKind, schedule, onChange }: Step3Props) {
+export function Step3Schedule({ schedule, onChange }: Step3Props) {
   const recurringCron = buildRecurringCron(schedule)
   const recurringSummary = describeRecurringSchedule(schedule)
-  const recurringDisabledReason = audienceKind === 'ai_suggested'
-    ? 'Recurring campaigns are currently available only for saved cohorts.'
-    : null
 
   return (
     <div className="space-y-5">
@@ -141,31 +131,19 @@ export function Step3Schedule({ audienceKind, schedule, onChange }: Step3Props) 
       <div className="space-y-2">
         <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Format</label>
         <div className="grid sm:grid-cols-3 gap-2">
-          {FORMAT_OPTIONS.map(({ key, label, hint, icon: Icon, disabled, comingSoon }) => {
+          {FORMAT_OPTIONS.map(({ key, label, hint, icon: Icon }) => {
             const active = schedule.format === key
-            const disabledReason = key === 'recurring' ? recurringDisabledReason : null
-            const isDisabled = disabled || !!disabledReason
             return (
-              <div key={key} title={disabledReason ?? undefined} className="h-full">
+              <div key={key} className="h-full">
                 <button
-                  onClick={() => !isDisabled && onChange({ ...schedule, format: key })}
-                  disabled={isDisabled}
+                  onClick={() => onChange({ ...schedule, format: key })}
                   className="relative text-left rounded-xl p-3 transition-all flex h-full w-full flex-col gap-1"
                   style={{
                     background: active ? 'rgba(139,92,246,0.08)' : 'var(--card-bg)',
                     border: `1px solid ${active ? '#8B5CF6' : 'var(--card-border)'}`,
-                    opacity: isDisabled ? 0.55 : 1,
-                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                    cursor: 'pointer',
                   }}
                 >
-                  {comingSoon && (
-                    <span
-                      className="absolute top-2 right-2 px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider"
-                      style={{ background: 'rgba(245,158,11,0.15)', color: '#F59E0B', fontWeight: 700 }}
-                    >
-                      Soon
-                    </span>
-                  )}
                   <div className="flex items-center gap-2">
                     <Icon className="w-4 h-4" style={{ color: active ? '#A78BFA' : 'var(--t3)' }} />
                     <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>{label}</span>
@@ -337,7 +315,7 @@ export function Step3Schedule({ audienceKind, schedule, onChange }: Step3Props) 
         </div>
       )}
 
-      {/* Send mode (only meaningful for one_time today). */}
+      {/* Send mode for one-time and sequence campaigns. */}
       {schedule.format !== 'recurring' && (
       <>
       <div className="space-y-2">
