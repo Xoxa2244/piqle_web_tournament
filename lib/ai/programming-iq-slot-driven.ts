@@ -58,6 +58,10 @@ import {
   type SelectionScoringContext,
 } from './programming-iq-scheduler'
 import { makeSlotSignature } from './programming-iq-decision-log'
+import {
+  computeEngagementMultiplier,
+  type EngagementContext,
+} from './engagement-multiplier'
 
 export interface RunSlotDrivenSelectionInput {
   weekStartDate: Date
@@ -86,6 +90,33 @@ export interface RunSlotDrivenSelectionInput {
    *  where it did. */
   emitDecisionLog?: boolean
   timezone?: string
+  /** Phase C — Engagement multiplier inputs. When omitted, every
+   *  candidate gets multiplier=1.0 (i.e. scoring v2 collapses to
+   *  scoring v1's score per slot). The caller (tRPC layer) builds
+   *  this from MemberHealthSnapshot + users.createdAt + contactPolicy
+   *  when it wants engagement-aware scoring. */
+  engagementBase?: EngagementContextBase
+  /** Phase C — Saturation guard. The hard cap from
+   *  contactPolicy.inviteCapPerMemberPerWeek × matching-segment-size.
+   *  Implicitly disabled (no penalty applied) when not provided. */
+  segmentInviteCapPerSkill?: Record<string, number>
+}
+
+/** Sub-shape of EngagementContext that the caller pre-computes once per
+ *  generation. The per-(slot × candidate) signals (sameShape count,
+ *  saturation count, off-peak / historical-conversion booleans) are
+ *  derived inside runSlotDrivenSelection from the slot map and the
+ *  running placement accumulator. */
+export interface EngagementContextBase {
+  atRiskMemberCount: number
+  totalMemberCount: number
+  newMemberCount: number
+  atRiskBySkill: Record<string, number>
+  newBySkill: Record<string, number>
+  /** Per-preset weight on the engagement signal magnitude. 0 disables
+   *  multiplier entirely (FOLLOW_MEMBER_DEMAND); 1.0 default; 1.3
+   *  amplifies (FILL_IDLE_HOURS / TEST_NEW_IDEAS). */
+  engagementWeight?: number
 }
 
 export interface SlotDrivenDecisionLogEntry {
@@ -93,6 +124,8 @@ export interface SlotDrivenDecisionLogEntry {
   candidateId: string
   candidateFormat: string
   candidateSkill: string
+  /** Effective score after engagement_multiplier (Phase C). When
+   *  engagementBase is not provided, equals the raw base score. */
   totalScore: number
   goalScores: Record<string, number>
   decision:
@@ -135,14 +168,17 @@ export function runSlotDrivenSelection(
     timezone: input.timezone,
   })
 
-  const _feasibility = buildFeasibilityCache({
+  const feasibility = buildFeasibilityCache({
     emptySlotMap: slotMap,
     historicalSessions: input.historicalSessionsForShapes,
   })
-  // Currently used only via slotMap.empty membership; reserved for
-  // Phase C engagement_multiplier where shapesForSlot drives demand
-  // signals per slot.
-  void _feasibility
+
+  // ── Phase C: pre-compute peak hours for off-peak detection ──────────
+  // "Off-peak" = a slot hour that is NOT in the top-2 demand windows
+  // for the club. Demand window = total historical sessions starting
+  // in that hour bucket across all days. We compute once outside the
+  // slot loop because it's input-stable.
+  const peakHours = computePeakHours(input.historicalSessionsForShapes)
 
   // Pre-index candidates by (dayOfWeek, hourBucket). v1's `__dup`
   // variants are stripped here — v2 doesn't need them; iterating
@@ -172,6 +208,21 @@ export function runSlotDrivenSelection(
   // is allowed when demand justifies it (handled by per-slot scoring).
   const placedKeys = new Set<string>()
 
+  // ── Phase C: running accumulators that feed the engagement_multiplier
+  //    on each slot iteration. They mutate as we place cells.
+  //
+  //    sameShapeAccumulator: how many (format, skillLevel) pairs have
+  //      been placed already this week. Used to diminish the multiplier
+  //      for a candidate that repeats a shape already scheduled.
+  //
+  //    segmentInviteAccumulator: how many "expected invites" each
+  //      skill segment has already accumulated. Approximated by the
+  //      sum of maxPlayers across placed sessions of that skill.
+  //      Once the accumulator hits the per-segment cap, candidates
+  //      for that skill get the saturation penalty.
+  const sameShapeAccumulator = new Map<string, number>()
+  const segmentInviteAccumulator = new Map<string, number>()
+
   for (const slot of slotMap.empty) {
     const key = `${slot.dayOfWeek}__${slot.hour}`
     const candidates = candidatesByKey.get(key) ?? []
@@ -197,11 +248,32 @@ export function runSlotDrivenSelection(
     // (matches the risk-pass insight from commit 4d7f67d7). v2 does not
     // chain diversity penalties across slots; that becomes the new
     // member_saturation_penalty in Phase C.
+    //
+    // Phase C — when engagementBase is provided, every base score is
+    // multiplied by engagement_multiplier(candidate, slot, ctx) in
+    // [0.6, 1.4]. When engagementBase is omitted, multiplier=1.0 and
+    // the path collapses to Phase B behaviour byte-for-byte.
+    const hasHistoricalConversion = feasibility.shapesForSlot(slot).length > 0
+    const isOffPeak = !peakHours.has(slot.hour)
     const scored = candidates.map((c) => {
       const goals = getGoalScores(c, [], input.scoringContext)
-      const score = getGreedySelectionScore(c, [], input.scoringContext)
+      const baseScore = getGreedySelectionScore(c, [], input.scoringContext)
       const penalty = getPortfolioPenalty(c, [], input.scoringContext.pinnedProposalIds, input.scoringContext.behaviorProfile)
-      return { candidate: c, score, goals, penalty }
+
+      const multiplier = input.engagementBase
+        ? computeEngagementMultiplier(c, slot, buildPerSlotContext({
+            base: input.engagementBase,
+            candidate: c,
+            isOffPeak,
+            hasHistoricalConversion,
+            sameShapeAccumulator,
+            segmentInviteAccumulator,
+            segmentInviteCapPerSkill: input.segmentInviteCapPerSkill,
+          }))
+        : 1.0
+      const score = Number.isFinite(baseScore) ? baseScore * multiplier : baseScore
+
+      return { candidate: c, score, baseScore, multiplier, goals, penalty }
     })
       .filter(({ candidate }) => {
         // Don't repeat the same proposal at the same (day, hour) across courts
@@ -281,6 +353,17 @@ export function runSlotDrivenSelection(
     placedKeys.add(`${candidate.id}__${slot.dayOfWeek}__${slot.hour}`)
     selectedProposals.push(candidate)
 
+    // Phase C — update accumulators so the next slot's multiplier sees
+    // the freshly placed shape and segment. Done immediately after
+    // placement so iteration order matters consistently.
+    const shapeKey = `${candidate.format}__${candidate.skillLevel}`
+    sameShapeAccumulator.set(shapeKey, (sameShapeAccumulator.get(shapeKey) ?? 0) + 1)
+    const skillKey = String(candidate.skillLevel).toUpperCase()
+    segmentInviteAccumulator.set(
+      skillKey,
+      (segmentInviteAccumulator.get(skillKey) ?? 0) + (candidate.maxPlayers || 0),
+    )
+
     cells.push({
       key: `${slot.courtId}__${slot.dayOfWeek}__${slot.startTime}`,
       kind,
@@ -320,6 +403,9 @@ export function runSlotDrivenSelection(
     })
 
     if (input.emitDecisionLog) {
+      const reasonSuffix = input.engagementBase && winner.multiplier !== 1
+        ? ` · engagement×${winner.multiplier.toFixed(2)} (base ${Math.round(winner.baseScore)} → ${Math.round(score)})`
+        : ''
       decisionLog.push({
         slotSignature: makeSlotSignature(slot.courtId, slot.dayOfWeek, slot.startTime),
         candidateId: candidate.id,
@@ -328,7 +414,7 @@ export function runSlotDrivenSelection(
         totalScore: Number.isFinite(score) ? score : Number.NEGATIVE_INFINITY,
         goalScores: extractGoalScores(goals),
         decision: kind === 'suggested' ? 'selected' : kind === 'risk' ? 'risk' : 'explore',
-        reason: tierReason,
+        reason: tierReason + reasonSuffix,
       })
     }
   }
@@ -372,4 +458,64 @@ function extractGoalScores(goals: ReturnType<typeof getGoalScores>): Record<stri
     operationalFit: goals.operationalFit,
     adminIntent: goals.adminIntent,
   }
+}
+
+// ── Phase C helpers ──────────────────────────────────────────────────
+
+/**
+ * Build a per-(slot × candidate) EngagementContext on top of the
+ * grid-wide base. The runtime signals (sameShape count, segment
+ * saturation count, off-peak flag, historical conversion flag) are
+ * read out of the running accumulators and the precomputed slot
+ * features. Kept inline rather than inside engagement-multiplier.ts
+ * because it depends on the slot-driven loop's mutating state.
+ */
+function buildPerSlotContext(args: {
+  base: EngagementContextBase
+  candidate: AdvisorProgrammingProposalDraft
+  isOffPeak: boolean
+  hasHistoricalConversion: boolean
+  sameShapeAccumulator: Map<string, number>
+  segmentInviteAccumulator: Map<string, number>
+  segmentInviteCapPerSkill?: Record<string, number>
+}): EngagementContext {
+  const shapeKey = `${args.candidate.format}__${args.candidate.skillLevel}`
+  const skillKey = String(args.candidate.skillLevel).toUpperCase()
+  return {
+    atRiskMemberCount: args.base.atRiskMemberCount,
+    totalMemberCount: args.base.totalMemberCount,
+    newMemberCount: args.base.newMemberCount,
+    atRiskBySkill: args.base.atRiskBySkill,
+    newBySkill: args.base.newBySkill,
+    sameShapeCountThisWeek: args.sameShapeAccumulator.get(shapeKey) ?? 0,
+    hasHistoricalConversion: args.hasHistoricalConversion,
+    isOffPeak: args.isOffPeak,
+    segmentInviteCount: args.segmentInviteAccumulator.get(skillKey) ?? 0,
+    segmentInviteCap: args.segmentInviteCapPerSkill?.[skillKey] ?? 0,
+    engagementWeight: args.base.engagementWeight,
+  }
+}
+
+/**
+ * Top-2 demand hours of the club across all days. Anything not in
+ * this set is "off-peak" for engagement_multiplier purposes. We pick
+ * 2 (not 1, not 3) because 1 too narrowly defines peak (a club with
+ * even demand has no peak) and 3 dilutes the off-peak bonus.
+ *
+ * Empty history → empty set → every hour is off-peak. That's
+ * intentional: brand-new clubs benefit from the off-peak bonus
+ * everywhere, which biases v2 toward filling more slots up front.
+ */
+function computePeakHours(
+  sessions: Array<{ startTime: string }>,
+): Set<number> {
+  const counts = new Map<number, number>()
+  for (const s of sessions) {
+    const m = hhmmToMinutes(s.startTime)
+    if (!Number.isFinite(m)) continue
+    const hour = Math.floor(m / 60)
+    counts.set(hour, (counts.get(hour) ?? 0) + 1)
+  }
+  const ranked = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])
+  return new Set(ranked.slice(0, 2).map(([hour]) => hour))
 }

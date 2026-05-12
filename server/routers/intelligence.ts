@@ -8802,8 +8802,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           ctx.prisma.clubFollower.findMany({
             where: { clubId: input.clubId },
             select: {
+              userId: true,
               user: {
                 select: {
+                  createdAt: true,
                   skillLevel: true,
                   dateOfBirth: true,
                   gender: true,
@@ -8951,6 +8953,77 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           .map((draft) => `${draft.dayOfWeek}__${draft.startTime}__${draft.format}__${draft.skillLevel}`)
         : []
 
+      // Phase C — build engagement context for v2 scoring. Only fetched
+      // when engineVersion === 'v2' to avoid extra DB hits on legacy
+      // generations. The follower list above already pulled skillLevel
+      // + user.createdAt; we just need latest health-snapshot risk
+      // levels keyed by userId to mark members as at-risk / critical.
+      let engagementBase:
+        | import('@/lib/ai/programming-iq-slot-driven').EngagementContextBase
+        | undefined = undefined
+      let segmentInviteCapPerSkill: Record<string, number> | undefined = undefined
+      if (input.engineVersion === 'v2') {
+        const followerUserIds = (followers as any[])
+          .map((f) => f.userId)
+          .filter((id): id is string => typeof id === 'string')
+        // Pull most-recent snapshot per follower. We over-fetch (latest
+        // 1 per user × up to 5000 users) and pick the freshest in JS —
+        // simpler than a Postgres window function and bounded by the
+        // 5000-user findMany cap above.
+        const recentSnapshots = followerUserIds.length > 0
+          ? await ctx.prisma.memberHealthSnapshot.findMany({
+              where: {
+                clubId: input.clubId,
+                userId: { in: followerUserIds },
+              },
+              orderBy: { date: 'desc' },
+              select: { userId: true, riskLevel: true, date: true },
+              take: followerUserIds.length * 2,
+            }).catch(() => [])
+          : []
+        const latestRiskByUser = new Map<string, string>()
+        for (const s of recentSnapshots as Array<{ userId: string; riskLevel: string }>) {
+          if (!latestRiskByUser.has(s.userId)) latestRiskByUser.set(s.userId, s.riskLevel)
+        }
+
+        const memberRows = (followers as any[]).map((f) => {
+          const joined = f.user?.createdAt ? new Date(f.user.createdAt) : null
+          const joinedDaysAgo = joined
+            ? Math.max(0, Math.floor((Date.now() - joined.getTime()) / (24 * 60 * 60 * 1000)))
+            : null
+          return {
+            skillLevel: f.user?.skillLevel ?? null,
+            riskLevel: latestRiskByUser.get(f.userId) ?? null,
+            joinedDaysAgo,
+          }
+        })
+
+        const { summariseMembers } = await import('@/lib/ai/engagement-multiplier')
+        const dist = summariseMembers(memberRows)
+        engagementBase = {
+          atRiskMemberCount: dist.atRiskMemberCount,
+          totalMemberCount: dist.totalMemberCount,
+          newMemberCount: dist.newMemberCount,
+          atRiskBySkill: dist.atRiskBySkill,
+          newBySkill: dist.newBySkill,
+        }
+
+        // Saturation cap per skill = inviteCapPerMemberPerWeek × members
+        // in that skill bucket. When the running invite count exceeds
+        // this, engagement_multiplier subtracts the cap penalty.
+        const membersBySkill = new Map<string, number>()
+        for (const f of followers as any[]) {
+          const skl = String(f.user?.skillLevel ?? '').toUpperCase()
+          if (skl) membersBySkill.set(skl, (membersBySkill.get(skl) ?? 0) + 1)
+        }
+        segmentInviteCapPerSkill = Object.fromEntries(
+          Array.from(membersBySkill.entries()).map(([skl, count]) => [
+            skl,
+            count * inviteCapPerMemberPerWeek,
+          ]),
+        )
+      }
+
       const grid = buildWeeklyGrid({
         weekStartDate: weekStart,
         courts,
@@ -8970,6 +9043,8 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         previousSuggestionSignatures,
         timezone: clubTimezone,
         engineVersion: input.engineVersion,
+        engagementBase,
+        segmentInviteCapPerSkill,
       })
 
       if (regenerateHint?.reasoning) {

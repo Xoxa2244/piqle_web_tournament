@@ -246,6 +246,13 @@ export interface BuildWeeklyGridInput {
    *  the scoring function (getGreedySelectionScore) so swapping the
    *  flag never silently changes scoring behaviour. */
   engineVersion?: ProgrammingIQEngineVersion
+  /** Phase C — engagement multiplier inputs. Applied only when
+   *  engineVersion='v2' AND this object is provided. v1 ignores it.
+   *  Caller (tRPC) computes from MemberHealthSnapshot + users.createdAt. */
+  engagementBase?: import('./programming-iq-slot-driven').EngagementContextBase
+  /** Phase C — saturation cap per skill segment. Derived from
+   *  contactPolicy.inviteCapPerMemberPerWeek × matching-segment-size. */
+  segmentInviteCapPerSkill?: Record<string, number>
 }
 
 export interface BuildWeeklyGridResult {
@@ -1694,6 +1701,17 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   let eligible: AdvisorProgrammingProposalDraft[] = []
   let v2SlotResult: ReturnType<typeof runSlotDrivenSelection> | null = null
   if (useV2Engine) {
+    // Phase C — fold the preset-driven engagementWeight onto the
+    // tRPC-supplied engagementBase. The router doesn't know which
+    // presets are active (it forwards selectedPresetIds raw), but
+    // we do because strategyProfile was just computed above.
+    const engagementBaseWithWeight = input.engagementBase
+      ? {
+          ...input.engagementBase,
+          engagementWeight: strategyProfile.behaviorProfile.engagementWeight,
+        }
+      : undefined
+
     v2SlotResult = runSlotDrivenSelection({
       weekStartDate: input.weekStartDate,
       courts: input.courts,
@@ -1713,6 +1731,8 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       riskScoreFloor: strategyProfile.behaviorProfile.riskScoreFloor,
       emitDecisionLog: true,
       timezone: input.timezone,
+      engagementBase: engagementBaseWithWeight,
+      segmentInviteCapPerSkill: input.segmentInviteCapPerSkill,
     })
     eligible = v2SlotResult.selectedProposals
   } else {

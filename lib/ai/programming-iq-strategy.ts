@@ -54,6 +54,11 @@ export type ProgrammingBehaviorProfile = {
   /** Cap on how many risk cells per generated grid. Prevents flooding a
    *  small underdeveloped club with 100 weak ideas. */
   maxRiskCells: number
+  /** Phase C (2026-05-10): weight on the engagement_multiplier signals
+   *  in v2 scoring. 0 disables multiplier (effective multiplier always
+   *  1.0), 1.0 default, 1.3 amplifies. Applied only when v2 engine is
+   *  on; v1 ignores. */
+  engagementWeight: number
 }
 
 export type ProgrammingPresetDefinition = {
@@ -119,6 +124,8 @@ const BASE_BEHAVIOR_PROFILE: ProgrammingBehaviorProfile = {
   // Default 42: candidates with [42, 62) get surfaced as `risk` cells.
   riskScoreFloor: 42,
   maxRiskCells: 80,
+  // Phase C engagement_multiplier baseline. Each preset can shift.
+  engagementWeight: 1.0,
 }
 
 const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
@@ -134,6 +141,9 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
       noSupplyHistoricalScore: -3,
       saturationCapMultiplier: -0.05,
       secondCourtDuplicationThreshold: -2,
+      // Pure attendance maximisation — engagement signals could only
+      // distract here. Effectively disable the multiplier.
+      engagementWeight: -1,
     },
     keywords: ['demand', 'popular', 'members want', 'best demand', 'highest demand'],
   },
@@ -167,6 +177,9 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
       // ideas surfaced as amber `risk` cells (separate from `suggested`).
       riskScoreFloor: -8,
       maxRiskCells: 40,
+      // Off-peak slots + new-member-attractive formats both fit the
+      // "fill idle hours" intent — amplify engagement nudges.
+      engagementWeight: 0.3,
     },
     keywords: ['idle', 'empty', 'utilization', 'morning', 'weekday morning', 'fill'],
   },
@@ -227,6 +240,10 @@ const PRESET_DEFINITIONS: ProgrammingPresetDefinition[] = [
       offPeakExplorationBonus: 8,
       emptyWindowExplorationBonus: 6,
       saturationCapMultiplier: 0.2,
+      // Test-new-ideas is the strongest case for engagement_multiplier:
+      // we explicitly want to surface new-member-attractive and at-risk-
+      // targeted shapes, not just attendance-safe ones.
+      engagementWeight: 0.4,
     },
     keywords: ['test', 'experiment', 'try', 'new idea', 'new ideas'],
   },
@@ -507,6 +524,9 @@ function normalizeBehaviorProfile(profile: ProgrammingBehaviorProfile): Programm
     // out at "20" so we never surface obviously-wrong filler.
     riskScoreFloor: clamp(Math.round(profile.riskScoreFloor), 0, 60),
     maxRiskCells: clamp(Math.round(profile.maxRiskCells), 0, 200),
+    // [0, 2.0] — 0 disables engagement_multiplier (it always returns 1.0);
+    // 1.0 default; presets can amplify up to 2× the per-signal step.
+    engagementWeight: clamp(roundBehavior(profile.engagementWeight), 0, 2),
   }
 }
 
