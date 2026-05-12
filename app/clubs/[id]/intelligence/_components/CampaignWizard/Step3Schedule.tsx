@@ -71,6 +71,10 @@ function describeRecurringSchedule(schedule: ScheduleSettings) {
   const time = padHour(Math.max(0, Math.min(23, schedule.recurringHour ?? 9)))
 
   switch (schedule.recurringFrequency) {
+    case 'interval_minutes': {
+      const minutes = Math.max(1, Math.min(59, schedule.recurringIntervalMinutes ?? 10))
+      return `Runs every ${minutes} minute${minutes === 1 ? '' : 's'}. Good for QA on cron-enabled environments.`
+    }
     case 'daily':
       return `Runs every day at ${time} (${getTimezoneLabel(timezone)}).`
     case 'monthly': {
@@ -186,9 +190,10 @@ export function Step3Schedule({ audienceKind, schedule, onChange }: Step3Props) 
 
           <div>
             <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Frequency</label>
-            <div className="grid grid-cols-3 gap-2 mt-1">
-              {(['daily', 'weekly', 'monthly'] as RecurringFrequency[]).map((f) => {
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-1">
+              {(['interval_minutes', 'daily', 'weekly', 'monthly'] as RecurringFrequency[]).map((f) => {
                 const active = (schedule.recurringFrequency ?? 'weekly') === f
+                const label = f === 'interval_minutes' ? 'Every N min' : f
                 return (
                   <button
                     key={f}
@@ -199,15 +204,33 @@ export function Step3Schedule({ audienceKind, schedule, onChange }: Step3Props) 
                       border: `1px solid ${active ? '#8B5CF6' : 'var(--card-border)'}`,
                       color: active ? '#A78BFA' : 'var(--heading)',
                       fontWeight: 600,
-                      textTransform: 'capitalize',
+                      textTransform: f === 'interval_minutes' ? 'none' : 'capitalize',
                     }}
                   >
-                    {f}
+                    {label}
                   </button>
                 )
               })}
             </div>
           </div>
+
+          {schedule.recurringFrequency === 'interval_minutes' && (
+            <div>
+              <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Interval (minutes)</label>
+              <input
+                type="number"
+                min={1}
+                max={59}
+                value={schedule.recurringIntervalMinutes ?? 10}
+                onChange={(e) => onChange({ ...schedule, recurringIntervalMinutes: Math.max(1, Math.min(59, Number(e.target.value) || 1)) })}
+                className="mt-1 w-24 px-3 py-2 rounded-lg text-sm outline-none text-center"
+                style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
+              />
+              <div className="text-[10px] mt-1" style={{ color: 'var(--t4)' }}>
+                Useful for fast QA. Automatic sends still depend on cron actually running in the current environment.
+              </div>
+            </div>
+          )}
 
           {schedule.recurringFrequency === 'weekly' && (
             <div>
@@ -253,48 +276,50 @@ export function Step3Schedule({ audienceKind, schedule, onChange }: Step3Props) 
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Hour (24h)</label>
-              <input
-                type="number"
-                min={0}
-                max={23}
-                value={schedule.recurringHour ?? 9}
-                onChange={(e) => onChange({ ...schedule, recurringHour: Math.max(0, Math.min(23, Number(e.target.value) || 0)) })}
-                className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
-                style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Timezone</label>
-              <select
-                value={(() => {
-                  const cur = schedule.recurringTimezone ?? 'UTC'
-                  return TIMEZONE_OPTIONS.some((o) => o.value === cur) ? cur : 'UTC'
-                })()}
-                onChange={(e) => {
-                  if (e.target.value === '__browser__') {
-                    try {
-                      const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
-                      onChange({ ...schedule, recurringTimezone: browserTz || 'UTC' })
-                    } catch {
-                      onChange({ ...schedule, recurringTimezone: 'UTC' })
+          {schedule.recurringFrequency !== 'interval_minutes' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Hour (24h)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={schedule.recurringHour ?? 9}
+                  onChange={(e) => onChange({ ...schedule, recurringHour: Math.max(0, Math.min(23, Number(e.target.value) || 0)) })}
+                  className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Timezone</label>
+                <select
+                  value={(() => {
+                    const cur = schedule.recurringTimezone ?? 'UTC'
+                    return TIMEZONE_OPTIONS.some((o) => o.value === cur) ? cur : 'UTC'
+                  })()}
+                  onChange={(e) => {
+                    if (e.target.value === '__browser__') {
+                      try {
+                        const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+                        onChange({ ...schedule, recurringTimezone: browserTz || 'UTC' })
+                      } catch {
+                        onChange({ ...schedule, recurringTimezone: 'UTC' })
+                      }
+                    } else {
+                      onChange({ ...schedule, recurringTimezone: e.target.value })
                     }
-                  } else {
-                    onChange({ ...schedule, recurringTimezone: e.target.value })
-                  }
-                }}
-                className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
-                style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
-              >
-                {TIMEZONE_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-                <option value="__browser__">— Use browser timezone —</option>
-              </select>
+                  }}
+                  className="mt-1 w-full px-3 py-2 rounded-lg text-sm outline-none"
+                  style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
+                >
+                  {TIMEZONE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                  <option value="__browser__">— Use browser timezone —</option>
+                </select>
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="rounded-lg p-2 text-[11px] space-y-1" style={{ background: 'var(--subtle)', color: 'var(--t3)' }}>
             <div>

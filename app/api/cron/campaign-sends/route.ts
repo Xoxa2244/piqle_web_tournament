@@ -37,6 +37,7 @@ import { prisma } from '@/lib/prisma'
 import { cronLogger as log } from '@/lib/logger'
 import { buildOutreachTemplateValues, sendOutreachEmail, isBlockedEmail } from '@/lib/email'
 import { resolveAgentControlPlane } from '@/lib/ai/agent-control-plane'
+import { parseRecurringCron, resolveSequenceDelay, shouldFireRecurringNow } from '@/lib/campaign-scheduling'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -67,6 +68,7 @@ interface ClaimedRow {
 interface SequenceStepData {
   stepIndex: number
   delayDays: number
+  delayMinutes?: number | null
   subject: string
   body: string
   ctaLabel?: string | null
@@ -106,99 +108,6 @@ function getSequenceSteps(campaign: CampaignForCron): SequenceStepData[] {
     : []
 }
 
-// ── Recurring runner — minimal in-tree cron matcher ────────────────────────
-// Supports the small set of patterns the Wizard generates:
-//   "0 H * * *"  — daily at H:00 (in tz)
-//   "0 H * * D"  — weekly at H:00 on day-of-week D (0=Sun .. 6=Sat)
-//   "0 H D * *"  — monthly at H:00 on day-of-month D (1..31)
-// Custom cron text input is a v2 feature — we'll wire `cron-parser` then.
-
-interface SimpleCron {
-  hour: number
-  dayOfWeek: number | null
-  dayOfMonth: number | null
-}
-
-function parseSimpleCron(expr: string): SimpleCron | null {
-  const parts = expr.trim().split(/\s+/)
-  if (parts.length !== 5) return null
-  const [m, h, dom, mon, dow] = parts
-  if (m !== '0') return null
-  const hour = parseInt(h, 10)
-  if (Number.isNaN(hour) || hour < 0 || hour > 23) return null
-  // Daily
-  if (dom === '*' && mon === '*' && dow === '*') {
-    return { hour, dayOfWeek: null, dayOfMonth: null }
-  }
-  // Weekly: dow set, dom + mon stars
-  if (dow !== '*' && dom === '*' && mon === '*') {
-    const dayOfWeek = parseInt(dow, 10)
-    if (Number.isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) return null
-    return { hour, dayOfWeek, dayOfMonth: null }
-  }
-  // Monthly: dom set, dow + mon stars
-  if (dom !== '*' && dow === '*' && mon === '*') {
-    const dayOfMonth = parseInt(dom, 10)
-    if (Number.isNaN(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) return null
-    return { hour, dayOfWeek: null, dayOfMonth }
-  }
-  return null
-}
-
-/** Returns true if the campaign's cron expression matches "now" in the
- *  campaign's timezone AND we haven't run within the last 22 hours.
- *  22h is a coarse but effective de-dup that survives DST jumps. */
-function shouldFireRecurringNow(
-  cron: SimpleCron,
-  tz: string,
-  now: Date,
-  lastRun: Date | null,
-): boolean {
-  // Extract current local hour / weekday / day-of-month in `tz`.
-  let hour = -1
-  let weekdayShort = ''
-  let day = -1
-  try {
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
-      hour12: false,
-      hour: 'numeric',
-      weekday: 'short',
-      day: 'numeric',
-    })
-    for (const p of fmt.formatToParts(now)) {
-      if (p.type === 'hour') hour = parseInt(p.value, 10)
-      else if (p.type === 'weekday') weekdayShort = p.value
-      else if (p.type === 'day') day = parseInt(p.value, 10)
-    }
-  } catch {
-    // Bad timezone string — fall back to UTC parts
-    hour = now.getUTCHours()
-    day = now.getUTCDate()
-    weekdayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][now.getUTCDay()]
-  }
-  if (hour === 24) hour = 0
-
-  const dowMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
-  const dayOfWeek = dowMap[weekdayShort] ?? -1
-
-  // Day match
-  if (cron.dayOfMonth !== null && cron.dayOfMonth !== day) return false
-  if (cron.dayOfWeek !== null && cron.dayOfWeek !== dayOfWeek) return false
-
-  // Hour reached (allow firing any time at-or-after the scheduled hour
-  // until the next day, to be resilient to skipped cron ticks).
-  if (hour < cron.hour) return false
-
-  // De-dup: if we already ran within the last ~day, skip.
-  if (lastRun) {
-    const hoursAgo = (now.getTime() - lastRun.getTime()) / (1000 * 60 * 60)
-    if (hoursAgo < 22) return false
-  }
-
-  return true
-}
-
 /** Recurring fan-out: re-evaluate the cohort and create fresh recipient
  *  logs for this tick. Updates Campaign.lastRecurringRun on success
  *  (and on no-recipients) so we don't re-check every minute.
@@ -206,7 +115,7 @@ function shouldFireRecurringNow(
 async function fanOutRecurring(campaign: CampaignForCron): Promise<{ created: number }> {
   if (campaign.format !== 'recurring') return { created: 0 }
   if (!campaign.cronExpression) return { created: 0 }
-  const cron = parseSimpleCron(campaign.cronExpression)
+  const cron = parseRecurringCron(campaign.cronExpression)
   if (!cron) return { created: 0 }
   const tz = campaign.recurringTimezone || 'UTC'
   const now = new Date()
@@ -323,34 +232,64 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
   }> = []
 
   for (let n = 0; n < steps.length - 1; n++) {
-    const delayDays = steps[n + 1].delayDays | 0
-    const rows = await prisma.$queryRaw<Array<{
-      logId: string
-      userId: string
-      sequenceStep: number
-      sentAt: Date
-    }>>`
-      SELECT
-        log.id            AS "logId",
-        log."userId"      AS "userId",
-        log.sequence_step AS "sequenceStep",
-        log.sent_at       AS "sentAt"
-      FROM ai_recommendation_logs log
-      WHERE log.campaign_id = ${campaign.id}::uuid
-        AND log.type = 'CAMPAIGN_SEND'
-        AND log.sent_at IS NOT NULL
-        AND log.status IN ('sent', 'delivered', 'opened', 'clicked', 'converted')
-        AND log.sequence_step = ${n}
-        AND log.sent_at <= NOW() - (${delayDays} * INTERVAL '1 day')
-        AND NOT EXISTS (
-          SELECT 1 FROM ai_recommendation_logs nl
-          WHERE nl.campaign_id = log.campaign_id
-            AND nl."userId" = log."userId"
-            AND nl.sequence_step = ${n + 1}
-        )
-      ORDER BY log.sent_at ASC
-      LIMIT ${FAN_OUT_LIMIT}
-    `
+    const delay = resolveSequenceDelay(steps[n + 1])
+    if (delay.amount < 1) continue
+
+    const rows = delay.unit === 'minutes'
+      ? await prisma.$queryRaw<Array<{
+          logId: string
+          userId: string
+          sequenceStep: number
+          sentAt: Date
+        }>>`
+          SELECT
+            log.id            AS "logId",
+            log."userId"      AS "userId",
+            log.sequence_step AS "sequenceStep",
+            log.sent_at       AS "sentAt"
+          FROM ai_recommendation_logs log
+          WHERE log.campaign_id = ${campaign.id}::uuid
+            AND log.type = 'CAMPAIGN_SEND'
+            AND log.sent_at IS NOT NULL
+            AND log.status IN ('sent', 'delivered', 'opened', 'clicked', 'converted')
+            AND log.sequence_step = ${n}
+            AND log.sent_at <= NOW() - (${delay.amount} * INTERVAL '1 minute')
+            AND NOT EXISTS (
+              SELECT 1 FROM ai_recommendation_logs nl
+              WHERE nl.campaign_id = log.campaign_id
+                AND nl."userId" = log."userId"
+                AND nl.sequence_step = ${n + 1}
+            )
+          ORDER BY log.sent_at ASC
+          LIMIT ${FAN_OUT_LIMIT}
+        `
+      : await prisma.$queryRaw<Array<{
+          logId: string
+          userId: string
+          sequenceStep: number
+          sentAt: Date
+        }>>`
+          SELECT
+            log.id            AS "logId",
+            log."userId"      AS "userId",
+            log.sequence_step AS "sequenceStep",
+            log.sent_at       AS "sentAt"
+          FROM ai_recommendation_logs log
+          WHERE log.campaign_id = ${campaign.id}::uuid
+            AND log.type = 'CAMPAIGN_SEND'
+            AND log.sent_at IS NOT NULL
+            AND log.status IN ('sent', 'delivered', 'opened', 'clicked', 'converted')
+            AND log.sequence_step = ${n}
+            AND log.sent_at <= NOW() - (${delay.amount} * INTERVAL '1 day')
+            AND NOT EXISTS (
+              SELECT 1 FROM ai_recommendation_logs nl
+              WHERE nl.campaign_id = log.campaign_id
+                AND nl."userId" = log."userId"
+                AND nl.sequence_step = ${n + 1}
+            )
+          ORDER BY log.sent_at ASC
+          LIMIT ${FAN_OUT_LIMIT}
+        `
     candidates.push(...rows)
   }
 

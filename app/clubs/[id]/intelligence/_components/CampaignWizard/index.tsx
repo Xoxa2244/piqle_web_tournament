@@ -339,7 +339,6 @@ export function CampaignWizard({
   const handleLaunch = async () => {
     if (liveMode !== 'live') return
     if (!state.audience || !state.goal) return
-    if (state.schedule.format !== 'one_time') return
     setIsLaunching(true)
     try {
       // Build audience input. cohortId wins if available; otherwise use the
@@ -368,6 +367,7 @@ export function CampaignWizard({
               steps: sequenceSteps.map((s) => ({
                 stepIndex: s.stepIndex,
                 delayDays: s.delayDays,
+                ...(typeof s.delayMinutes === 'number' && s.delayMinutes > 0 ? { delayMinutes: s.delayMinutes } : {}),
                 subject: s.subject.trim(),
                 body: s.body.trim(),
                 ...(s.ctaLabel?.trim() ? { ctaLabel: s.ctaLabel.trim() } : {}),
@@ -390,7 +390,6 @@ export function CampaignWizard({
   const launchDisabled = step !== 4
     || !state.audience
     || !state.goal
-    || state.schedule.format !== 'one_time'
     || liveMode !== 'live'
     || isLaunching
     || launchMutation.isPending

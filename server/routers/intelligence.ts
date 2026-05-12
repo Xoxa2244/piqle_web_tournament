@@ -59,6 +59,7 @@ import { buildPlatformUrl, getPlatformBaseUrl, getPlatformBaseUrlFromRequest } f
 import { normalizeMembership } from '@/lib/ai/membership-intelligence'
 import { classifyActivityLevel, classifyEngagementTrend, classifyValueTier } from '@/lib/ai/member-health'
 import { PROGRAMMING_IQ_PRESET_IDS } from '@/lib/ai/programming-iq-strategy'
+import { describeRecurringCron, resolveSequenceDelay } from '@/lib/campaign-scheduling'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
@@ -98,6 +99,7 @@ async function dispatchSequenceStepZeroNow(
     steps: Array<{
       stepIndex: number
       delayDays: number
+      delayMinutes?: number
       subject: string
       body: string
       ctaLabel?: string
@@ -1481,39 +1483,6 @@ async function queryCohortMembers(
   limit: number | null = 500,
 ): Promise<any[]> {
   return resolveCohortMembers(prisma, clubId, filters, limit)
-}
-
-/** Human-readable description of a Wizard-generated cron expression.
- *  MVP supports daily / weekly+dow / monthly+dom only; anything else
- *  falls through to "Custom schedule" so the UI doesn't lie. */
-function describeRecurringCron(expr: string, tz: string): string {
-  const parts = expr.trim().split(/\s+/)
-  if (parts.length !== 5) return 'Custom schedule'
-  const [m, h, dom, mon, dow] = parts
-  if (m !== '0') return 'Custom schedule'
-  const hour = parseInt(h, 10)
-  if (Number.isNaN(hour) || hour < 0 || hour > 23) return 'Custom schedule'
-  const hh = String(hour).padStart(2, '0')
-  const tzSuffix = ` ${tz}`
-  // Daily
-  if (dom === '*' && mon === '*' && dow === '*') {
-    return `Every day at ${hh}:00${tzSuffix}`
-  }
-  // Weekly
-  if (dow !== '*' && dom === '*' && mon === '*') {
-    const dayIdx = parseInt(dow, 10)
-    if (Number.isNaN(dayIdx) || dayIdx < 0 || dayIdx > 6) return 'Custom schedule'
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    return `Every ${days[dayIdx]} at ${hh}:00${tzSuffix}`
-  }
-  // Monthly
-  if (dom !== '*' && dow === '*' && mon === '*') {
-    const day = parseInt(dom, 10)
-    if (Number.isNaN(day) || day < 1 || day > 31) return 'Custom schedule'
-    const ord = day === 1 ? '1st' : day === 2 ? '2nd' : day === 3 ? '3rd' : `${day}th`
-    return `${ord} of each month at ${hh}:00${tzSuffix}`
-  }
-  return 'Custom schedule'
 }
 
 /** Public alias of queryCohortMembers for use outside the router (e.g.
@@ -11826,12 +11795,12 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       ctaLabel: z.string().min(1).max(100).optional(),
       ctaUrl: z.string().url().max(500).optional(),
       // Sequence track. Required when format='sequence'. MVP cap is 5 steps.
-      // step[0].delayDays must be 0 (sent at launch); step[N].delayDays for
-      // N≥1 means "wait this many days after step N-1 was sent for the
-      // recipient before sending step N".
+      // Step 0 sends immediately. Later steps keep the legacy delayDays
+      // field, with optional delayMinutes for faster QA loops.
       steps: z.array(z.object({
         stepIndex: z.number().int().min(0).max(4),
         delayDays: z.number().int().min(0).max(60),
+        delayMinutes: z.number().int().min(1).max(1440).optional(),
         subject: z.string().min(1).max(200),
         body: z.string().min(1).max(5000),
         ctaLabel: z.string().min(1).max(100).optional(),
@@ -11883,10 +11852,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             message: 'Sequence campaigns require at least one step.',
           })
         }
-        if (input.steps[0].stepIndex !== 0 || input.steps[0].delayDays !== 0) {
+        if (input.steps[0].stepIndex !== 0 || resolveSequenceDelay(input.steps[0]).amount !== 0) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'Step 1 must have stepIndex 0 and delayDays 0 (sent at launch).',
+            message: 'Step 1 must have stepIndex 0 and no delay (sent at launch).',
           })
         }
         // Verify stepIndexes are 0-based contiguous.
@@ -11897,10 +11866,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
               message: `Step indexes must be contiguous starting at 0 (got ${input.steps[i].stepIndex} at position ${i}).`,
             })
           }
-          if (i > 0 && input.steps[i].delayDays < 1) {
+          if (i > 0 && resolveSequenceDelay(input.steps[i]).amount < 1) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
-              message: `Step ${i + 1} must have a delay ≥ 1 day after the previous step.`,
+              message: `Step ${i + 1} must have a delay of at least 1 minute after the previous step.`,
             })
           }
         }
