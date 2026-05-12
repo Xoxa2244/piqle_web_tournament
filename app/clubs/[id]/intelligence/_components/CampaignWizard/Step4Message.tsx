@@ -131,6 +131,7 @@ export function Step4Message({
   )
 
   const isSequence = schedule.format === 'sequence'
+  const isRecurring = schedule.format === 'recurring'
   const steps: SequenceStep[] = message.steps ?? []
   const editingStep: SequenceStep | undefined = isSequence ? steps[editingStepIndex] : undefined
 
@@ -728,6 +729,16 @@ export function Step4Message({
       )}
 
       {/* Launch */}
+      {(isSequence || isRecurring) && (
+        <div className="rounded-xl p-3 flex items-start gap-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
+          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#F59E0B' }} />
+          <div className="text-xs" style={{ color: 'var(--heading)' }}>
+            {isSequence
+              ? 'Sequence campaigns are coming soon. For now, only one-time campaigns can be launched.'
+              : 'Recurring campaigns are coming soon. For now, only one-time campaigns can be launched.'}
+          </div>
+        </div>
+      )}
       {!isLive && (
         <div className="rounded-xl p-3 flex items-start gap-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#F59E0B' }} />

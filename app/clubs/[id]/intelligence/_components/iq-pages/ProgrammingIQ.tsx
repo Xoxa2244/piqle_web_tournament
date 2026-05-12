@@ -78,8 +78,19 @@ function formatWeekRange(weekStart: string): string {
   return `${sMon} – ${eMon}`
 }
 
-function hasDraftWarning(draft: GridDraft): boolean {
-  return (draft.metadata?.warnings?.length || 0) > 0
+function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'saturation' | 'conflict' {
+  const explicitKind = draft.metadata?.cellKind
+  if (
+    explicitKind === 'suggested'
+    || explicitKind === 'risk'
+    || explicitKind === 'saturation'
+    || explicitKind === 'conflict'
+  ) {
+    return explicitKind
+  }
+  if (!draft.courtId) return 'conflict'
+  const warningText = (draft.metadata?.warnings || []).join(' ')
+  return /saturat/i.test(warningText) ? 'saturation' : 'suggested'
 }
 
 // ── Component ────────────────────────────────────────────────────────
@@ -140,19 +151,28 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const liveSessions = useMemo(() => (gridData?.liveSessions ?? []) as any[], [gridData])
   const drafts = useMemo(() => ((gridData?.drafts ?? []) as any[]) as GridDraft[], [gridData])
   const publishableDrafts = useMemo(
-    () => drafts.filter((draft) => !hasDraftWarning(draft)),
+    () => drafts.filter((draft) => draft.courtId && getDraftCellKind(draft) === 'suggested'),
     [drafts],
   )
   const calendarDrafts = useMemo(
-    () => drafts.filter((draft) => !!draft.courtId),
+    () => drafts.filter((draft) => draft.courtId && getDraftCellKind(draft) !== 'conflict'),
     [drafts],
   )
   const riskDrafts = useMemo(
-    () => drafts.filter((draft) => hasDraftWarning(draft)),
+    () => drafts.filter((draft) => draft.courtId && getDraftCellKind(draft) === 'saturation'),
+    [drafts],
+  )
+  // Risk-pass drafts: weak-but-plausible candidates the scheduler
+  // promoted into amber `risk` cells to fill empty courts. Distinct
+  // from `riskDrafts` (which is misnamed historically — those are
+  // saturation warnings on otherwise-strong cells). New backup tier
+  // surfaced separately in the KPI strip + legend.
+  const backupDrafts = useMemo(
+    () => drafts.filter((draft) => draft.courtId && getDraftCellKind(draft) === 'risk'),
     [drafts],
   )
   const unplacedIdeas = useMemo(
-    () => drafts.filter((draft) => !draft.courtId),
+    () => drafts.filter((draft) => getDraftCellKind(draft) === 'conflict' || !draft.courtId),
     [drafts],
   )
   const courtNamesById = useMemo(
@@ -178,6 +198,7 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   // tRPC call) so switching weeks updates instantly without a round-trip.
   const stats = useMemo(() => {
     const suggested = publishableDrafts.length
+    const backup = backupDrafts.length
     const liveKept = liveSessions.length
     const saturations = riskDrafts.length
     // Blend live (registeredCount/maxPlayers) with drafts (projectedOccupancy).
@@ -195,8 +216,8 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
       ? 0
       : Math.round(allOccs.reduce((s, v) => s + v, 0) / allOccs.length)
     const totalInvites = publishableDrafts.reduce((s, d) => s + Math.ceil((d.maxPlayers || 8) * 1.5), 0)
-    return { suggested, liveKept, saturations, avgOccupancy, totalInvites }
-  }, [liveSessions, publishableDrafts, riskDrafts.length])
+    return { suggested, backup, liveKept, saturations, avgOccupancy, totalInvites }
+  }, [liveSessions, publishableDrafts, backupDrafts.length, riskDrafts.length])
 
   // Contact-policy preview: a rough "will admins spam their members?"
   // check. 3 invites/wk/member is the slot-filler default; the real
@@ -621,9 +642,10 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
       )}
 
       {/* [3] Stats ──────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <StatCard icon={Calendar} label="Published sessions" value={stats.liveKept} color="#64748B" />
         <StatCard icon={Sparkles} label="Suggested sessions" value={stats.suggested} color="#8B5CF6" />
+        <StatCard icon={AlertTriangle} label="Backup ideas" value={stats.backup} color="#FBBF24" />
         <StatCard icon={AlertTriangle} label="Audience risks" value={stats.saturations} color="#F59E0B" />
         <StatCard icon={TrendingUp} label="Avg occupancy" value={`${stats.avgOccupancy}%`} color="#10B981" />
       </div>

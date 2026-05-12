@@ -53,6 +53,21 @@ export function CellEditPopover(props: CellEditPopoverProps) {
   )
 }
 
+function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'saturation' | 'conflict' {
+  const explicitKind = draft.metadata?.cellKind
+  if (
+    explicitKind === 'suggested'
+    || explicitKind === 'risk'
+    || explicitKind === 'saturation'
+    || explicitKind === 'conflict'
+  ) {
+    return explicitKind
+  }
+  if (!draft.courtId) return 'conflict'
+  const warningText = (draft.metadata?.warnings || []).join(' ')
+  return /saturat/i.test(warningText) ? 'saturation' : 'suggested'
+}
+
 // ── Live panel (read-only) ───────────────────────────────────────────
 
 function LivePanel({
@@ -182,6 +197,7 @@ function DraftPanel({
   draft,
   onClose,
 }: CellEditPopoverProps & { draft: GridDraft }) {
+  const draftKind = getDraftCellKind(draft)
   const rationale = draft.metadata?.rationale || []
   const warnings = draft.metadata?.warnings || []
   const requestedByAdmin = Boolean(draft.metadata?.requestedByAdmin)
@@ -219,6 +235,26 @@ function DraftPanel({
         }
       }
     | null
+  const warningTone = draftKind === 'saturation'
+    ? {
+        title: 'Audience saturation risk',
+        background: 'rgba(245,158,11,0.1)',
+        border: '1px solid rgba(245,158,11,0.3)',
+        color: '#B45309',
+      }
+    : draftKind === 'conflict'
+      ? {
+          title: 'Placement issues',
+          background: 'rgba(245,158,11,0.1)',
+          border: '1px solid rgba(245,158,11,0.3)',
+          color: '#B45309',
+        }
+      : {
+          title: 'Planning notes',
+          background: 'rgba(139,92,246,0.08)',
+          border: '1px solid rgba(139,92,246,0.22)',
+          color: '#A78BFA',
+        }
 
   return (
     <div>
@@ -361,11 +397,11 @@ function DraftPanel({
         {warnings.length > 0 && (
           <div
             className="mt-4 rounded-lg p-3 text-xs flex gap-2 items-start"
-            style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)' }}
+            style={{ background: warningTone.background, border: warningTone.border }}
           >
-            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: '#B45309' }} />
-            <div style={{ color: '#B45309' }}>
-              <div className="font-semibold mb-0.5">Audience saturation risk</div>
+            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: warningTone.color }} />
+            <div style={{ color: warningTone.color }}>
+              <div className="font-semibold mb-0.5">{warningTone.title}</div>
               {warnings.map((w, i) => <div key={i}>{w}</div>)}
             </div>
           </div>

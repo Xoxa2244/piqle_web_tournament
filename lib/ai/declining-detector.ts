@@ -1,9 +1,9 @@
 /**
- * Declining-Activity Detector — ENGAGE Segment #4 "Снижение активности".
+ * Declining-Activity Detector — ENGAGE Segment #4 "Declining activity".
  *
  * Identifies members who were active regulars but just dropped off — the
  * "warm" decline window where intervention has the highest payoff. After
- * 30+ days of inactivity they cross into "Спящий" (segment #5) and are
+ * 30+ days of inactivity they cross into "Sleeping" (segment #5) and are
  * handled by a different (less optimistic) sequence.
  *
  * Membership criteria:
@@ -11,7 +11,7 @@
  *   - Joined the club ≥90 days ago (long enough to have a baseline)
  *   - Historical pattern: ≥3 confirmed bookings/month for 3+ consecutive months
  *   - Last 30 days: 0 or 1 confirmed bookings (the drop)
- *   - Last booking is still <30 days ago (otherwise they're "Спящий" already)
+ *   - Last booking is still <30 days ago (otherwise they're "Sleeping" already)
  *   - NOT already in an active DECLINING_REACTIVATION sequence (no double-trigger)
  *   - NOT been sent any DECLINING_REACTIVATION outreach in the last 60 days
  *     (cooldown so we don't keep pinging the same person every cycle)
@@ -63,7 +63,7 @@ interface DetectOptions {
 }
 
 /**
- * Find members who just entered the "Снижение активности" segment.
+ * Find members who just entered the "Declining activity" segment.
  *
  * Returns up to `limit` candidates ordered by historical engagement (the
  * higher their old monthly average, the more revenue at stake from their
@@ -169,7 +169,7 @@ export async function detectDecliningMembers(
       AND p.booking_count >= ($3::int * 2)
       -- Recent drop: 0 or 1 booking in last 30 days
       AND COALESCE(r.booking_count, 0) <= 1
-      -- Still warm: last booking <30 days ago (otherwise = Спящий segment)
+      -- Still warm: last booking <30 days ago (otherwise = Sleeping segment)
       AND lba.last_booking_at >= NOW() - INTERVAL '30 days'
       -- Cooldown: not contacted in this segment within window
       AND u.id NOT IN (SELECT user_id FROM recent_outreach)

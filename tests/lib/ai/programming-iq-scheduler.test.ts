@@ -360,7 +360,7 @@ describe('supplyDemandCheck', () => {
     expect(warnings.size).toBe(0)
   })
 
-  it('flags saturation when capacity > pool × cap', () => {
+  it('flags only the overflow tail when draft capacity > pool × cap', () => {
     // Same pool (10 × 3 = 30 budget). Four sessions × 8 × 1.5 = 48 → over.
     const cells: GridCell[] = [
       cellSuggested('c-1', 'INTERMEDIATE', 8),
@@ -369,10 +369,27 @@ describe('supplyDemandCheck', () => {
       cellSuggested('c-4', 'INTERMEDIATE', 8),
     ]
     const warnings = supplyDemandCheck(cells, intPrefs, policy)
-    expect(warnings.size).toBe(4)
+    expect(warnings.size).toBe(2)
+    expect(warnings.has('c-1')).toBe(false)
+    expect(warnings.has('c-2')).toBe(false)
+    expect(warnings.has('c-3')).toBe(true)
+    expect(warnings.has('c-4')).toBe(true)
     for (const msg of Array.from(warnings.values())) {
       expect(msg.toLowerCase()).toContain('saturated')
     }
+  })
+
+  it('does not spend the draft budget on already-live sessions', () => {
+    const cells: GridCell[] = [
+      cellLive('live-1', 'INTERMEDIATE', 8),
+      cellLive('live-2', 'INTERMEDIATE', 8),
+      cellLive('live-3', 'INTERMEDIATE', 8),
+      cellLive('live-4', 'INTERMEDIATE', 8),
+      cellSuggested('c-1', 'INTERMEDIATE', 8),
+      cellSuggested('c-2', 'INTERMEDIATE', 8),
+    ]
+    const warnings = supplyDemandCheck(cells, intPrefs, policy)
+    expect(warnings.size).toBe(0)
   })
 
   it('skips opt-outs from the pool count', () => {
@@ -449,6 +466,52 @@ describe('buildWeeklyGrid — smoke', () => {
 
     expect(out.stats.suggested).toBeGreaterThanOrEqual(1)
     expect(out.insights.join(' ')).toContain('member profile data')
+  })
+
+  it('returns pipeline diagnostics when suggestion volume stays far below target', () => {
+    const manyCourts: SchedulerCourt[] = Array.from({ length: 12 }, (_, index) => ({
+      id: `court-many-${index}`,
+      name: `Court ${index + 1}`,
+      isIndoor: index % 2 === 0,
+      isActive: true,
+    }))
+
+    const out = buildWeeklyGrid({
+      weekStartDate: new Date('2026-04-27'),
+      courts: manyCourts,
+      historicalSessions: [],
+      existingWeekSessions: [],
+      lastNDaysSessions: [],
+      preferences: [],
+      interestRequests: [],
+      contactPolicy: { inviteCapPerMemberPerWeek: 3 },
+      targetSuggestionCount: 40,
+    })
+
+    expect(out.stats.suggested).toBe(0)
+    expect(out.summary.pipelineDebug).toEqual({
+      targetSuggestionCount: 40,
+      plannerLimit: 200,
+      upstreamProposals: {
+        total: 0,
+        expandPeak: 0,
+        fillGap: 0,
+      },
+      duplicateVariantsAdded: 0,
+      selectedPortfolioCount: 0,
+      assignments: {
+        placed: 0,
+        noCourt: 0,
+        outsideHours: 0,
+      },
+      finalDrafts: {
+        publishReady: 0,
+        backup: 0,
+        unplaced: 0,
+      },
+      liveOptimizationCandidates: 0,
+    })
+    expect(out.insights.join(' ')).toContain('Pipeline diagnostics: 0 upstream ideas')
   })
 
   it('treats plain regenerate as a nearby variant instead of replaying the exact same mix', () => {
@@ -1058,5 +1121,22 @@ function cellSuggested(key: string, skill: string, cap: number): GridCell {
     projectedOccupancy: 80,
     confidence: 70,
     rationale: [],
+  }
+}
+
+function cellLive(key: string, skill: string, cap: number): GridCell {
+  return {
+    key,
+    kind: 'live',
+    courtId: 'court-1',
+    courtName: 'Court 1',
+    dayOfWeek: 'Tuesday',
+    startTime: '19:00',
+    endTime: '20:30',
+    format: 'OPEN_PLAY' as any,
+    skillLevel: skill as any,
+    maxPlayers: cap,
+    projectedOccupancy: 80,
+    playSessionId: key,
   }
 }

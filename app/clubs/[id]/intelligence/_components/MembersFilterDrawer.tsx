@@ -18,6 +18,16 @@ import React, { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { X, Filter as FilterIcon, RotateCcw } from 'lucide-react'
 
+export interface FilterChipOption {
+  key: string
+  label: string
+  count?: number
+  // When true the chip renders in a secondary, collapsible section
+  // ("Inactive tiers (in catalog)") so admins can still see / select
+  // packages that exist in CR but have zero subscribers.
+  inactive?: boolean
+}
+
 interface MembersFilterDrawerProps {
   open: boolean
   onClose: () => void
@@ -40,6 +50,14 @@ interface MembersFilterDrawerProps {
 
   filterValue: string
   setFilterValue: (v: string) => void
+
+  // Optional dynamic chip lists. When omitted the drawer falls back to the
+  // hardcoded 9-bucket taxonomy (STATUS_OPTIONS / TIER_OPTIONS) — the cohort
+  // builder still uses that path. The Members page passes real CR tags
+  // pulled from intelligence.getMembershipFacets, so admins see the exact
+  // tiers their club uses.
+  statusOptions?: FilterChipOption[]
+  tierOptions?: FilterChipOption[]
 
   isDark?: boolean
 }
@@ -104,13 +122,66 @@ const VALUE_OPTIONS = [
 interface ChipGroupProps {
   label: string
   hint: string
-  options: { key: string; label: string }[]
+  options: FilterChipOption[]
   value: string
   onChange: (v: string) => void
   isDark?: boolean
 }
 
+function Chip({
+  o,
+  active,
+  onChange,
+  isDark,
+  faded,
+}: {
+  o: FilterChipOption
+  active: boolean
+  onChange: (v: string) => void
+  isDark?: boolean
+  faded?: boolean
+}) {
+  return (
+    <button
+      onClick={() => onChange(o.key)}
+      title={o.label}
+      className="px-3 py-1.5 rounded-lg text-xs transition-all max-w-full"
+      style={{
+        background: active ? 'var(--pill-active)' : 'transparent',
+        color: active ? (isDark ? '#C4B5FD' : '#7C3AED') : 'var(--t3)',
+        fontWeight: active ? 600 : 500,
+        border: `1px solid ${active ? (isDark ? 'rgba(139,92,246,0.35)' : 'rgba(139,92,246,0.2)') : 'var(--card-border)'}`,
+        opacity: faded && !active ? 0.6 : 1,
+      }}
+    >
+      <span className="inline-flex items-center gap-1.5">
+        <span className="truncate max-w-[260px] inline-block align-bottom">{o.label}</span>
+        {typeof o.count === 'number' && o.count > 0 && (
+          <span
+            className="px-1.5 rounded-full text-[10px] tabular-nums"
+            style={{
+              background: active ? 'rgba(139,92,246,0.25)' : 'var(--card-border)',
+              color: active ? (isDark ? '#DDD6FE' : '#7C3AED') : 'var(--t4)',
+              fontWeight: 600,
+            }}
+          >
+            {o.count}
+          </span>
+        )}
+      </span>
+    </button>
+  )
+}
+
 function ChipGroup({ label, hint, options, value, onChange, isDark }: ChipGroupProps) {
+  // Split into "active" (any with count > 0 or no inactive flag) and
+  // "inactive" (explicit inactive flag — package exists in CR catalog
+  // but no current subscribers). Inactive chips collapse behind a
+  // "Show N inactive" toggle so the primary list stays scannable.
+  const activeOptions = options.filter((o) => !o.inactive)
+  const inactiveOptions = options.filter((o) => o.inactive)
+  const [showInactive, setShowInactive] = useState(false)
+
   return (
     <div className="space-y-2">
       <div>
@@ -122,25 +193,28 @@ function ChipGroup({ label, hint, options, value, onChange, isDark }: ChipGroupP
         </p>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {options.map((o) => {
-          const active = value === o.key
-          return (
-            <button
-              key={o.key}
-              onClick={() => onChange(o.key)}
-              className="px-3 py-1.5 rounded-lg text-xs transition-all"
-              style={{
-                background: active ? 'var(--pill-active)' : 'transparent',
-                color: active ? (isDark ? '#C4B5FD' : '#7C3AED') : 'var(--t3)',
-                fontWeight: active ? 600 : 500,
-                border: `1px solid ${active ? (isDark ? 'rgba(139,92,246,0.35)' : 'rgba(139,92,246,0.2)') : 'var(--card-border)'}`,
-              }}
-            >
-              {o.label}
-            </button>
-          )
-        })}
+        {activeOptions.map((o) => (
+          <Chip key={o.key} o={o} active={value === o.key} onChange={onChange} isDark={isDark} />
+        ))}
       </div>
+      {inactiveOptions.length > 0 && (
+        <div className="pt-1">
+          <button
+            onClick={() => setShowInactive((v) => !v)}
+            className="text-[11px] flex items-center gap-1 hover:underline"
+            style={{ color: 'var(--t4)' }}
+          >
+            {showInactive ? '▾' : '▸'} {inactiveOptions.length} inactive {inactiveOptions.length === 1 ? 'tier' : 'tiers'} (in CR catalog, no members)
+          </button>
+          {showInactive && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {inactiveOptions.map((o) => (
+                <Chip key={o.key} o={o} active={value === o.key} onChange={onChange} isDark={isDark} faded />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -161,8 +235,12 @@ export function MembersFilterDrawer({
   setFilterTrend,
   filterValue,
   setFilterValue,
+  statusOptions,
+  tierOptions,
   isDark,
 }: MembersFilterDrawerProps) {
+  const effectiveStatusOptions = statusOptions ?? STATUS_OPTIONS
+  const effectiveTierOptions = tierOptions ?? TIER_OPTIONS
   const [tab, setTab] = useState<'status' | 'behavior'>('status')
 
   // Esc closes
@@ -218,7 +296,7 @@ export function MembersFilterDrawer({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             onClick={onClose}
-            className="fixed inset-0 z-40"
+            className="fixed inset-0 z-[60]"
             style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
           />
           <motion.aside
@@ -227,7 +305,7 @@ export function MembersFilterDrawer({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 280 }}
-            className="fixed top-0 right-0 z-50 h-screen flex flex-col"
+            className="fixed top-0 right-0 z-[70] h-screen flex flex-col"
             style={{
               width: 'min(480px, 100vw)',
               background: 'var(--bg, #0B0B14)',
@@ -300,16 +378,16 @@ export function MembersFilterDrawer({
                 <>
                   <ChipGroup
                     label="Membership State"
-                    hint="В каком состоянии находится подписка участника прямо сейчас"
-                    options={STATUS_OPTIONS}
+                    hint="Current subscription state — what the member's membership looks like right now"
+                    options={effectiveStatusOptions}
                     value={filterMembershipStatus}
                     onChange={setFilterMembershipStatus}
                     isDark={isDark}
                   />
                   <ChipGroup
                     label="Membership Tier"
-                    hint="По какому тарифу участник платит (или не платит)"
-                    options={TIER_OPTIONS}
+                    hint="Which package the member pays for (or doesn't) — exact values pulled from CourtReserve"
+                    options={effectiveTierOptions}
                     value={filterMembershipType}
                     onChange={setFilterMembershipType}
                     isDark={isDark}
@@ -321,7 +399,7 @@ export function MembersFilterDrawer({
                 <>
                   <ChipGroup
                     label="Activity"
-                    hint="Как часто участник играет — посчитано по бронированиям за последние 30 дней"
+                    hint="How often the member plays — based on bookings over the last 30 days"
                     options={ACTIVITY_OPTIONS}
                     value={filterActivity}
                     onChange={setFilterActivity}
@@ -329,7 +407,7 @@ export function MembersFilterDrawer({
                   />
                   <ChipGroup
                     label="Risk"
-                    hint="Уровень риска оттока — health-score, посчитанный AI-моделью"
+                    hint="Churn risk level — health-score computed by the AI model"
                     options={RISK_OPTIONS}
                     value={filterRisk}
                     onChange={(v) => {
@@ -341,7 +419,7 @@ export function MembersFilterDrawer({
                   />
                   <ChipGroup
                     label="Trend"
-                    hint="Куда движется активность — растёт, держится, падает или уже почти ушёл"
+                    hint="Where activity is heading — growing, holding, declining, or nearly churned"
                     options={TREND_OPTIONS}
                     value={filterTrend}
                     onChange={setFilterTrend}
@@ -349,7 +427,7 @@ export function MembersFilterDrawer({
                   />
                   <ChipGroup
                     label="Value"
-                    hint="Сегмент по выручке — High LTV это верхняя треть платящих"
+                    hint="Revenue segment — High LTV is the top third of paying members"
                     options={VALUE_OPTIONS}
                     value={filterValue}
                     onChange={setFilterValue}

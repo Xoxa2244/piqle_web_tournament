@@ -113,6 +113,22 @@ const FILTER_FIELDS = [
   { key: 'skillLevel', label: 'Skill Level', type: 'text' as const, ops: ['contains', 'eq'] },
   { key: 'city', label: 'City', type: 'text' as const, ops: ['eq', 'contains'] },
   { key: 'zipCode', label: 'Zip Code', type: 'text' as const, ops: ['eq'] },
+  // S2 P2.4 — programming-aware attendance filters. Match members
+  // against their last-180-days booking history.
+  { key: 'attendedLeagueFamily', label: 'Attended League (family)', type: 'text' as const, ops: ['eq', 'contains'] },
+  { key: 'attendedProgrammingTier', label: 'Attended Programming Tier', type: 'select' as const, ops: ['eq'], options: [
+    { label: 'T1 Core (Open Play / Classes / 101)', value: 'T1_CORE' },
+    { label: 'T2 League', value: 'T2_LEAGUE' },
+    { label: 'T3 Signature event', value: 'T3_SIGNATURE' },
+    { label: 'T4 Social & community', value: 'T4_SOCIAL' },
+    { label: 'T5 Tournament', value: 'T5_TOURNAMENT' },
+    { label: 'T6 Premium / specialty', value: 'T6_PREMIUM' },
+    { label: 'T7 Youth', value: 'T7_YOUTH' },
+  ] },
+  { key: 'attendedIntroProgram', label: 'Attended Pickleball 101', type: 'select' as const, ops: ['eq'], options: [
+    { label: 'Yes — went to an intro session', value: 'true' },
+    { label: 'No', value: 'false' },
+  ] },
 ]
 
 const OP_LABELS: Record<string, string> = {
@@ -178,6 +194,7 @@ type CohortFilterField =
   | 'recency' | 'userId' | 'duprRating'
   | 'healthScore' | 'activityLevel' | 'riskLevel' | 'engagementTrend' | 'valueTier' | 'joinedDaysAgo' | 'birthdayMonth'
   | 'normalizedMembershipType' | 'normalizedMembershipStatus'
+  | 'attendedLeagueFamily' | 'attendedProgrammingTier' | 'attendedIntroProgram'
 
 interface CohortFilter {
   field: CohortFilterField

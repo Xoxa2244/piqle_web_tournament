@@ -235,8 +235,19 @@ function formatHour(h: number): string {
   return `${h - 12}p`
 }
 
-function hasDraftWarning(draft: GridDraft): boolean {
-  return (draft.metadata?.warnings?.length || 0) > 0
+function getDraftCellKind(draft: GridDraft): 'suggested' | 'risk' | 'saturation' | 'conflict' {
+  const explicitKind = draft.metadata?.cellKind
+  if (
+    explicitKind === 'suggested'
+    || explicitKind === 'risk'
+    || explicitKind === 'saturation'
+    || explicitKind === 'conflict'
+  ) {
+    return explicitKind
+  }
+  if (!draft.courtId) return 'conflict'
+  const warningText = (draft.metadata?.warnings || []).join(' ')
+  return /saturat/i.test(warningText) ? 'saturation' : 'suggested'
 }
 
 /**
@@ -344,8 +355,9 @@ export function ProgrammingGrid({
           const isActive = activeCourtId === c.id
           const bucket = byCourt.get(c.id)
           const liveCount = bucket?.live.length || 0
-          const readyCount = bucket?.draft.filter((draft) => !hasDraftWarning(draft)).length || 0
-          const riskCount = bucket?.draft.filter((draft) => hasDraftWarning(draft)).length || 0
+          const readyCount = bucket?.draft.filter((draft) => getDraftCellKind(draft) === 'suggested').length || 0
+          const backupCount = bucket?.draft.filter((draft) => getDraftCellKind(draft) === 'risk').length || 0
+          const saturationCount = bucket?.draft.filter((draft) => getDraftCellKind(draft) === 'saturation').length || 0
           return (
             <button
               key={c.id}
@@ -364,7 +376,9 @@ export function ProgrammingGrid({
               {c.isIndoor ? <Building2 className="w-3.5 h-3.5" /> : <MapPin className="w-3.5 h-3.5" />}
               {c.name}
               <span className="text-[10px] opacity-70">
-                ({liveCount} pub · {readyCount} ready{riskCount > 0 ? ` · ${riskCount} risk` : ''})
+                ({liveCount} pub · {readyCount} ready
+                {backupCount > 0 ? ` · ${backupCount} backup` : ''}
+                {saturationCount > 0 ? ` · ${saturationCount} risk` : ''})
               </span>
             </button>
           )
@@ -499,6 +513,12 @@ export function ProgrammingGrid({
           description="Publish-ready draft recommended by Programming IQ."
         />
         <LegendItem
+          swatchStyle={{ background: 'rgba(251,191,36,0.10)', border: '1.5px dashed rgba(251,191,36,0.50)' }}
+          icon={<AlertTriangle className="w-3 h-3" style={{ color: '#D97706' }} />}
+          title="Backup idea"
+          description="Weaker historical signal but covers an empty court — review before publishing."
+        />
+        <LegendItem
           swatchStyle={{ background: 'rgba(245,158,11,0.14)', border: '1.5px dashed rgba(245,158,11,0.55)' }}
           icon={<AlertTriangle className="w-3 h-3" style={{ color: '#D97706' }} />}
           title="Audience saturation risk"
@@ -569,15 +589,32 @@ function DraftCell({
   draft: GridDraft
   onClick: () => void
 }) {
-  const hasWarning = (draft.metadata?.warnings?.length || 0) > 0
+  const draftKind = getDraftCellKind(draft)
+  // Three amber-ish states the cell can be in:
+  //   - 'risk': new risk-pass cell, weak signal but court is empty
+  //   - 'saturation': audience already over-targeted, demand at risk
+  //   - 'suggested' / 'conflict': normal flow
+  const isRiskPass = draftKind === 'risk'
+  const isSaturation = draftKind === 'saturation'
+  const showAmber = isRiskPass || isSaturation
   const tier = classifyTier({
     skillLevel: draft.skillLevel,
     format: draft.format,
     title: draft.title,
   })
   const skillBadge = SKILL_BADGE_STYLES[tier]
-  const fill = hasWarning ? 'rgba(245,158,11,0.12)' : 'rgba(139,92,246,0.14)'
-  const border = hasWarning ? 'rgba(245,158,11,0.55)' : 'rgba(139,92,246,0.52)'
+  // Lighter amber tint for risk-pass than saturation so admins can
+  // distinguish them at a glance even when both are amber.
+  const fill = isRiskPass
+    ? 'rgba(251,191,36,0.10)'
+    : isSaturation
+      ? 'rgba(245,158,11,0.12)'
+      : 'rgba(139,92,246,0.14)'
+  const border = isRiskPass
+    ? 'rgba(251,191,36,0.50)'
+    : isSaturation
+      ? 'rgba(245,158,11,0.55)'
+      : 'rgba(139,92,246,0.52)'
   const linkedLiveOptimization = draft.metadata?.liveOptimization
   return (
     <div
@@ -589,7 +626,7 @@ function DraftCell({
       }}
       onClick={onClick}
     >
-      {hasWarning ? (
+      {showAmber ? (
         <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: '#D97706' }} />
       ) : (
         <Sparkles className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" style={{ color: '#A78BFA' }} />
@@ -606,6 +643,15 @@ function DraftCell({
           >
             {skillBadge.label}
           </span>
+          {isRiskPass && (
+            <span
+              className="rounded px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide"
+              style={{ background: 'rgba(251,191,36,0.18)', color: '#92400E' }}
+              title="Risk pass — weaker signal, evaluate before publishing"
+            >
+              Risk
+            </span>
+          )}
         </div>
         <div className="text-[11px] font-semibold leading-tight line-clamp-2 mt-1" style={{ color: 'var(--heading)' }}>
           {draft.title}
@@ -614,11 +660,17 @@ function DraftCell({
           {draft.startTime}–{draft.endTime} · {draft.confidence}% conf
         </div>
         {linkedLiveOptimization && (
-          <div className="text-[10px] mt-0.5 font-medium" style={{ color: hasWarning ? '#B45309' : '#8B5CF6' }}>
+          <div className="text-[10px] mt-0.5 font-medium" style={{ color: showAmber ? '#B45309' : '#8B5CF6' }}>
             {linkedLiveOptimization.type === 'move' ? 'moves a live session' : 'replaces a live session'}
           </div>
         )}
-        {hasWarning && (
+        {isRiskPass && (
+          <div className="flex items-center gap-0.5 text-[10px] mt-0.5 font-medium" style={{ color: '#92400E' }}>
+            <AlertTriangle className="w-2.5 h-2.5" />
+            weak signal — evaluate before publish
+          </div>
+        )}
+        {isSaturation && (
           <div className="flex items-center gap-0.5 text-[10px] mt-0.5 font-medium" style={{ color: '#B45309' }}>
             <AlertTriangle className="w-2.5 h-2.5" />
             audience saturation risk

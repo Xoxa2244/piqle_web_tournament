@@ -9,6 +9,7 @@ import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
 import type { SessionCalendarItem, SessionRecommendation } from "@/types/intelligence"
 import { PlayerProfileIQ } from "./PlayerProfileIQ"
+import { getTierMeta } from "@/lib/ai/programming-tier-classifier"
 
 // ── Skill classification (shared with ScheduleIQ) ──
 
@@ -67,6 +68,7 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
 
   const sk = classifySkill(session.format, session.skillLevel)
   const colors = SKILL_COLORS[sk.tier]
+  const sessionTier = getTierMeta({ title: session.title, format: session.format })
   const occPct = Math.round((session.registered / (session.capacity || 1)) * 100)
   const spotsLeft = Math.max(0, (session.capacity || 0) - session.registered)
   const baseline = session.peerAvgOccupancy ?? 70
@@ -157,6 +159,26 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
           <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: colors.bg, border: `1px solid ${colors.border}`, color: colors.text }}>
             {sk.label}{sk.range ? ` (${sk.range})` : ''}
           </span>
+          {/* P1.4 (Sprint 1): Programming Tier badge — IPC's 7-tier
+              taxonomy (T1 Core / T2 League / T3 Signature / T4 Social /
+              T5 Tournament / T6 Premium / T7 Youth). Auto-classified
+              from session title + format. */}
+          {(() => {
+            const tierMeta = sessionTier
+            return (
+              <span
+                className="text-xs font-bold px-2.5 py-1 rounded-full"
+                style={{
+                  background: tierMeta.bg,
+                  border: `1px solid ${tierMeta.border}`,
+                  color: tierMeta.color,
+                }}
+                title={`${tierMeta.label} · expected cadence: ${tierMeta.cadence}`}
+              >
+                {tierMeta.shortLabel}
+              </span>
+            )
+          })()}
         </div>
         <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>
           {session.court || 'Court N/A'} &middot; {dateLabel} &middot; {session.startTime} - {session.endTime}

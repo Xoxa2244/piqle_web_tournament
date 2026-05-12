@@ -1,6 +1,10 @@
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
+import { detectLeagueFamily } from '@/lib/ai/league-family-detector'
+import { classifyProgrammingTier } from '@/lib/ai/programming-tier-classifier'
+import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
 import type { DayOfWeek, PlaySessionFormat } from '@/types/intelligence'
@@ -815,6 +819,10 @@ const COHORT_ALLOWED_FIELDS = new Set([
   'activityLevel', 'engagementTrend', 'valueTier',
   // P3-T3 D7 additions:
   'healthScore', 'riskLevel', 'joinedDaysAgo', 'birthdayMonth',
+  // S2 P2.4 — programming-aware attendance filters. Not handled by
+  // buildCohortWhereClause (need joins on bookings + classifier
+  // post-processing); listed here so existing storage doesn't fail Zod.
+  'attendedLeagueFamily', 'attendedProgrammingTier', 'attendedIntroProgram',
 ])
 const COHORT_ALLOWED_OPS = new Set(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in'])
 
@@ -830,6 +838,8 @@ export const cohortFilterSchema = z.object({
     'activityLevel', 'engagementTrend', 'valueTier',
     // P3-T3 D7 additions:
     'healthScore', 'riskLevel', 'joinedDaysAgo', 'birthdayMonth',
+    // S2 P2.4 — programming-aware attendance filters:
+    'attendedLeagueFamily', 'attendedProgrammingTier', 'attendedIntroProgram',
   ]),
   op: z.enum(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
   value: z.union([z.string().max(200), z.number(), z.array(z.string().max(200)).max(200)]),
@@ -858,19 +868,32 @@ const ENRICHED_COHORT_FIELDS = new Set<CohortFilter['field']>([
   'valueTier',
 ])
 
+// S2 P2.4 — fields that need a separate booking-attendance lookup
+// (one query per club, then in-memory match per row). Distinct from
+// enriched filters because they need access to the prisma client +
+// clubId, and run *after* the SQL+enriched pipeline.
+const ATTENDANCE_COHORT_FIELDS = new Set<CohortFilter['field']>([
+  'attendedLeagueFamily',
+  'attendedProgrammingTier',
+  'attendedIntroProgram',
+])
+
 function splitCohortFilters(filters: CohortFilter[]) {
   const sqlFilters: CohortFilter[] = []
   const enrichedFilters: CohortFilter[] = []
+  const attendanceFilters: CohortFilter[] = []
 
   for (const filter of filters) {
     if (ENRICHED_COHORT_FIELDS.has(filter.field)) {
       enrichedFilters.push(filter)
+    } else if (ATTENDANCE_COHORT_FIELDS.has(filter.field)) {
+      attendanceFilters.push(filter)
     } else {
       sqlFilters.push(filter)
     }
   }
 
-  return { sqlFilters, enrichedFilters }
+  return { sqlFilters, enrichedFilters, attendanceFilters }
 }
 
 function hasMemberHealthSnapshotSupport(capabilities: CohortSchemaCapabilities) {
@@ -1017,6 +1040,95 @@ function applyEnrichedCohortFilters(rows: any[], filters: CohortFilter[]) {
           return matchesEnrichedStringFilter(row.engagementTrend, filter)
         case 'valueTier':
           return matchesEnrichedStringFilter(row.valueTier, filter)
+        default:
+          return true
+      }
+    })
+  })
+}
+
+/**
+ * S2 P2.4 — programming-aware attendance filters.
+ *
+ * Pre-fetches every CONFIRMED booking the club has had in the lookback
+ * window (180 days), classifies each session via the league-family /
+ * tier / intro detectors, and builds a userId → {families, tiers,
+ * hadIntro} index. Then filters rows in O(1) per check.
+ *
+ * Lookback intentionally bounded so the query stays cheap on big clubs
+ * (IPC South: ~3k members, ~5k bookings in 180 days = small).
+ */
+async function applyAttendanceCohortFilters(
+  prisma: any,
+  clubId: string,
+  rows: any[],
+  filters: CohortFilter[],
+): Promise<any[]> {
+  if (filters.length === 0) return rows
+
+  const since = new Date(Date.now() - 180 * 86400000)
+
+  const bookings = await prisma.$queryRaw<Array<{
+    user_id: string
+    title: string | null
+    format: string | null
+    category: string | null
+  }>>`
+    SELECT psb."userId" AS user_id, ps.title, ps.format::text AS format, ps.category
+    FROM play_session_bookings psb
+    JOIN play_sessions ps ON ps.id = psb."sessionId"
+    WHERE ps."clubId" = ${clubId}
+      AND ps.date >= ${since}
+      AND psb.status = 'CONFIRMED'
+  `
+
+  // Build per-user index
+  const families = new Map<string, Set<string>>()
+  const tiers = new Map<string, Set<string>>()
+  const hadIntro = new Set<string>()
+
+  for (const b of bookings) {
+    const det = detectLeagueFamily(b.title)
+    if (det.family) {
+      let bucket = families.get(b.user_id)
+      if (!bucket) { bucket = new Set(); families.set(b.user_id, bucket) }
+      bucket.add(det.family)
+    }
+    const tier = classifyProgrammingTier({ title: b.title, format: b.format, category: b.category })
+    let tbucket = tiers.get(b.user_id)
+    if (!tbucket) { tbucket = new Set(); tiers.set(b.user_id, tbucket) }
+    tbucket.add(tier)
+    if (isIntroSession(b.title)) {
+      hadIntro.add(b.user_id)
+    }
+  }
+
+  return rows.filter((row) => {
+    const userId = row.userId || row.id
+    if (!userId) return false
+    return filters.every((filter) => {
+      const expected = String(Array.isArray(filter.value) ? filter.value[0] ?? '' : filter.value)
+      switch (filter.field) {
+        case 'attendedLeagueFamily': {
+          const userFamilies = families.get(userId)
+          if (!userFamilies) return false
+          if (filter.op === 'eq') return userFamilies.has(expected)
+          if (filter.op === 'contains') {
+            return Array.from(userFamilies).some((f) => f.toLowerCase().includes(expected.toLowerCase()))
+          }
+          return false
+        }
+        case 'attendedProgrammingTier': {
+          const userTiers = tiers.get(userId)
+          if (!userTiers) return false
+          return userTiers.has(expected)
+        }
+        case 'attendedIntroProgram': {
+          const member = hadIntro.has(userId)
+          if (expected === 'true' || expected === '1') return member
+          if (expected === 'false' || expected === '0') return !member
+          return member // default truthy
+        }
         default:
           return true
       }
@@ -1307,33 +1419,43 @@ async function resolveCohortMembers(
   const normalizedFilters = normalizeStoredCohortFilters(filters)
   const capabilities = await getCohortSchemaCapabilities(prisma)
   const supportedFilters = filterCohortFiltersByCapabilities(normalizedFilters, capabilities)
-  const { sqlFilters, enrichedFilters } = splitCohortFilters(supportedFilters)
+  const { sqlFilters, enrichedFilters, attendanceFilters } = splitCohortFilters(supportedFilters)
 
-  if (enrichedFilters.length === 0) {
+  // Fast path — no enriched + no attendance filters: just SQL.
+  if (enrichedFilters.length === 0 && attendanceFilters.length === 0) {
     const rows = await fetchCohortBaseMembers(prisma, clubId, sqlFilters, limit)
     return decorateCohortMembers(rows)
   }
 
+  // Otherwise: SQL → decorate → enriched → attendance, then trim to limit.
+  // Pull all matching base rows first (no SQL limit) because enriched and
+  // attendance filters can reduce the set further.
   const baseRows = await fetchCohortBaseMembers(prisma, clubId, sqlFilters, null)
   const needsGlobalRevenue = enrichedFilters.some((filter) => filter.field === 'valueTier') && sqlFilters.length > 0
   const revenueRows = needsGlobalRevenue
     ? await fetchCohortBaseMembers(prisma, clubId, [], null)
     : baseRows
-  const enrichedRows = decorateCohortMembers(baseRows, revenueRows)
-  const filteredRows = applyEnrichedCohortFilters(enrichedRows, enrichedFilters)
+  let workingRows = decorateCohortMembers(baseRows, revenueRows)
+  if (enrichedFilters.length > 0) {
+    workingRows = applyEnrichedCohortFilters(workingRows, enrichedFilters)
+  }
+  if (attendanceFilters.length > 0) {
+    workingRows = await applyAttendanceCohortFilters(prisma, clubId, workingRows, attendanceFilters)
+  }
 
   return typeof limit === 'number' && limit > 0
-    ? filteredRows.slice(0, limit)
-    : filteredRows
+    ? workingRows.slice(0, limit)
+    : workingRows
 }
 
 async function countCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<number> {
   const normalizedFilters = normalizeStoredCohortFilters(filters)
   const capabilities = await getCohortSchemaCapabilities(prisma)
   const supportedFilters = filterCohortFiltersByCapabilities(normalizedFilters, capabilities)
-  const { sqlFilters, enrichedFilters } = splitCohortFilters(supportedFilters)
+  const { sqlFilters, enrichedFilters, attendanceFilters } = splitCohortFilters(supportedFilters)
 
-  if (enrichedFilters.length === 0) {
+  // Fast path: no post-SQL filters → exact COUNT() in DB.
+  if (enrichedFilters.length === 0 && attendanceFilters.length === 0) {
     const where = buildCohortWhereClause(sqlFilters)
     const activeMemberJoin = hasPlaySessionSupport(capabilities) ? ACTIVE_MEMBER_JOIN : ''
     const result: [{ count: bigint }] = await prisma.$queryRawUnsafe(`
@@ -1346,6 +1468,8 @@ async function countCohortMembers(prisma: any, clubId: string, filters: CohortFi
     return Number(result[0]?.count ?? 0)
   }
 
+  // Otherwise: resolve full member list and count. Enriched and
+  // attendance filters can't be expressed in SQL alone.
   const members = await resolveCohortMembers(prisma, clubId, filters, null)
   return members.length
 }
@@ -1663,6 +1787,771 @@ export const intelligenceRouter = createTRPCRouter({
         sessionCount,
         playerCount,
         sourceFileName,
+      }
+    }),
+
+  // ── Members Filter Facets ──
+  //
+  // Distinct membership_type / membership_status values for this club, with
+  // counts. Powers the Members → Filter drawer chips: instead of a 9-bucket
+  // hardcoded taxonomy (most of which is empty for any given club), the UI
+  // shows the exact CR tier strings that actually exist in the club's data.
+  //
+  // The normalised buckets in lib/ai/membership-intelligence.ts stay in
+  // place — they're used by ENGAGE detectors to make broad bucket decisions
+  // ("is this member a monthly subscriber?"). This procedure exists purely
+  // for the UI filter, where we want pixel-accurate raw labels.
+  getMembershipFacets: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Tiers come from two sources:
+      //   - users.membership_type — who's actually subscribed (with counts)
+      //   - club_membership_types — the full CR package catalog, including
+      //     packages with zero subscribers (so admins can see what's
+      //     available but unused)
+      // FULL OUTER JOIN unifies both — `inCatalog` distinguishes them.
+      // No ::uuid cast on cf.club_id — the iqsport-prod schema stores
+      // club_followers.club_id as TEXT (not UUID), unlike the older
+      // piqle_web_tournament DB.
+      const tierRows = await ctx.prisma.$queryRaw<Array<{ value: string | null; count: bigint; in_catalog: boolean }>>`
+        WITH from_users AS (
+          SELECT u.membership_type AS value, COUNT(*)::bigint AS count
+          FROM users u
+          JOIN club_followers cf ON cf.user_id = u.id
+          WHERE cf.club_id = ${input.clubId}
+          GROUP BY u.membership_type
+        ),
+        from_catalog AS (
+          SELECT name AS value
+          FROM club_membership_types
+          WHERE club_id = ${input.clubId}
+        )
+        SELECT
+          COALESCE(fu.value, fc.value) AS value,
+          COALESCE(fu.count, 0::bigint) AS count,
+          (fc.value IS NOT NULL) AS in_catalog
+        FROM from_users fu
+        FULL OUTER JOIN from_catalog fc ON fu.value = fc.value
+        ORDER BY COALESCE(fu.count, 0) DESC, COALESCE(fu.value, fc.value) ASC
+      `
+
+      const stateRows = await ctx.prisma.$queryRaw<Array<{ value: string | null; count: bigint }>>`
+        SELECT u.membership_status AS value, COUNT(*)::bigint AS count
+        FROM users u
+        JOIN club_followers cf ON cf.user_id = u.id
+        WHERE cf.club_id = ${input.clubId}
+        GROUP BY u.membership_status
+        ORDER BY COUNT(*) DESC, u.membership_status ASC
+      `
+
+      return {
+        tiers: tierRows.map((r) => ({
+          value: r.value,
+          count: Number(r.count),
+          inCatalog: r.in_catalog === true,
+        })),
+        states: stateRows.map((r) => ({ value: r.value, count: Number(r.count) })),
+      }
+    }),
+
+  // ── Pickleball 101 → Membership Conversion Funnel (Sprint 1 P1.3) ──
+  //
+  // Programs in IPC's "Tier 1.3 — Pickleball 101" bucket are the primary
+  // top-of-funnel acquisition channel. This procedure measures how many
+  // people who attended an intro session in the last N weeks are now on
+  // a paying tier — answering "is my intro funnel working?" without
+  // leaving CourtReserve.
+  //
+  // Detection strategy: regex on PlaySession.title (canonical pattern
+  // list lives in lib/ai/intro-program-detection.ts). We deliberately
+  // exclude regular beginner play ("Open Play Beginner 2.0-2.49") and
+  // Learner League — those are already-onboarded members, not newcomers.
+  //
+  // Conversion rule: attendee is "converted" if their current
+  // users.membership_status = 'Active' AND their membership_type is
+  // not a guest/drop-in package. We don't have historical state, so
+  // the snapshot is "current paying member" rather than "paid within
+  // 30 days of intro" — the dashboard widget labels this trade-off
+  // explicitly.
+  getIntroConversionFunnel: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      weeks: z.number().int().min(1).max(52).optional().default(4),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Single-source-of-truth regex; mirrors lib/ai/intro-program-detection.ts.
+      // Postgres POSIX regex via ~* (case-insensitive).
+      const INTRO_REGEX =
+        '(pickleball\\s*101|pb\\s*101|intro\\s+to\\s+(pickleball|open\\s+play)|free\\s+beginner\\s+class|try\\s+pickleball|try,?\\s+compare,?\\s+learn|new\\s+to\\s+pickleball|first[-\\s]time|newcomer|newbie|rookie|paddle\\s+workshop)'
+
+      const sinceDate = new Date(Date.now() - input.weeks * 7 * 86400000)
+
+      const introSessionsRows = await ctx.prisma.$queryRaw<Array<{
+        id: string
+        title: string
+        date: Date
+        registered_count: number | null
+      }>>`
+        SELECT id, title, date, registered_count
+        FROM play_sessions
+        WHERE "clubId" = ${input.clubId}
+          AND date >= ${sinceDate}
+          AND title ~* ${INTRO_REGEX}
+        ORDER BY date DESC
+      `
+
+      const sessionIds = introSessionsRows.map((r) => r.id)
+
+      let attendees: Array<{ user_id: string; first_intro_date: Date }> = []
+      if (sessionIds.length > 0) {
+        attendees = await ctx.prisma.$queryRaw<Array<{ user_id: string; first_intro_date: Date }>>`
+          SELECT psb."userId" AS user_id, MIN(ps.date) AS first_intro_date
+          FROM play_session_bookings psb
+          JOIN play_sessions ps ON ps.id = psb."sessionId"
+          WHERE ps."clubId" = ${input.clubId}
+            AND ps.id IN (${Prisma.join(sessionIds)})
+            AND psb.status = 'CONFIRMED'
+          GROUP BY psb."userId"
+        `
+      }
+
+      const attendeeUserIds = attendees.map((a) => a.user_id)
+
+      let convertedRows: Array<{ id: string; membership_type: string | null }> = []
+      if (attendeeUserIds.length > 0) {
+        convertedRows = await ctx.prisma.$queryRaw<Array<{ id: string; membership_type: string | null }>>`
+          SELECT id, membership_type
+          FROM users
+          WHERE id IN (${Prisma.join(attendeeUserIds)})
+            AND membership_status = 'Active'
+            AND membership_type IS NOT NULL
+            AND membership_type NOT ILIKE '%guest pass%'
+            AND membership_type NOT ILIKE '%pay per%'
+        `
+      }
+
+      // Per-week breakdown for sparkline / trend display.
+      const weeklyBuckets: Array<{ weekStart: string; introSessions: number; attendees: number }> = []
+      const now = new Date()
+      for (let w = 0; w < input.weeks; w++) {
+        const weekEnd = new Date(now.getTime() - w * 7 * 86400000)
+        const weekStart = new Date(weekEnd.getTime() - 7 * 86400000)
+        const sessionsInWeek = introSessionsRows.filter(
+          (r) => r.date >= weekStart && r.date < weekEnd,
+        )
+        const attendeesInWeek = attendees.filter(
+          (a) => a.first_intro_date >= weekStart && a.first_intro_date < weekEnd,
+        )
+        weeklyBuckets.unshift({
+          weekStart: weekStart.toISOString().slice(0, 10),
+          introSessions: sessionsInWeek.length,
+          attendees: attendeesInWeek.length,
+        })
+      }
+
+      const conversionRate = attendees.length > 0
+        ? Math.round((convertedRows.length / attendees.length) * 1000) / 10
+        : 0
+
+      return {
+        windowWeeks: input.weeks,
+        windowStart: sinceDate.toISOString(),
+        totalIntroSessions: introSessionsRows.length,
+        totalAttendees: attendees.length,
+        convertedToPayingMember: convertedRows.length,
+        conversionRate,
+        weeklyBreakdown: weeklyBuckets,
+        sampleConvertedTiers: Array.from(
+          new Set(
+            convertedRows
+              .map((r) => r.membership_type)
+              .filter((t): t is string => Boolean(t)),
+          ),
+        ).slice(0, 6),
+      }
+    }),
+
+  // ── Programming Tier Breakdown (Sprint 1 P1.4) ──
+  //
+  // Aggregates club sessions in a period into IPC's 7-tier Programming
+  // OS taxonomy (T1 Core / T2 League / T3 Signature / T4 Social /
+  // T5 Tournament / T6 Premium / T7 Youth). Pure derivation — no
+  // schema field, classifier is the source of truth.
+  //
+  // The classifier runs server-side on raw session rows. SQL pulls the
+  // sessions cheaply, JS classifies. Volumes are small (a few hundred
+  // sessions per club per month) so this is fine.
+  getProgrammingTierBreakdown: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(1).max(365).optional().default(7),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const { classifyProgrammingTier, PROGRAMMING_TIER_META } = await import('@/lib/ai/programming-tier-classifier')
+
+      const sinceDate = new Date(Date.now() - input.windowDays * 86400000)
+
+      const sessions = await ctx.prisma.$queryRaw<Array<{
+        id: string
+        title: string | null
+        format: string | null
+        category: string | null
+        max_players: number | null
+        registered_count: number | null
+      }>>`
+        SELECT id, title, format::text AS format, category, "maxPlayers" AS max_players, registered_count
+        FROM play_sessions
+        WHERE "clubId" = ${input.clubId}
+          AND date >= ${sinceDate}
+      `
+
+      const buckets: Record<string, { count: number; registrations: number; capacity: number }> = {}
+      for (const tier of Object.keys(PROGRAMMING_TIER_META)) {
+        buckets[tier] = { count: 0, registrations: 0, capacity: 0 }
+      }
+      for (const s of sessions) {
+        const tier = classifyProgrammingTier({
+          title: s.title,
+          format: s.format,
+          category: s.category,
+        })
+        buckets[tier].count += 1
+        buckets[tier].registrations += s.registered_count ?? 0
+        buckets[tier].capacity += s.max_players ?? 0
+      }
+
+      const breakdown = (Object.keys(PROGRAMMING_TIER_META) as Array<keyof typeof PROGRAMMING_TIER_META>).map((tier) => {
+        const b = buckets[tier]
+        const fillRate = b.capacity > 0 ? Math.round((b.registrations / b.capacity) * 100) : null
+        return {
+          tier,
+          label: PROGRAMMING_TIER_META[tier].label,
+          shortLabel: PROGRAMMING_TIER_META[tier].shortLabel,
+          cadence: PROGRAMMING_TIER_META[tier].cadence,
+          color: PROGRAMMING_TIER_META[tier].color,
+          bg: PROGRAMMING_TIER_META[tier].bg,
+          border: PROGRAMMING_TIER_META[tier].border,
+          emoji: PROGRAMMING_TIER_META[tier].emoji,
+          count: b.count,
+          registrations: b.registrations,
+          fillRate,
+        }
+      })
+
+      return {
+        windowDays: input.windowDays,
+        windowStart: sinceDate.toISOString(),
+        totalSessions: sessions.length,
+        breakdown,
+      }
+    }),
+
+  // ── League Catalog (Sprint 2 P2.1) ──
+  //
+  // CourtReserve doesn't model leagues as first-class objects — they
+  // exist as a series of PlaySession rows with format='LEAGUE_PLAY'
+  // and a shared title prefix ("Casual League (Session 2)" /
+  // "Casual League (Session 3)" / etc.). This procedure derives a
+  // virtual catalog by grouping those sessions into families via the
+  // detector in lib/ai/league-family-detector.ts.
+  //
+  // For each family we surface:
+  //   - sponsors detected from "presented by X" / "provided by X"
+  //   - last session date + days-since
+  //   - next session date + days-until
+  //   - continuity status (active / gap_warning / gap_critical / ended)
+  //   - fill rate across all sessions in window
+  //
+  // Status thresholds calibrated to IPC's "leagues are always active,
+  // never between sessions" expectation:
+  //   active        — there's an upcoming session, OR last past < 7d ago
+  //   gap_warning   — no upcoming, last past 7-14d ago
+  //   gap_critical  — no upcoming, last past 14-60d ago
+  //   ended         — no upcoming, last past 60d+ ago
+  getLeaguesCatalog: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      windowDays: z.number().int().min(7).max(365).optional().default(180),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const since = new Date(Date.now() - input.windowDays * 86400000)
+
+      const sessions = await ctx.prisma.$queryRaw<Array<{
+        id: string
+        title: string
+        date: Date
+        registered_count: number | null
+        max_players: number | null
+      }>>`
+        SELECT id, title, date, registered_count, "maxPlayers" AS max_players
+        FROM play_sessions
+        WHERE "clubId" = ${input.clubId}
+          AND date >= ${since}
+          AND (format = 'LEAGUE_PLAY' OR LOWER(title) LIKE '%league%')
+        ORDER BY date DESC
+      `
+
+      // Group by family
+      type FamilyBucket = {
+        family: string
+        sessions: Array<{ id: string; title: string; date: Date; registered: number; capacity: number }>
+        sponsors: Set<string>
+        totalRegistered: number
+        totalCapacity: number
+      }
+      const families = new Map<string, FamilyBucket>()
+
+      for (const s of sessions) {
+        const det = detectLeagueFamily(s.title)
+        if (!det.family) continue
+
+        let bucket = families.get(det.family)
+        if (!bucket) {
+          bucket = {
+            family: det.family,
+            sessions: [],
+            sponsors: new Set<string>(),
+            totalRegistered: 0,
+            totalCapacity: 0,
+          }
+          families.set(det.family, bucket)
+        }
+        const reg = s.registered_count ?? 0
+        const cap = s.max_players ?? 0
+        bucket.sessions.push({ id: s.id, title: s.title, date: s.date, registered: reg, capacity: cap })
+        if (det.sponsor) bucket.sponsors.add(det.sponsor)
+        bucket.totalRegistered += reg
+        bucket.totalCapacity += cap
+      }
+
+      const now = new Date()
+      const result = Array.from(families.values()).map((bucket) => {
+        const past = bucket.sessions.filter((s) => s.date.getTime() < now.getTime())
+        const future = bucket.sessions.filter((s) => s.date.getTime() >= now.getTime())
+
+        const lastPast = past.length > 0 ? past.reduce((a, b) => (a.date.getTime() > b.date.getTime() ? a : b)) : null
+        const nextFuture = future.length > 0 ? future.reduce((a, b) => (a.date.getTime() < b.date.getTime() ? a : b)) : null
+
+        const daysSinceLast = lastPast ? Math.floor((now.getTime() - lastPast.date.getTime()) / 86400000) : null
+        const daysUntilNext = nextFuture ? Math.ceil((nextFuture.date.getTime() - now.getTime()) / 86400000) : null
+
+        // Continuity status — see comment above for thresholds.
+        let status: 'active' | 'gap_warning' | 'gap_critical' | 'ended' = 'active'
+        if (!nextFuture && daysSinceLast != null) {
+          if (daysSinceLast >= 60) status = 'ended'
+          else if (daysSinceLast >= 14) status = 'gap_critical'
+          else if (daysSinceLast >= 7) status = 'gap_warning'
+        }
+
+        const fillRate = bucket.totalCapacity > 0
+          ? Math.round((bucket.totalRegistered / bucket.totalCapacity) * 100)
+          : null
+
+        return {
+          family: bucket.family,
+          sponsors: Array.from(bucket.sponsors).sort(),
+          sessionCount: bucket.sessions.length,
+          pastSessionCount: past.length,
+          futureSessionCount: future.length,
+          lastSessionDate: lastPast?.date.toISOString() ?? null,
+          nextSessionDate: nextFuture?.date.toISOString() ?? null,
+          daysSinceLast,
+          daysUntilNext,
+          totalRegistered: bucket.totalRegistered,
+          totalCapacity: bucket.totalCapacity,
+          fillRate,
+          status,
+          // Sample sessions for drilldown — last 5 by date
+          recentSessions: [...bucket.sessions]
+            .sort((a, b) => b.date.getTime() - a.date.getTime())
+            .slice(0, 5)
+            .map((s) => ({
+              id: s.id,
+              title: s.title,
+              date: s.date.toISOString(),
+              registered: s.registered,
+              capacity: s.capacity,
+            })),
+        }
+      })
+
+      // Sort: critical gaps first, then warnings, then active, then ended.
+      // Within each group: most recent activity first.
+      const statusOrder: Record<string, number> = {
+        gap_critical: 0,
+        gap_warning: 1,
+        active: 2,
+        ended: 3,
+      }
+      result.sort((a, b) => {
+        const so = (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99)
+        if (so !== 0) return so
+        return (b.lastSessionDate || '').localeCompare(a.lastSessionDate || '')
+      })
+
+      return {
+        windowDays: input.windowDays,
+        windowStart: since.toISOString(),
+        totalFamilies: result.length,
+        activeCount: result.filter((r) => r.status === 'active').length,
+        gapWarningCount: result.filter((r) => r.status === 'gap_warning').length,
+        gapCriticalCount: result.filter((r) => r.status === 'gap_critical').length,
+        endedCount: result.filter((r) => r.status === 'ended').length,
+        families: result,
+      }
+    }),
+
+  // ── Weekly Programming Scorecard (Sprint 2 P2.2) ──
+  //
+  // Mirrors IPC's "Weekly Programming Scorecard" submission template
+  // (see Programming Operating System v1.0): one report per location
+  // per week, rolled up by Tier (T1 Core / T2 Leagues / T3 Signature /
+  // T4 Social / T5 Tournament / T6 Premium / T7 Youth) plus a KPI
+  // summary and 4 execution-check yes/no flags.
+  //
+  // Source data: PlaySession + PlaySessionBooking + ClubFollower for the
+  // chosen ISO week. Tiers are derived via classifyProgrammingTier;
+  // intro funnel reuses isIntroSession + cross-references against
+  // current users.membership_status. League continuity uses the same
+  // family detector as the league catalog.
+  //
+  // Honest about what's missing in CR:
+  //   - T4 non-member %        — null when we can't tell (most clubs)
+  //   - T5 profitability       — null until cost model lands (Sprint 9)
+  //   - T6 pro-clinic flag     — regex on session title ("pro clinic" /
+  //                              "specialty"); admins can refine later
+  //   - T7 school partnerships — null (no SchoolPartnership entity yet)
+  getWeeklyScorecard: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      // ISO date of week start (Monday). Default: most recently
+      // completed Monday-to-Sunday window so the scorecard reflects
+      // a finished week, not a half-baked current one.
+      weekStart: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Resolve week window. weekStart anchors a Mon 00:00 → Sun 23:59 span.
+      let weekStart: Date
+      if (input.weekStart) {
+        weekStart = new Date(input.weekStart + 'T00:00:00Z')
+      } else {
+        const now = new Date()
+        const dayUtc = now.getUTCDay() // 0=Sun, 1=Mon...
+        const daysSinceLastMonday = dayUtc === 0 ? 13 : dayUtc + 6
+        weekStart = new Date(now.getTime())
+        weekStart.setUTCHours(0, 0, 0, 0)
+        weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceLastMonday)
+      }
+      const weekEnd = new Date(weekStart.getTime() + 7 * 86400000)
+
+      // Pull sessions for the window with attendance counts inline.
+      const sessionRows = await ctx.prisma.$queryRaw<Array<{
+        id: string
+        title: string | null
+        format: string | null
+        category: string | null
+        max_players: number | null
+        registered_count: number | null
+        date: Date
+        confirmed_count: number
+      }>>`
+        SELECT
+          ps.id,
+          ps.title,
+          ps.format::text AS format,
+          ps.category,
+          ps."maxPlayers" AS max_players,
+          ps.registered_count,
+          ps.date,
+          (
+            SELECT COUNT(*)::int FROM play_session_bookings psb
+            WHERE psb."sessionId" = ps.id AND psb.status = 'CONFIRMED'
+          ) AS confirmed_count
+        FROM play_sessions ps
+        WHERE ps."clubId" = ${input.clubId}
+          AND ps.date >= ${weekStart}
+          AND ps.date < ${weekEnd}
+      `
+
+      // Helper: bucket sessions per tier using shared classifier.
+      type TierBucket = {
+        sessions: typeof sessionRows
+      }
+      const buckets: Record<string, TierBucket> = {
+        T1_CORE: { sessions: [] },
+        T2_LEAGUE: { sessions: [] },
+        T3_SIGNATURE: { sessions: [] },
+        T4_SOCIAL: { sessions: [] },
+        T5_TOURNAMENT: { sessions: [] },
+        T6_PREMIUM: { sessions: [] },
+        T7_YOUTH: { sessions: [] },
+      }
+      for (const s of sessionRows) {
+        const tier = classifyProgrammingTier({ title: s.title, format: s.format, category: s.category })
+        buckets[tier].sessions.push(s)
+      }
+
+      const sumFillRate = (rows: typeof sessionRows) => {
+        const totalReg = rows.reduce((a, r) => a + (r.confirmed_count ?? r.registered_count ?? 0), 0)
+        const totalCap = rows.reduce((a, r) => a + (r.max_players ?? 0), 0)
+        return { totalReg, totalCap, fillRate: totalCap > 0 ? Math.round((totalReg / totalCap) * 100) : null }
+      }
+      const sumPlayers = (rows: typeof sessionRows) =>
+        rows.reduce((a, r) => a + (r.confirmed_count ?? r.registered_count ?? 0), 0)
+      const peakUtil = (rows: typeof sessionRows) => {
+        let peak: number | null = null
+        for (const r of rows) {
+          const reg = r.confirmed_count ?? r.registered_count ?? 0
+          const cap = r.max_players ?? 0
+          if (cap === 0) continue
+          const util = Math.round((reg / cap) * 100)
+          if (peak == null || util > peak) peak = util
+        }
+        return peak
+      }
+
+      // T1: Open Play / Classes / Pickleball 101 sub-buckets within T1_CORE.
+      const t1OpenPlay = buckets.T1_CORE.sessions.filter((s) => (s.format ?? '').toUpperCase() === 'OPEN_PLAY')
+      const t1Classes = buckets.T1_CORE.sessions.filter((s) => {
+        const f = (s.format ?? '').toUpperCase()
+        return f === 'CLINIC' || f === 'DRILL'
+      })
+      const t1Intro = buckets.T1_CORE.sessions.filter((s) => isIntroSession(s.title))
+
+      // T1.3 Pickleball 101 conversion: attendees of intro this week +
+      // current users.membership_status='Active' on a non-guest tier.
+      let convertedToPaying = 0
+      let totalIntroAttendees = 0
+      const sampleConvertedTiers: string[] = []
+      if (t1Intro.length > 0) {
+        const introIds = t1Intro.map((s) => s.id)
+        const attendees = await ctx.prisma.$queryRaw<Array<{ user_id: string }>>`
+          SELECT DISTINCT psb."userId" AS user_id
+          FROM play_session_bookings psb
+          WHERE psb."sessionId" IN (${Prisma.join(introIds)})
+            AND psb.status = 'CONFIRMED'
+        `
+        totalIntroAttendees = attendees.length
+        if (attendees.length > 0) {
+          const converted = await ctx.prisma.$queryRaw<Array<{ membership_type: string | null }>>`
+            SELECT membership_type
+            FROM users
+            WHERE id IN (${Prisma.join(attendees.map((a) => a.user_id))})
+              AND membership_status = 'Active'
+              AND membership_type IS NOT NULL
+              AND membership_type NOT ILIKE '%guest pass%'
+              AND membership_type NOT ILIKE '%pay per%'
+          `
+          convertedToPaying = converted.length
+          for (const r of converted.slice(0, 4)) {
+            if (r.membership_type && !sampleConvertedTiers.includes(r.membership_type)) {
+              sampleConvertedTiers.push(r.membership_type)
+            }
+          }
+        }
+      }
+
+      // T2: League continuity — uses 180d window via getLeaguesCatalog logic.
+      const leagueLookback = new Date(Date.now() - 180 * 86400000)
+      const allLeagueSessions = await ctx.prisma.$queryRaw<Array<{
+        title: string
+        date: Date
+      }>>`
+        SELECT title, date
+        FROM play_sessions
+        WHERE "clubId" = ${input.clubId}
+          AND date >= ${leagueLookback}
+          AND (format = 'LEAGUE_PLAY' OR LOWER(title) LIKE '%league%')
+      `
+
+      const leagueFamilies = new Map<string, { lastPast: Date | null; nextFuture: Date | null }>()
+      const now = new Date()
+      for (const ls of allLeagueSessions) {
+        const det = detectLeagueFamily(ls.title)
+        if (!det.family) continue
+        let bucket = leagueFamilies.get(det.family)
+        if (!bucket) { bucket = { lastPast: null, nextFuture: null }; leagueFamilies.set(det.family, bucket) }
+        if (ls.date < now) {
+          if (!bucket.lastPast || ls.date > bucket.lastPast) bucket.lastPast = ls.date
+        } else {
+          if (!bucket.nextFuture || ls.date < bucket.nextFuture) bucket.nextFuture = ls.date
+        }
+      }
+
+      let activeLeagues = 0
+      let gapCriticalCount = 0
+      for (const f of Array.from(leagueFamilies.values())) {
+        if (f.nextFuture) { activeLeagues++; continue }
+        if (f.lastPast) {
+          const days = Math.floor((now.getTime() - f.lastPast.getTime()) / 86400000)
+          if (days < 7) activeLeagues++
+          else if (days < 60) gapCriticalCount++
+        }
+      }
+
+      const t2Stats = sumFillRate(buckets.T2_LEAGUE.sessions)
+
+      // T5 Tournament: detect via classifier OR Tournament table (legacy
+      // Piqle data may pre-date the classifier regex). For the MVP we
+      // rely on classifier only — covers CR-synced tournaments where
+      // the title says "tournament" / "slam" / "championship".
+      const t5Stats = sumFillRate(buckets.T5_TOURNAMENT.sessions)
+
+      // T6 Premium: classifier already singles out specialty/visiting-pro.
+      const t6ProClinicHeld = buckets.T6_PREMIUM.sessions.some((s) =>
+        /\bpro\s+clinic|visiting\s+pro\b/i.test(s.title || ''),
+      )
+
+      // KPI summary
+      const allSessions = sessionRows
+      const totalUniqueParticipantsResult = await ctx.prisma.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(DISTINCT psb."userId")::bigint AS count
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${input.clubId}
+          AND ps.date >= ${weekStart}
+          AND ps.date < ${weekEnd}
+          AND psb.status = 'CONFIRMED'
+      `
+      const totalUniqueParticipants = Number(totalUniqueParticipantsResult[0]?.count ?? 0)
+
+      // New players: club_followers who joined this week.
+      const newPlayersResult = await ctx.prisma.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*)::bigint AS count
+        FROM club_followers
+        WHERE club_id = ${input.clubId}
+          AND created_at >= ${weekStart}
+          AND created_at < ${weekEnd}
+      `
+      const newPlayersThisWeek = Number(newPlayersResult[0]?.count ?? 0)
+
+      // Court utilization: aggregate fill rate across all sessions in week
+      const overallFill = sumFillRate(allSessions)
+
+      // Execution check: 4 yes/no based on cadence rules from IPC PSPP v1.0
+      // - Core delivered daily: at least one T1 session each day of the week
+      const dayHasT1 = new Set<string>()
+      for (const s of buckets.T1_CORE.sessions) {
+        const k = s.date.toISOString().slice(0, 10)
+        dayHasT1.add(k)
+      }
+      const expectedDayCount = 7
+      const coreProgrammingDaily = dayHasT1.size >= expectedDayCount
+
+      // - Leagues continuous: gap_critical count = 0
+      const leaguesContinuous = gapCriticalCount === 0 && activeLeagues > 0
+
+      // - Signature event run: at least 1 T3 session this week
+      const signatureEventRun = buckets.T3_SIGNATURE.sessions.length >= 1
+
+      // - Social/tournament cadence: T4 OR T5 sessions present this week
+      //   (rough approximation — the spec asks "monthly cadence on track",
+      //   which we'd need a 4-week rolling calc to answer; flag for now).
+      const socialTournamentOnTrack =
+        buckets.T4_SOCIAL.sessions.length >= 1 || buckets.T5_TOURNAMENT.sessions.length >= 1
+
+      // T3 top-performing event: highest fill rate among T3 sessions
+      let topT3: { title: string; fillRate: number } | null = null
+      for (const s of buckets.T3_SIGNATURE.sessions) {
+        const reg = s.confirmed_count ?? s.registered_count ?? 0
+        const cap = s.max_players ?? 0
+        if (cap === 0) continue
+        const util = Math.round((reg / cap) * 100)
+        if (!topT3 || util > topT3.fillRate) topT3 = { title: s.title || 'Session', fillRate: util }
+      }
+
+      return {
+        weekStart: weekStart.toISOString(),
+        weekEnd: weekEnd.toISOString(),
+        tier1: {
+          openPlay: {
+            sessions: t1OpenPlay.length,
+            players: sumPlayers(t1OpenPlay),
+            avgPlayers: t1OpenPlay.length > 0 ? Math.round(sumPlayers(t1OpenPlay) / t1OpenPlay.length) : 0,
+            peakUtilization: peakUtil(t1OpenPlay),
+          },
+          classes: {
+            sessions: t1Classes.length,
+            participants: sumPlayers(t1Classes),
+            avgFillRate: sumFillRate(t1Classes).fillRate,
+          },
+          pickleball101: {
+            sessions: t1Intro.length,
+            attendees: totalIntroAttendees,
+            convertedToPaying,
+            conversionRate: totalIntroAttendees > 0
+              ? Math.round((convertedToPaying / totalIntroAttendees) * 1000) / 10
+              : null,
+            sampleConvertedTiers,
+          },
+        },
+        tier2: {
+          activeLeagues,
+          gapCriticalCount,
+          sessionsThisWeek: buckets.T2_LEAGUE.sessions.length,
+          totalParticipants: t2Stats.totalReg,
+          totalCapacity: t2Stats.totalCap,
+          fillRate: t2Stats.fillRate,
+          continuouslyAvailable: leaguesContinuous,
+        },
+        tier3: {
+          eventsRun: buckets.T3_SIGNATURE.sessions.length,
+          totalParticipants: sumPlayers(buckets.T3_SIGNATURE.sessions),
+          fillRate: sumFillRate(buckets.T3_SIGNATURE.sessions).fillRate,
+          topPerformingEvent: topT3,
+        },
+        tier4: {
+          eventsRun: buckets.T4_SOCIAL.sessions.length,
+          totalParticipants: sumPlayers(buckets.T4_SOCIAL.sessions),
+          fillRate: sumFillRate(buckets.T4_SOCIAL.sessions).fillRate,
+          // Non-member % requires guest-pass attendance source we don't
+          // currently snapshot per session — return null until P5 cost
+          // model lands the missing field.
+          nonMemberPercent: null,
+        },
+        tier5: {
+          held: buckets.T5_TOURNAMENT.sessions.length > 0,
+          totalPlayers: sumPlayers(buckets.T5_TOURNAMENT.sessions),
+          fillRate: t5Stats.fillRate,
+          // profitability — stretch goal in Sprint 9 once EventCost lands.
+          profitabilityCents: null,
+        },
+        tier6: {
+          specialtyClinics: buckets.T6_PREMIUM.sessions.length,
+          participants: sumPlayers(buckets.T6_PREMIUM.sessions),
+          fillRate: sumFillRate(buckets.T6_PREMIUM.sessions).fillRate,
+          proClinicHeld: t6ProClinicHeld,
+        },
+        tier7: {
+          youthSessions: buckets.T7_YOUTH.sessions.length,
+          participants: sumPlayers(buckets.T7_YOUTH.sessions),
+          // Schools/partner programs require a SchoolPartnership entity
+          // (Sprint 9 P5.3). Until then we return null so the UI prints
+          // "—" instead of a misleading 0.
+          schoolPartnersActive: null,
+        },
+        kpiSummary: {
+          totalSessions: allSessions.length,
+          uniqueParticipants: totalUniqueParticipants,
+          newPlayersThisWeek,
+          courtUtilizationPercent: overallFill.fillRate,
+        },
+        executionCheck: {
+          coreProgrammingDaily,
+          leaguesContinuous,
+          signatureEventRun,
+          socialTournamentOnTrack,
+        },
       }
     }),
 

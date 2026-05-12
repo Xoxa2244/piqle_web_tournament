@@ -45,9 +45,9 @@ const ALLOWED_OPTIONS = new Set([
   'price',
   'other',
   // DECLINING_REACTIVATION (segment #4):
-  'injury',     // at-risk: травма
-  'busy',       // at-risk: занят
-  'pause',      // at-risk: просто пауза
+  'injury',     // at-risk: injury
+  'busy',       // at-risk: busy
+  'pause',      // at-risk: just taking a pause
   // SLEEPING_REACTIVATION (segment #5):
   'planschanged', // sleeping: my plans changed
   'time',         // sleeping: cannot find a good time
@@ -56,10 +56,10 @@ const ALLOWED_OPTIONS = new Set([
   'gift_pass',    // birthday: guest pass for a friend
   'gift_merch',   // birthday: IQSport merch
   // Reserved for future surveys:
-  'liked',      // trial: понравилось
-  'thinking',   // trial: нужно подумать
-  'not_for_me', // trial: не для меня
-  'questions',  // trial: есть вопросы
+  'liked',      // trial: liked it
+  'thinking',   // trial: need to think
+  'not_for_me', // trial: not for me
+  'questions',  // trial: have questions
 ])
 
 /** Map AIRecommendationLog.type + reasoning to a stable survey type string.

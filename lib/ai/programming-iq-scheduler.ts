@@ -105,7 +105,7 @@ export interface SchedulerContactPolicy {
   inviteCapPerMemberPerWeek: number
 }
 
-export type GridCellKind = 'live' | 'suggested' | 'empty' | 'conflict' | 'saturation'
+export type GridCellKind = 'live' | 'suggested' | 'risk' | 'empty' | 'conflict' | 'saturation'
 
 export interface GridCell {
   /** Stable key for React: `${courtId}__${dayOfWeek}__${startTime}`. */
@@ -224,6 +224,10 @@ export interface BuildWeeklyGridResult {
   stats: {
     liveKept: number
     suggested: number
+    /** Cells emitted by the risk pass — weaker signal, admin should
+     *  evaluate before publish. Counted separately from `suggested` so
+     *  the UI can call out volume from each tier. */
+    risk: number
     empty: number
     conflicts: number
     saturations: number
@@ -244,6 +248,28 @@ export interface BuildWeeklyGridResult {
       description: string
       source: 'selected' | 'inferred'
     }>
+    pipelineDebug: {
+      targetSuggestionCount: number
+      plannerLimit: number
+      upstreamProposals: {
+        total: number
+        expandPeak: number
+        fillGap: number
+      }
+      duplicateVariantsAdded: number
+      selectedPortfolioCount: number
+      assignments: {
+        placed: number
+        noCourt: number
+        outsideHours: number
+      }
+      finalDrafts: {
+        publishReady: number
+        backup: number
+        unplaced: number
+      }
+      liveOptimizationCandidates: number
+    }
     requestPriorityNote: string | null
     requestSummary: {
       requestedIdeas: number
@@ -723,6 +749,14 @@ function countSameSkillNearby(
  * contact policy, does any skill-level pool end up seeing more invites
  * per member than the weekly cap allows?
  *
+ * Important nuance: this hard-gate is intentionally scoped to the new
+ * suggestion portfolio, not the already-live calendar. Existing live
+ * sessions can still be dense for a skill pool, but Programming IQ
+ * should not collapse to "0 publish-ready suggestions" just because the
+ * current week is already busy. Live-session pressure is surfaced via
+ * move/replace review and the UI contact-policy badge; here we only mark
+ * the overflow tail inside the draft set itself.
+ *
  * Returns a map from cell key → warning message for cells that the UI
  * should render with the `saturation` badge. Does NOT mutate the input.
  */
@@ -742,41 +776,74 @@ export function supplyDemandCheck(
     poolBySkill.set(skill, (poolBySkill.get(skill) || 0) + 1)
   }
 
-  // Capacity per skill tier across suggested + live cells this week.
-  const capacityBySkill = new Map<string, number>()
+  // New draft suggestions only. Live sessions stay out of the hard cap
+  // so a dense calendar doesn't automatically zero out publish-ready
+  // ideas for empty cells.
+  const suggestedBySkill = new Map<string, GridCell[]>()
   for (const cell of cells) {
-    if (cell.kind !== 'live' && cell.kind !== 'suggested') continue
+    if (cell.kind !== 'suggested') continue
     const skill = normaliseSkillKey(cell.skillLevel)
-    // Invite count = capacity × (1 + overbook buffer). 50% overbook is
-    // the slot-filler default, so total potential invites per session is
-    // cap × 1.5.
-    const capacity = Math.max(1, cell.maxPlayers || 8)
-    capacityBySkill.set(skill, (capacityBySkill.get(skill) || 0) + Math.ceil(capacity * 1.5))
+    if (!suggestedBySkill.has(skill)) suggestedBySkill.set(skill, [])
+    suggestedBySkill.get(skill)!.push(cell)
   }
 
-  // For each skill tier, compute average invites per eligible member.
-  // If > policy cap → every suggested cell of that tier gets a warning.
-  // Use Array.from rather than direct iteration because tsconfig target
-  // pre-ES2015 would require downlevelIteration.
-  for (const [skill, inviteCapacity] of Array.from(capacityBySkill.entries())) {
+  // For each skill tier, keep the strongest suggestions publish-ready
+  // until the draft portfolio itself exceeds the member-contact budget.
+  // Only the lower-priority overflow tail gets marked as saturation.
+  for (const [skill, suggestedCells] of Array.from(suggestedBySkill.entries())) {
     const pool = poolBySkill.get(skill) || 0
     if (pool <= 0) continue
-    const invitesPerMember = inviteCapacity / pool
     const allowedInvitesPerMember = policy.inviteCapPerMemberPerWeek * Math.max(behaviorProfile?.saturationCapMultiplier ?? 1, 0.8)
-    if (invitesPerMember > allowedInvitesPerMember) {
-      // Mark every suggested cell of this skill.
-      for (const cell of cells) {
-        if (cell.kind === 'suggested' && normaliseSkillKey(cell.skillLevel) === skill) {
-          warnings.set(
-            cell.key,
-            `Saturated: this ${prettySkill(skill)} pool (${pool} members) would see ~${invitesPerMember.toFixed(1)} invites/week at current caps (${policy.inviteCapPerMemberPerWeek}). Consider removing lower-scoring sessions.`,
-          )
-        }
+    const allowedInviteBudget = allowedInvitesPerMember * pool
+    let scheduledInviteCapacity = 0
+
+    const rankedSuggested = [...suggestedCells].sort((left, right) => {
+      const scoreDiff = getSaturationPriority(right) - getSaturationPriority(left)
+      if (scoreDiff !== 0) return scoreDiff
+      return left.key.localeCompare(right.key)
+    })
+
+    for (const cell of rankedSuggested) {
+      const inviteCapacity = getInviteCapacityForCell(cell)
+      const projectedInviteCapacity = scheduledInviteCapacity + inviteCapacity
+      if (projectedInviteCapacity > allowedInviteBudget) {
+        const invitesPerMember = projectedInviteCapacity / pool
+        warnings.set(
+          cell.key,
+          `Saturated: this ${prettySkill(skill)} pool (${pool} members) would see ~${invitesPerMember.toFixed(1)} invites/week at current caps (${policy.inviteCapPerMemberPerWeek}). Higher-scoring ideas stayed publish-ready first; review or swap lower-priority sessions.`,
+        )
       }
+      scheduledInviteCapacity = projectedInviteCapacity
     }
   }
 
   return warnings
+}
+
+function getInviteCapacityForCell(cell: Pick<GridCell, 'maxPlayers'>) {
+  // Invite count = capacity × (1 + overbook buffer). 50% overbook is
+  // the slot-filler default, so total potential invites per session is
+  // cap × 1.5.
+  return Math.ceil(Math.max(1, cell.maxPlayers || 8) * 1.5)
+}
+
+function getSaturationPriority(
+  cell: Pick<
+    GridCell,
+    'confidence' | 'projectedOccupancy' | 'estimatedInterestedMembers' | 'requestedByAdmin'
+  >,
+) {
+  const confidence = cell.confidence || 0
+  const projectedOccupancy = cell.projectedOccupancy || 0
+  const interestedMembers = Math.min(cell.estimatedInterestedMembers || 0, 100)
+  const adminPriorityBoost = cell.requestedByAdmin ? 8 : 0
+
+  return (
+    confidence * 0.55 +
+    projectedOccupancy * 0.3 +
+    interestedMembers * 0.15 +
+    adminPriorityBoost
+  )
 }
 
 function normaliseSkillKey(skill: PlaySessionSkillLevel | string | null | undefined): string {
@@ -842,6 +909,22 @@ function getSuggestionVariantSignature(proposal: Pick<
   'dayOfWeek' | 'startTime' | 'format' | 'skillLevel'
 >) {
   return `${proposal.dayOfWeek}__${proposal.startTime}__${proposal.format}__${proposal.skillLevel}`
+}
+
+function countProposalSources(proposals: AdvisorProgrammingProposalDraft[]) {
+  let expandPeak = 0
+  let fillGap = 0
+
+  for (const proposal of proposals) {
+    if (proposal.source === 'fill_gap') fillGap += 1
+    else expandPeak += 1
+  }
+
+  return {
+    total: proposals.length,
+    expandPeak,
+    fillGap,
+  }
 }
 
 function getConflictPenalty(proposal: AdvisorProgrammingProposalDraft) {
@@ -1432,6 +1515,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const generationId = randomUUID()
   const activeCourts = input.courts.filter((c) => c.isActive)
   const targetCount = input.targetSuggestionCount ?? Math.max(10, activeCourts.length * 6)
+  const plannerLimit = Math.max(200, targetCount * 4)
   const regenerateRequest = input.regeneratePrompt?.trim()
     ? parseAdvisorProgrammingRequest(input.regeneratePrompt)
     : null
@@ -1453,7 +1537,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     interestRequests: input.interestRequests,
     audienceProfile: input.audienceProfile,
     request: regenerateRequest,
-    limit: Math.max(200, targetCount * 4),
+    limit: plannerLimit,
     courtCount: activeCourts.length,
     strategyPresetIds: strategyProfile.appliedPresets.map((preset) => preset.id),
     behaviorProfile: strategyProfile.behaviorProfile,
@@ -1482,6 +1566,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   if (input.regenerateHint) {
     rankedProposals = applyRegenerateHint(rankedProposals, input.regenerateHint)
   }
+  const upstreamProposals = countProposalSources(rankedProposals)
   const requestedProposals = plan.requestedAlternates?.length
     ? plan.requestedAlternates
     : plan.requested
@@ -1556,22 +1641,78 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       pinnedProposalIds: new Set(pinnedProposalIds),
     },
   )
+  const duplicateVariantsAdded = expanded.filter((proposal) => proposal.id.endsWith('__dup')).length
+
+  // 3.5. Risk pass — for clubs / weeks where the strict greedy under-
+  //      delivers (e.g. moderate history + dominant single-format like
+  //      80% Open Play), promote weaker-but-plausible candidates to
+  //      `risk` cells instead of leaving the grid mostly empty. Score
+  //      window: [riskScoreFloor, selectionScoreFloor). Capped at
+  //      maxRiskCells (and never overshoots targetCount overall).
+  //
+  //      Disabled when riskScoreFloor <= 0 or maxRiskCells <= 0 (e.g.
+  //      via preset deltas) — keeps the door open to opt out of risk
+  //      surfacing on small clubs that don't need volume.
+  const riskCandidates: AdvisorProgrammingProposalDraft[] = []
+  const riskFloor = strategyProfile.behaviorProfile.riskScoreFloor
+  const maxRisk = strategyProfile.behaviorProfile.maxRiskCells
+  if (riskFloor > 0 && maxRisk > 0 && eligible.length < selectionTargetCount) {
+    const eligibleIds = new Set(eligible.map((p) => p.id))
+    // Score candidates against an EMPTY selected set, not `eligible`.
+    // The greedy score function applies diversity penalties
+    // (sameFormatPenalty, sameWindowPenalty, sameFormatSkillPenalty,
+    // portfolioPenaltyMultiplier) relative to whatever is in the
+    // "selected" array. If we pass `eligible` (the already-chosen
+    // suggested cells), every remaining candidate that resembles one
+    // of them gets penalised — which on a moderately-diverse club
+    // pushes most leftovers below riskFloor and yields 0 risk cells.
+    //
+    // The risk pass exists precisely to fill empty slots with
+    // weaker-but-plausible *similar* ideas. So we score each candidate
+    // on its own merit (no diversity penalty) to decide whether it
+    // qualifies for the risk band, then defer to the bin-packer to
+    // place them on whatever empty courts remain.
+    const remainingForRisk = expanded
+      .filter((p) => !eligibleIds.has(p.id))
+      .map((p) => ({
+        proposal: p,
+        score: getGreedySelectionScore(p, [], scoringContext),
+      }))
+      .filter(({ score }) =>
+        score >= riskFloor
+        && score < scoringContext.behaviorProfile.selectionScoreFloor,
+      )
+      .sort((a, b) => b.score - a.score)
+      .slice(0, Math.min(maxRisk, selectionTargetCount - eligible.length))
+
+    for (const { proposal } of remainingForRisk) {
+      riskCandidates.push(proposal)
+    }
+  }
+  const riskIds = new Set(riskCandidates.map((p) => p.id))
 
   // 4. Bin-pack onto courts.
+  // Eligible go first (priority placement); risk candidates compete for
+  // remaining slots only — they don't displace `suggested` cells.
   const assignments = assignCourtsToProposals(
-    eligible,
+    [...eligible, ...riskCandidates],
     input.courts,
     input.existingWeekSessions,
     input.historicalSessions,
     input.weekStartDate,
     input.timezone,
   )
+  const assignmentPlacedCount = assignments.filter((assignment) => !assignment.failed).length
+  const assignmentNoCourtCount = assignments.filter((assignment) => assignment.failed === 'no_court').length
+  const assignmentOutsideHoursCount = assignments.filter((assignment) => assignment.failed === 'outside_hours').length
 
-  // 5. Emit suggested cells for successful assignments.
+  // 5. Emit suggested / risk cells for successful assignments.
   const cells: GridCell[] = []
   let suggestedCount = 0
+  let riskCount = 0
   let conflictCount = 0
   for (const a of assignments) {
+    const isRisk = riskIds.has(a.proposal.id)
     if (a.failed) {
       // Proposal couldn't be placed — keep it as an off-grid idea so the
       // admin still sees the demand signal and the reason it stayed out
@@ -1603,9 +1744,18 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       conflictCount += 1
       continue
     }
+    const baseRationale = a.usedHoursFallback
+      ? [
+          ...a.proposal.rationale,
+          'Placed on an active court using relaxed availability because no historical court-hours signal covered this window.',
+        ]
+      : a.proposal.rationale
+    const baseWarnings = a.proposal.conflict && a.proposal.conflict.overallRisk !== 'low'
+      ? [a.proposal.conflict.riskSummary, ...a.proposal.conflict.warnings]
+      : []
     cells.push({
       key: `${a.courtId}__${a.proposal.dayOfWeek}__${a.proposal.startTime}`,
-      kind: 'suggested',
+      kind: isRisk ? 'risk' : 'suggested',
       courtId: a.courtId,
       courtName: a.courtName,
       dayOfWeek: a.proposal.dayOfWeek,
@@ -1618,19 +1768,23 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
       projectedOccupancy: a.proposal.projectedOccupancy,
       estimatedInterestedMembers: a.proposal.estimatedInterestedMembers,
       confidence: a.proposal.confidence,
-      rationale: a.usedHoursFallback
+      rationale: isRisk
         ? [
-            ...a.proposal.rationale,
-            'Placed on an active court using relaxed availability because no historical court-hours signal covered this window.',
+            ...baseRationale,
+            'Lower-confidence idea promoted by the risk pass — historical signal is moderate. Review before publishing.',
           ]
-        : a.proposal.rationale,
-      warnings: a.proposal.conflict && a.proposal.conflict.overallRisk !== 'low'
-        ? [a.proposal.conflict.riskSummary, ...a.proposal.conflict.warnings]
-        : [],
+        : baseRationale,
+      warnings: isRisk
+        ? ['Weaker historical signal — verify demand before publishing', ...baseWarnings]
+        : baseWarnings,
       requestedByAdmin: requestedProposalIds.has(a.proposal.id),
       liveOptimization: liveOptimizations.byProposalId.get(a.proposal.id) || null,
     })
-    suggestedCount += 1
+    if (isRisk) {
+      riskCount += 1
+    } else {
+      suggestedCount += 1
+    }
   }
 
   // 6. Emit live cells (read-only in UI) from existing week sessions.
@@ -1743,9 +1897,33 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
   const publishReadyCount = cells.filter((cell) => cell.kind === 'suggested').length
   const backupCount = cells.filter((cell) => cell.kind === 'saturation').length
   const unplacedCount = cells.filter((cell) => cell.kind === 'conflict').length
+  const pipelineDebug = {
+    targetSuggestionCount: targetCount,
+    plannerLimit,
+    upstreamProposals,
+    duplicateVariantsAdded,
+    selectedPortfolioCount: eligible.length,
+    assignments: {
+      placed: assignmentPlacedCount,
+      noCourt: assignmentNoCourtCount,
+      outsideHours: assignmentOutsideHoursCount,
+    },
+    finalDrafts: {
+      publishReady: publishReadyCount,
+      backup: backupCount,
+      unplaced: unplacedCount,
+    },
+    liveOptimizationCandidates: liveOptimizations.candidates.length,
+  }
   const requestPlacedCount = requestedCells.filter((cell) => cell.kind === 'suggested').length
   const requestBackupCount = requestedCells.filter((cell) => cell.kind === 'saturation').length
   const requestUnplacedCount = requestedCells.filter((cell) => cell.kind === 'conflict').length
+  const lowVolumeThreshold = Math.ceil(targetCount * 0.5)
+  if (targetCount >= 12 && publishReadyCount + backupCount < lowVolumeThreshold) {
+    insights.unshift(
+      `Pipeline diagnostics: ${upstreamProposals.total} upstream idea${upstreamProposals.total === 1 ? '' : 's'} (${upstreamProposals.fillGap} gap-fill, ${upstreamProposals.expandPeak} expand-peak), ${eligible.length} cleared portfolio selection, ${assignmentPlacedCount} placed on courts, ${backupCount} moved to backup, ${unplacedCount} left unplaced.`,
+    )
+  }
   let strongestRequestEval: ProgrammingRequestEvaluation | null = requestEvaluations
     .slice()
     .sort((left, right) => right.score - left.score)[0] || null
@@ -1832,6 +2010,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     stats: {
       liveKept,
       suggested: suggestedCount,
+      risk: riskCount,
       empty: 0,
       conflicts: conflictCount,
       saturations: saturationCount,
@@ -1846,6 +2025,7 @@ export function buildWeeklyGrid(input: BuildWeeklyGridInput): BuildWeeklyGridRes
     },
     summary: {
       appliedPresets: strategyProfile.appliedPresets,
+      pipelineDebug,
       requestPriorityNote: regenerateRequest
         ? describeProgrammingRequestPriority(strategyProfile.requestPriority)
         : null,

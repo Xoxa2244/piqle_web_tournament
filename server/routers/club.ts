@@ -2056,7 +2056,17 @@ export const clubRouter = createTRPCRouter({
     }),
 
   acceptAdminInvite: protectedProcedure
-    .input(z.object({ token: z.string() }))
+    .input(z.object({
+      token: z.string(),
+      // When the user accepts via the "Wrong Account" → "Accept with current
+      // account anyway" path, the client sets this flag so the admin role
+      // attaches to the *signed-in* user (session.user.id), not to a stub
+      // user matched by invitee_email. Without this, an invite to corp-email
+      // accepted by a Google-OAuth gmail user would silently land the role
+      // on the wrong user → empty dashboard / FORBIDDEN. See incident
+      // 2026-05-07 (Chris Sears IPC).
+      attachToSessionUser: z.boolean().optional().default(false),
+    }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.session.user.id
 
@@ -2085,23 +2095,47 @@ export const clubRouter = createTRPCRouter({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'This is not an admin invite' })
       }
 
-      // Verify user exists in DB (NextAuth session may have stale ID)
-      const userExists = await ctx.prisma.user.findUnique({ where: { id: userId }, select: { id: true } })
-      if (!userExists) {
-        // Try to find user by invite email instead
+      // Resolve the user the admin role will attach to.
+      //
+      // Two paths:
+      //  (a) attachToSessionUser=true  → MUST use ctx.session.user.id; never
+      //      silently fall back to invitee_email. This is what the client
+      //      sends from the "Accept anyway" button and from the normal
+      //      same-email path. If session userId is not in DB, error out
+      //      so the client can prompt for re-login (don't create a ghost
+      //      role on a stub user).
+      //  (b) attachToSessionUser=false → legacy behaviour. We still try
+      //      the session userId first, but if it's missing from DB we
+      //      fall back to a user matched by invitee_email. Kept for
+      //      backward compat with any existing in-flight links.
+      const userExists = await ctx.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      })
+
+      let effectiveUserId: string
+      if (userExists) {
+        effectiveUserId = userId
+      } else if (input.attachToSessionUser) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'User account not found. Please sign in again and retry.',
+        })
+      } else {
         const userByEmail = invite.inviteeEmail
           ? await ctx.prisma.user.findUnique({ where: { email: invite.inviteeEmail }, select: { id: true } })
           : null
-        if (userByEmail) {
-          // Use the existing user matched by email
-          console.log(`[Invite] Session userId ${userId} not in DB, falling back to email-matched userId ${userByEmail.id}`)
-          // @ts-ignore - reassign to correct userId
-          var effectiveUserId = userByEmail.id
-        } else {
-          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'User account not found. Please sign in again and retry.' })
+        if (!userByEmail) {
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: 'User account not found. Please sign in again and retry.',
+          })
         }
-      } else {
-        var effectiveUserId = userId
+        // Legacy fallback — log so we can spot stale-JWT cases in production.
+        console.warn(
+          `[acceptAdminInvite] session userId ${userId} not in DB; falling back to email-matched userId ${userByEmail.id} (legacy path; client did not set attachToSessionUser)`,
+        )
+        effectiveUserId = userByEmail.id
       }
 
       // All-or-nothing: create admin + follower + mark accepted in transaction

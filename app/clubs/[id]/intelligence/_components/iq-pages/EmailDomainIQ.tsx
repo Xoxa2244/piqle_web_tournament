@@ -138,6 +138,80 @@ export function EmailDomainIQ({ clubId }: Props) {
         </div>
       </div>
 
+      {/* P1.5 (Sprint 1): current sending status banner.
+          Always visible at the top so admins can answer Chris's
+          §3-I question ("am I on shared or dedicated sending?")
+          without parsing the wizard state below. Three flavours:
+          shared (default), pending (domain set, not verified),
+          enabled (verified + active). */}
+      {!statusQuery.isLoading && (() => {
+        // 4 distinct states keyed by domain config in CR.
+        const isEnabled = !!domain && !!verifiedAt && enabled
+        const isVerifiedNotEnabled = !!domain && !!verifiedAt && !enabled
+        const isPending = !!domain && !verifiedAt
+        const isShared = !domain
+
+        const palette = isEnabled
+          ? { bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.3)', icon: '#10B981' }
+          : isVerifiedNotEnabled
+          ? { bg: 'rgba(168,85,247,0.08)', border: 'rgba(168,85,247,0.3)', icon: '#A855F7' }
+          : isPending
+          ? { bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.3)', icon: '#F59E0B' }
+          : { bg: 'var(--subtle)', border: 'var(--card-border)', icon: 'var(--t3)' }
+
+        const headline = isEnabled
+          ? `Currently sending from: ${previewFromAddress || `campaigns@${domain}`}`
+          : isVerifiedNotEnabled
+          ? `Domain verified — ready to enable: ${domain}`
+          : isPending
+          ? `Domain pending verification: ${domain}`
+          : 'Currently sending from: shared address (noreply@iqsport.ai)'
+
+        const body = isEnabled
+          ? 'Members see your club\'s domain in the From: line. White-label is active for every Engage send and Campaign Wizard launch.'
+          : isVerifiedNotEnabled
+          ? 'DNS records check out. Click Enable in Step 4 to switch all outgoing email to your domain.'
+          : isPending
+          ? 'Add the DNS records shown in Step 2 to your domain provider, then click Verify in Step 3.'
+          : 'Reliable for low-volume sends, but lacks branding and shares an IP reputation pool with other IQSport tenants. For best deliverability, set up a custom domain below.'
+
+        return (
+          <div
+            className="rounded-xl p-4 flex gap-3"
+            style={{ background: palette.bg, border: `1px solid ${palette.border}` }}
+          >
+            <Mail className="w-4 h-4 mt-0.5 shrink-0" style={{ color: palette.icon }} />
+            <div className="text-sm" style={{ color: 'var(--t2)' }}>
+              <p className="font-medium mb-1" style={{ color: 'var(--heading)' }}>
+                {headline}
+              </p>
+              <p className="text-xs" style={{ color: 'var(--t3)' }}>
+                {body}
+              </p>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* Deliverability footnote — answers Chris's §3-I worry about
+          IP warming and shared vs dedicated infrastructure. We send via
+          Mandrill's shared-IP pool; dedicated IP isn't on the roadmap
+          until we hit volume thresholds, so being explicit avoids
+          future "is my IP burning?" anxiety. */}
+      <div
+        className="rounded-xl p-3 text-xs flex gap-2"
+        style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--t3)' }}
+      >
+        <Info className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+        <div>
+          <strong style={{ color: 'var(--t2)' }}>Deliverability infrastructure:</strong> all email
+          flows through Mandrill on a shared IP pool with deliverability monitoring. IP warming is
+          handled automatically — you don&apos;t need to ramp send volume manually. Dedicated IP is
+          available on Enterprise tier for clubs sending 100k+ emails/month; talk to support if
+          that&apos;s you.
+        </div>
+      </div>
+
       {/* Why */}
       <div
         className="rounded-xl p-4 flex gap-3"

@@ -1,7 +1,7 @@
 /**
  * Newcomer Sequence — 3-step welcome chain for new club members.
  *
- * Implements ENGAGE_MVP segment #1 "Новичок": members joined ≤30 days ago
+ * Implements ENGAGE_MVP segment #1 "Newcomer": members joined ≤30 days ago
  * with 0–3 bookings and active subscription. Goal: drive ≥3 bookings in
  * the first 30 days (the "habit window" where retention is decided).
  *
