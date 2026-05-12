@@ -306,13 +306,20 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
     const userIds = Array.from(new Set(candidates.map((c) => c.userId)))
     const minSentAt = candidates.reduce<Date>((min, c) => (c.sentAt < min ? c.sentAt : min), candidates[0].sentAt)
 
-    const bookings = await prisma.$queryRaw<Array<{ userId: string; bookedAt: Date }>>`
-      SELECT b."userId" AS "userId", b."bookedAt" AS "bookedAt"
-      FROM play_session_bookings b
-      WHERE b."userId" = ANY(${userIds})
-        AND b."bookedAt" >= ${minSentAt}
-        AND b.status = 'CONFIRMED'
-    `
+    // Prisma `in` keeps the uuid/text coercion consistent across envs and
+    // avoids raw-SQL array parameter edge cases that can silently short-circuit
+    // sequence fan-out while the outer cron tick still returns 200.
+    const bookings = await prisma.playSessionBooking.findMany({
+      where: {
+        userId: { in: userIds },
+        bookedAt: { gte: minSentAt },
+        status: 'CONFIRMED',
+      },
+      select: {
+        userId: true,
+        bookedAt: true,
+      },
+    })
 
     // Build per-user latest booking time
     const latestBookingByUser = new Map<string, Date>()
