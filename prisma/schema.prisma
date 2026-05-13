@@ -1790,7 +1790,7 @@ model AIRecommendationLog {
   // The campaign-sends cron claims pending rows (sent_at IS NULL) and
   // dispatches mail. retry_count caps at 3 before being moved to
   // failed_count on the parent Campaign.
-  campaignId         String?                 @map("campaign_id")  @db.Uuid
+  campaignId         String?                 @map("campaign_id")
   campaign           Campaign?               @relation("CampaignRecipientLogs", fields: [campaignId], references: [id], onDelete: SetNull)
   scheduledFor       DateTime?               @map("scheduled_for") @db.Timestamptz()
   sentAt             DateTime?               @map("sent_at")      @db.Timestamptz()

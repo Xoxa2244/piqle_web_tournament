@@ -35,7 +35,9 @@ function createMockPrisma() {
       findFirst: vi.fn(),
     },
     aIRecommendationLog: {
+      count: vi.fn(),
       findMany: vi.fn(),
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
       createMany: vi.fn(),
       update: vi.fn(),
@@ -163,6 +165,38 @@ describe('campaign send runner', () => {
     expect(result.sequenceSeeded).toBe(1)
     expect(result.sequenceQueued).toBe(1)
     expect(result.totalSent).toBe(1)
+  })
+
+  it('debugs a non-runnable campaign without sending from it', async () => {
+    const prisma = createMockPrisma()
+    const now = new Date('2026-05-13T10:00:00.000Z')
+
+    prisma.campaign.findMany.mockResolvedValue([
+      makeSequenceCampaign({ status: 'completed' }),
+    ])
+    prisma.aIRecommendationLog.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+    prisma.aIRecommendationLog.findFirst.mockResolvedValue(null)
+
+    const result = await runCampaignSendTick(prisma, {
+      campaignId: 'campaign-1',
+      debug: true,
+      now,
+    })
+
+    expect(prisma.$queryRawUnsafe).not.toHaveBeenCalled()
+    expect(sendOutreachEmail).not.toHaveBeenCalled()
+    expect(result.campaigns).toEqual([
+      expect.objectContaining({
+        id: 'campaign-1',
+        status: 'completed',
+        skippedReason: 'status_completed',
+        pendingDue: 0,
+        pendingFuture: 0,
+        nextScheduledFor: null,
+      }),
+    ])
   })
 
   it('does not create a duplicate follow-up log when the next step already exists', async () => {

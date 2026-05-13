@@ -15,6 +15,7 @@ interface CampaignSendRunnerOptions {
   campaignId?: string
   limit?: number
   now?: Date
+  debug?: boolean
 }
 
 interface ClaimedRow {
@@ -81,6 +82,22 @@ type PendingLogSeed = {
   parentLogId?: string | null
   scheduledFor: Date
   reasoning?: Record<string, unknown>
+}
+
+type CampaignTickSummary = {
+  id: string
+  format: string
+  status: string
+  skippedReason?: string
+  seeded: number
+  queued: number
+  sent: number
+  failed: number
+  retried: number
+  exited: number
+  pendingDue?: number
+  pendingFuture?: number
+  nextScheduledFor?: string | null
 }
 
 function toSnapshotRecord(value: unknown) {
@@ -516,7 +533,7 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner, now: Da
        SET sent_at = $3::timestamptz
      WHERE id IN (
         SELECT id FROM ai_recommendation_logs
-         WHERE campaign_id = $1::uuid
+         WHERE campaign_id::text = $1
            AND sent_at IS NULL
            AND type = 'CAMPAIGN_SEND'
            AND status = 'pending'
@@ -695,6 +712,46 @@ async function maybeCompleteCampaign(prisma: any, campaignId: string) {
   return true
 }
 
+async function attachQueueDebug(
+  prisma: any,
+  summary: CampaignTickSummary,
+  campaignId: string,
+  now: Date,
+) {
+  const pendingWhere = {
+    campaignId,
+    type: 'CAMPAIGN_SEND',
+    status: 'pending',
+    sentAt: null,
+  }
+
+  const [pendingDue, pendingFuture, nextPending] = await Promise.all([
+    prisma.aIRecommendationLog.count({
+      where: {
+        ...pendingWhere,
+        OR: [{ scheduledFor: null }, { scheduledFor: { lte: now } }],
+      },
+    }),
+    prisma.aIRecommendationLog.count({
+      where: {
+        ...pendingWhere,
+        scheduledFor: { gt: now },
+      },
+    }),
+    prisma.aIRecommendationLog.findFirst({
+      where: pendingWhere,
+      select: { scheduledFor: true },
+      orderBy: [{ scheduledFor: 'asc' }, { createdAt: 'asc' }],
+    }),
+  ])
+
+  summary.pendingDue = pendingDue
+  summary.pendingFuture = pendingFuture
+  summary.nextScheduledFor = nextPending?.scheduledFor
+    ? nextPending.scheduledFor.toISOString()
+    : null
+}
+
 export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunnerOptions) {
   const startedAt = new Date()
   const now = opts?.now ?? new Date()
@@ -750,6 +807,7 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
       sequenceExited: 0,
       recurringFannedOut: 0,
       sequenceQueued: 0,
+      campaigns: [] as CampaignTickSummary[],
     }
   }
 
@@ -762,27 +820,56 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
   let totalSequenceExited = 0
   let totalRecurringFanOut = 0
   const liveModeSkips: string[] = []
+  const campaignSummaries: CampaignTickSummary[] = []
 
   for (const rawCampaign of campaigns as CampaignForRunner[]) {
+    const summary: CampaignTickSummary = {
+      id: rawCampaign.id,
+      format: rawCampaign.format,
+      status: rawCampaign.status,
+      seeded: 0,
+      queued: 0,
+      sent: 0,
+      failed: 0,
+      retried: 0,
+      exited: 0,
+    }
+
     try {
+      if (!['running', 'scheduled'].includes(rawCampaign.status)) {
+        summary.skippedReason = `status_${rawCampaign.status}`
+        campaignSummaries.push(summary)
+        continue
+      }
+
       const campaign = await activateCampaignIfDue(prisma, rawCampaign, now)
-      if (!campaign) continue
+      if (!campaign) {
+        summary.skippedReason = 'scheduled_in_future'
+        campaignSummaries.push(summary)
+        continue
+      }
+      summary.status = campaign.status
 
       const controlPlane = resolveAgentControlPlane(campaign.club.automationSettings)
       if (controlPlane.killSwitch || controlPlane.actions.outreachSend.mode !== 'live') {
         liveModeSkips.push(campaign.id)
+        summary.skippedReason = controlPlane.killSwitch ? 'kill_switch' : `outreach_${controlPlane.actions.outreachSend.mode}`
+        campaignSummaries.push(summary)
         continue
       }
 
       await ensureOneTimeLogs(prisma, campaign, now)
       const sequenceSeeded = await ensureSequenceRootLogs(prisma, campaign, now)
       totalSequenceSeeded += sequenceSeeded.created
+      summary.seeded += sequenceSeeded.created
 
       const recurringResult = await fanOutRecurring(prisma, campaign, now)
       totalRecurringFanOut += recurringResult.created
+      summary.queued += recurringResult.created
 
       const repaired = await repairSequenceQueue(prisma, campaign)
       totalSequenceQueued += repaired.created
+      summary.queued += repaired.created
 
       const result = await processCampaign(prisma, campaign, now)
       totalSent += result.sent
@@ -790,13 +877,29 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
       totalSkipped += result.skipped
       totalSequenceExited += result.exited
       totalSequenceQueued += result.queued
+      summary.sent += result.sent
+      summary.failed += result.failed
+      summary.retried += result.skipped
+      summary.exited += result.exited
+      summary.queued += result.queued
 
       if (campaign.format === 'one_time') {
         const completed = await maybeCompleteCampaign(prisma, campaign.id)
         if (completed) totalCompleted += 1
       }
     } catch (error: any) {
-      log.error?.(`[campaign-sends] processCampaign failed for ${rawCampaign.id}: ${String(error?.message ?? error).slice(0, 200)}`)
+      const message = String(error?.message ?? error).slice(0, 200)
+      summary.skippedReason = `error:${message}`
+      log.error?.(`[campaign-sends] processCampaign failed for ${rawCampaign.id}: ${message}`)
+    } finally {
+      if (opts?.debug) {
+        await attachQueueDebug(prisma, summary, rawCampaign.id, now).catch((error: any) => {
+          summary.skippedReason = summary.skippedReason ?? `debug_error:${String(error?.message ?? error).slice(0, 120)}`
+        })
+      }
+      if (!campaignSummaries.includes(summary)) {
+        campaignSummaries.push(summary)
+      }
     }
   }
 
@@ -816,6 +919,7 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
     sequenceQueued: totalSequenceQueued,
     sequenceExited: totalSequenceExited,
     recurringFannedOut: totalRecurringFanOut,
+    campaigns: campaignSummaries,
   }
 
   log.info?.(

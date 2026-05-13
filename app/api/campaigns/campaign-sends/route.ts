@@ -15,9 +15,11 @@ async function run(request: Request) {
 
   const url = new URL(request.url)
   const limit = Number(url.searchParams.get('limit') || 200)
+  const campaignId = url.searchParams.get('campaignId') || undefined
+  const debug = url.searchParams.get('debug') === '1'
 
   try {
-    const result = await runCampaignSendTick(prisma, { limit })
+    const result = await runCampaignSendTick(prisma, { limit, campaignId, debug })
     return NextResponse.json(result)
   } catch (error: any) {
     log.error?.(`[Campaign Sends] Failed: ${String(error?.message ?? error).slice(0, 200)}`)
