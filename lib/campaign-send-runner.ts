@@ -1,11 +1,19 @@
-import { buildOutreachTemplateValues, isBlockedEmail, sendOutreachEmail } from '@/lib/email'
+import {
+  buildOutreachTemplateValues,
+  interpolateOutreachTemplate,
+  isBlockedEmail,
+  sendOutreachEmail,
+} from '@/lib/email'
 import { resolveAgentControlPlane } from '@/lib/ai/agent-control-plane'
 import { cronLogger as log } from '@/lib/logger'
+import { normalizePhone } from '@/lib/phone-normalize'
 import {
   parseRecurringCron,
   resolveSequenceDelay,
   shouldFireRecurringNow,
 } from '@/lib/campaign-scheduling'
+import { appendSmsOptOut, sendSms } from '@/lib/sms'
+import { generateUnsubscribeUrl } from '@/lib/unsubscribe'
 
 const MAX_BATCH = 50
 const MAX_RETRIES = 3
@@ -21,6 +29,7 @@ interface CampaignSendRunnerOptions {
 interface ClaimedRow {
   id: string
   userId: string
+  channel: string | null
   retry_count: number
   sequence_step: number | null
   parent_log_id: string | null
@@ -31,6 +40,8 @@ interface CampaignUserRow {
   id: string
   email: string | null
   name: string | null
+  phone: string | null
+  smsOptIn: boolean | null
 }
 
 interface SequenceStepData {
@@ -78,11 +89,16 @@ type SequenceLogSnapshot = {
 
 type PendingLogSeed = {
   userId: string
+  channel: CampaignSendChannel
   sequenceStep: number | null
   parentLogId?: string | null
   scheduledFor: Date
   reasoning?: Record<string, unknown>
 }
+
+type PendingLogSeedBase = Omit<PendingLogSeed, 'channel'>
+
+type CampaignSendChannel = 'email' | 'sms'
 
 type CampaignTickSummary = {
   id: string
@@ -126,8 +142,63 @@ function getCampaignSnapshotUserIds(snapshotValue: unknown): string[] {
   return Array.from(new Set(userIds))
 }
 
-function getPrimaryChannel(channels: string[]) {
-  return channels.includes('email') ? 'email' : 'sms'
+function getCampaignChannels(channels: string[]): CampaignSendChannel[] {
+  const resolved: CampaignSendChannel[] = []
+  if (channels.includes('email')) resolved.push('email')
+  if (channels.includes('sms')) resolved.push('sms')
+  return resolved.length > 0 ? resolved : ['email']
+}
+
+function coerceCampaignChannel(channel: string | null | undefined): CampaignSendChannel {
+  return channel === 'sms' ? 'sms' : 'email'
+}
+
+function expandSeedsForCampaignChannels(
+  campaign: Pick<CampaignForRunner, 'channels'>,
+  seeds: PendingLogSeedBase[],
+) {
+  const channels = getCampaignChannels(campaign.channels)
+  return seeds.flatMap((seed) => channels.map((channel) => ({ ...seed, channel })))
+}
+
+function getPendingLogSeedKey(seed: Pick<PendingLogSeed, 'userId' | 'sequenceStep' | 'channel'>) {
+  return `${seed.userId}:${seed.sequenceStep ?? -1}:${seed.channel}`
+}
+
+function getSafeSmsOptOutUrl(userId: string, clubId: string) {
+  try {
+    return generateUnsubscribeUrl(userId, clubId)
+  } catch {
+    return undefined
+  }
+}
+
+function buildCampaignSmsBody(input: {
+  campaign: CampaignForRunner
+  user: Pick<CampaignUserRow, 'id' | 'name'>
+  clubName: string
+  bookingUrl: string
+  subject: string | null
+  body: string | null
+  ctaUrl: string | null
+}) {
+  const templateValues = buildOutreachTemplateValues({
+    fullName: input.user.name,
+    clubName: input.clubName,
+  })
+  const subject = interpolateOutreachTemplate(input.subject ?? input.campaign.name, templateValues).trim()
+  const body = interpolateOutreachTemplate(input.body ?? '', templateValues).trim()
+  const ctaUrl = input.ctaUrl ?? input.bookingUrl
+  const message = [body || subject, ctaUrl]
+    .filter((part, index, parts) => Boolean(part) && (index === 0 || !parts[0]?.includes(String(part))))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  return appendSmsOptOut(
+    message || subject || input.campaign.name,
+    getSafeSmsOptOutUrl(input.user.id, input.campaign.clubId),
+  )
 }
 
 function buildSequenceReasoning(
@@ -170,22 +241,29 @@ async function createMissingCampaignLogs(
 ) {
   if (seeds.length === 0) return { created: 0 }
 
+  const uniqueSeeds = Array.from(
+    new Map(seeds.map((seed) => [getPendingLogSeedKey(seed), seed])).values(),
+  )
+
   const existingLogs = await prisma.aIRecommendationLog.findMany({
     where: {
       campaignId: campaign.id,
       type: 'CAMPAIGN_SEND',
-      OR: seeds.map((seed) => ({
+      OR: uniqueSeeds.map((seed) => ({
         userId: seed.userId,
         sequenceStep: seed.sequenceStep,
+        channel: seed.channel,
       })),
     },
-    select: { userId: true, sequenceStep: true },
+    select: { userId: true, sequenceStep: true, channel: true },
   })
 
   const existingKeys = new Set(
-    existingLogs.map((entry: { userId: string; sequenceStep: number | null }) => `${entry.userId}:${entry.sequenceStep ?? -1}`),
+    existingLogs.map((entry: { userId: string; sequenceStep: number | null; channel: string | null }) =>
+      `${entry.userId}:${entry.sequenceStep ?? -1}:${coerceCampaignChannel(entry.channel)}`,
+    ),
   )
-  const missing = seeds.filter((seed) => !existingKeys.has(`${seed.userId}:${seed.sequenceStep ?? -1}`))
+  const missing = uniqueSeeds.filter((seed) => !existingKeys.has(getPendingLogSeedKey(seed)))
   if (missing.length === 0) return { created: 0 }
 
   await prisma.aIRecommendationLog.createMany({
@@ -193,14 +271,16 @@ async function createMissingCampaignLogs(
       clubId: campaign.clubId,
       userId: seed.userId,
       type: 'CAMPAIGN_SEND' as const,
-      channel: getPrimaryChannel(campaign.channels),
+      channel: seed.channel,
       status: 'pending',
       campaignId: campaign.id,
       sequenceStep: seed.sequenceStep,
       parentLogId: seed.parentLogId ?? null,
       scheduledFor: seed.scheduledFor,
-      reasoning: seed.reasoning ?? {
+      reasoning: {
         campaignName: campaign.name,
+        ...(seed.reasoning ?? {}),
+        channel: seed.channel,
       },
     })),
   })
@@ -278,12 +358,12 @@ async function ensureSequenceRootLogs(prisma: any, campaign: CampaignForRunner, 
   return createMissingCampaignLogs(
     prisma,
     campaign,
-    userIds.map((userId) => ({
+    expandSeedsForCampaignChannels(campaign, userIds.map((userId) => ({
       userId,
       sequenceStep: 0,
       scheduledFor,
       reasoning: buildSequenceReasoning(campaign, 0, { scheduledFor }),
-    })),
+    }))),
   )
 }
 
@@ -296,14 +376,14 @@ async function ensureOneTimeLogs(prisma: any, campaign: CampaignForRunner, now: 
   return createMissingCampaignLogs(
     prisma,
     campaign,
-    userIds.map((userId) => ({
+    expandSeedsForCampaignChannels(campaign, userIds.map((userId) => ({
       userId,
       sequenceStep: null,
       scheduledFor: getCampaignLaunchBase(campaign, now),
       reasoning: {
         campaignName: campaign.name,
       },
-    })),
+    }))),
   )
 }
 
@@ -355,20 +435,22 @@ async function fanOutRecurring(prisma: any, campaign: CampaignForRunner, now: Da
     return { created: 0 }
   }
 
+  const channels = getCampaignChannels(campaign.channels)
   await prisma.aIRecommendationLog.createMany({
-    data: userIds.map((userId) => ({
+    data: userIds.flatMap((userId) => channels.map((channel) => ({
       clubId: campaign.clubId,
       userId,
       type: 'CAMPAIGN_SEND' as const,
-      channel: getPrimaryChannel(campaign.channels),
+      channel,
       status: 'pending',
       campaignId: campaign.id,
       scheduledFor: now,
       reasoning: {
         campaignName: campaign.name,
         recurringTickAt: now.toISOString(),
+        channel,
       },
-    })),
+    }))),
   })
 
   await prisma.campaign.update({
@@ -376,7 +458,7 @@ async function fanOutRecurring(prisma: any, campaign: CampaignForRunner, now: Da
     data: { lastRecurringRun: now },
   })
 
-  return { created: userIds.length }
+  return { created: userIds.length * channels.length }
 }
 
 async function queueNextSequenceStep(
@@ -393,7 +475,7 @@ async function queueNextSequenceStep(
   if (!nextStepData) return { created: 0 }
 
   const scheduledFor = addSequenceDelay(sentAt, nextStepData)
-  return createMissingCampaignLogs(prisma, campaign, [{
+  return createMissingCampaignLogs(prisma, campaign, expandSeedsForCampaignChannels(campaign, [{
     userId: sentLog.userId,
     sequenceStep: nextStep,
     parentLogId: sentLog.id,
@@ -402,7 +484,7 @@ async function queueNextSequenceStep(
       scheduledFor,
       parentLogId: sentLog.id,
     }),
-  }])
+  }]))
 }
 
 async function repairSequenceQueue(prisma: any, campaign: CampaignForRunner) {
@@ -431,7 +513,7 @@ async function repairSequenceQueue(prisma: any, campaign: CampaignForRunner) {
     take: REPAIR_LIMIT,
   })
 
-  const seeds: PendingLogSeed[] = []
+  const seeds: PendingLogSeedBase[] = []
   for (const logEntry of sentLogs) {
     if (typeof logEntry.sequenceStep !== 'number') continue
     if (toSnapshotRecord(logEntry.reasoning).sequenceExit) continue
@@ -454,7 +536,7 @@ async function repairSequenceQueue(prisma: any, campaign: CampaignForRunner) {
     })
   }
 
-  return createMissingCampaignLogs(prisma, campaign, seeds)
+  return createMissingCampaignLogs(prisma, campaign, expandSeedsForCampaignChannels(campaign, seeds))
 }
 
 function resolveContentForLog(
@@ -542,7 +624,7 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner, now: Da
         LIMIT $2
         FOR UPDATE SKIP LOCKED
      )
-     RETURNING id, "userId", retry_count, sequence_step, parent_log_id, scheduled_for
+     RETURNING id, "userId", channel, retry_count, sequence_step, parent_log_id, scheduled_for
     `,
     campaign.id,
     MAX_BATCH,
@@ -555,7 +637,7 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner, now: Da
 
   const users: CampaignUserRow[] = await prisma.user.findMany({
     where: { id: { in: claimed.map((row) => row.userId) } },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, phone: true, smsOptIn: true },
   })
   const userById = new Map(users.map((user) => [user.id, user] as const))
 
@@ -575,19 +657,10 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner, now: Da
 
   for (const row of claimed) {
     const user = userById.get(row.userId)
-    if (!user?.email) {
+    if (!user) {
       await prisma.aIRecommendationLog.update({
         where: { id: row.id },
-        data: { status: 'failed', bouncedAt: new Date(), bounceType: 'no_email' },
-      })
-      failed += 1
-      continue
-    }
-
-    if (isBlockedEmail(user.email)) {
-      await prisma.aIRecommendationLog.update({
-        where: { id: row.id },
-        data: { status: 'failed', bouncedAt: new Date(), bounceType: 'blocked_domain' },
+        data: { status: 'failed', bouncedAt: new Date(), bounceType: 'missing_user' },
       })
       failed += 1
       continue
@@ -612,32 +685,108 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner, now: Da
     }
 
     const content = resolveContentForLog(campaign, row.sequence_step)
+    const channel = coerceCampaignChannel(row.channel)
     try {
-      const { messageId } = await sendOutreachEmail({
-        to: user.email,
-        subject: content.subject ?? campaign.name,
-        body: content.body ?? '',
-        clubName,
-        bookingUrl,
-        templateValues: buildOutreachTemplateValues({
-          fullName: user.name,
-          clubName,
-        }),
-        ctaLabel: content.ctaLabel,
-        ctaUrl: content.ctaUrl,
-        metadata: {
+      let externalMessageId: string | null = null
+      if (channel === 'sms') {
+        if (!user.phone) {
+          await prisma.aIRecommendationLog.update({
+            where: { id: row.id },
+            data: { status: 'failed', bouncedAt: new Date(), bounceType: 'no_phone' },
+          })
+          failed += 1
+          continue
+        }
+
+        if (!user.smsOptIn) {
+          await prisma.aIRecommendationLog.update({
+            where: { id: row.id },
+            data: { status: 'failed', bouncedAt: new Date(), bounceType: 'sms_opt_in_required' },
+          })
+          failed += 1
+          continue
+        }
+
+        const normalizedPhone = normalizePhone(user.phone)
+        if (!normalizedPhone) {
+          await prisma.aIRecommendationLog.update({
+            where: { id: row.id },
+            data: { status: 'failed', bouncedAt: new Date(), bounceType: 'invalid_phone' },
+          })
+          failed += 1
+          continue
+        }
+
+        const smsResult = await sendSms({
+          to: normalizedPhone,
+          body: buildCampaignSmsBody({
+            campaign,
+            user,
+            clubName,
+            bookingUrl,
+            subject: content.subject,
+            body: content.body,
+            ctaUrl: content.ctaUrl,
+          }),
           logId: row.id,
-          clubId: campaign.clubId,
-          userId: user.id,
-        },
-        tags: campaign.format === 'sequence'
-          ? ['campaign', `campaign:${campaign.id}`, `step:${row.sequence_step ?? 0}`]
-          : ['campaign', `campaign:${campaign.id}`],
-      })
+        })
+
+        if (smsResult.status === 'invalid_phone') {
+          await prisma.aIRecommendationLog.update({
+            where: { id: row.id },
+            data: { status: 'failed', bouncedAt: new Date(), bounceType: 'invalid_phone' },
+          })
+          failed += 1
+          continue
+        }
+
+        externalMessageId = smsResult.sid || null
+      } else {
+        if (!user.email) {
+          await prisma.aIRecommendationLog.update({
+            where: { id: row.id },
+            data: { status: 'failed', bouncedAt: new Date(), bounceType: 'no_email' },
+          })
+          failed += 1
+          continue
+        }
+
+        if (isBlockedEmail(user.email)) {
+          await prisma.aIRecommendationLog.update({
+            where: { id: row.id },
+            data: { status: 'failed', bouncedAt: new Date(), bounceType: 'blocked_domain' },
+          })
+          failed += 1
+          continue
+        }
+
+        const { messageId } = await sendOutreachEmail({
+          to: user.email,
+          subject: content.subject ?? campaign.name,
+          body: content.body ?? '',
+          clubName,
+          bookingUrl,
+          templateValues: buildOutreachTemplateValues({
+            fullName: user.name,
+            clubName,
+          }),
+          ctaLabel: content.ctaLabel,
+          ctaUrl: content.ctaUrl,
+          metadata: {
+            logId: row.id,
+            clubId: campaign.clubId,
+            userId: user.id,
+          },
+          tags: campaign.format === 'sequence'
+            ? ['campaign', `campaign:${campaign.id}`, `step:${row.sequence_step ?? 0}`]
+            : ['campaign', `campaign:${campaign.id}`],
+        })
+        externalMessageId = messageId
+      }
 
       await prisma.aIRecommendationLog.update({
         where: { id: row.id },
-        data: { externalMessageId: messageId, status: 'sent' },
+        data: { externalMessageId, status: 'sent' },
       })
       const queuedNext = await queueNextSequenceStep(prisma, campaign, {
         id: row.id,
@@ -687,23 +836,31 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner, now: Da
 }
 
 async function maybeCompleteCampaign(prisma: any, campaignId: string) {
-  const campaign = await prisma.campaign.findUnique({
-    where: { id: campaignId },
-    select: {
-      sentCount: true,
-      failedCount: true,
-      cohortSnapshot: true,
-      status: true,
-    },
-  })
+  const [campaign, totalLogs, pendingLogs] = await Promise.all([
+    prisma.campaign.findUnique({
+      where: { id: campaignId },
+      select: {
+        status: true,
+      },
+    }),
+    prisma.aIRecommendationLog.count({
+      where: {
+        campaignId,
+        type: 'CAMPAIGN_SEND',
+      },
+    }),
+    prisma.aIRecommendationLog.count({
+      where: {
+        campaignId,
+        type: 'CAMPAIGN_SEND',
+        status: 'pending',
+      },
+    }),
+  ])
 
   if (!campaign || campaign.status !== 'running') return false
-
-  const totalRecipients = getCampaignSnapshotUserIds(campaign.cohortSnapshot).length
-  if (totalRecipients === 0) return false
-
-  const processed = (campaign.sentCount ?? 0) + (campaign.failedCount ?? 0)
-  if (processed < totalRecipients) return false
+  if (totalLogs === 0) return false
+  if (pendingLogs > 0) return false
 
   await prisma.campaign.update({
     where: { id: campaignId },

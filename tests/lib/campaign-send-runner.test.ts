@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { sendOutreachEmail } = vi.hoisted(() => ({
+const { sendOutreachEmail, sendSms } = vi.hoisted(() => ({
   sendOutreachEmail: vi.fn(),
+  sendSms: vi.fn(),
 }))
 
 vi.mock('@/lib/email', async (importOriginal) => {
@@ -9,6 +10,14 @@ vi.mock('@/lib/email', async (importOriginal) => {
   return {
     ...actual,
     sendOutreachEmail,
+  }
+})
+
+vi.mock('@/lib/sms', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/sms')>()
+  return {
+    ...actual,
+    sendSms,
   }
 })
 
@@ -85,10 +94,44 @@ function makeSequenceCampaign(overrides?: Partial<any>) {
   }
 }
 
+function makeOneTimeCampaign(overrides?: Partial<any>) {
+  return {
+    id: 'campaign-1',
+    clubId: 'club-1',
+    name: 'Retention boost',
+    subject: 'Come back',
+    body: 'Hey {{first_name}}, we saved a spot for you.',
+    cohortSnapshot: {
+      userIds: ['member-1'],
+      sendFormat: 'one_time',
+    },
+    ctaLabel: null,
+    ctaUrl: null,
+    format: 'one_time',
+    steps: null,
+    exitOnBooking: true,
+    cohortId: null,
+    cronExpression: null,
+    recurringTimezone: null,
+    lastRecurringRun: null,
+    channels: ['email'],
+    status: 'running',
+    scheduledAt: null,
+    launchedAt: null,
+    club: {
+      id: 'club-1',
+      automationSettings: { intelligence: { agentLive: true } },
+    },
+    ...overrides,
+  }
+}
+
 describe('campaign send runner', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    process.env.CRON_SECRET = 'test-secret'
     sendOutreachEmail.mockResolvedValue({ messageId: 'msg-1' })
+    sendSms.mockResolvedValue({ status: 'queued', sid: 'sms-1' })
   })
 
   it('queues follow-up using the arbitrary minute delay from the wizard', async () => {
@@ -279,6 +322,205 @@ describe('campaign send runner', () => {
       }),
     )
     expect(result.sequenceQueued).toBe(1)
+    expect(result.totalSent).toBe(1)
+  })
+
+  it('creates and sends separate logs for email and sms when both channels are enabled', async () => {
+    const prisma = createMockPrisma()
+    const now = new Date('2026-05-13T10:00:00.000Z')
+
+    prisma.campaign.findMany.mockResolvedValue([
+      makeOneTimeCampaign({
+        channels: ['email', 'sms'],
+      }),
+    ])
+    prisma.aIRecommendationLog.findMany.mockResolvedValueOnce([])
+    prisma.$queryRawUnsafe.mockResolvedValue([
+      {
+        id: 'log-email',
+        userId: 'member-1',
+        channel: 'email',
+        retry_count: 0,
+        sequence_step: null,
+        parent_log_id: null,
+        scheduled_for: now,
+      },
+      {
+        id: 'log-sms',
+        userId: 'member-1',
+        channel: 'sms',
+        retry_count: 0,
+        sequence_step: null,
+        parent_log_id: null,
+        scheduled_for: now,
+      },
+    ])
+    prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'member-1',
+        email: 'member@clubmail.com',
+        name: 'Member One',
+        phone: '+14155552671',
+        smsOptIn: true,
+      },
+    ])
+    prisma.club.findUnique.mockResolvedValue({ name: 'IQ Club' })
+    prisma.aIRecommendationLog.count
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0)
+
+    const result = await runCampaignSendTick(prisma, { now })
+
+    expect(prisma.aIRecommendationLog.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            campaignId: 'campaign-1',
+            userId: 'member-1',
+            channel: 'email',
+          }),
+          expect.objectContaining({
+            campaignId: 'campaign-1',
+            userId: 'member-1',
+            channel: 'sms',
+          }),
+        ]),
+      }),
+    )
+    expect(sendOutreachEmail).toHaveBeenCalledTimes(1)
+    expect(sendSms).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: '+14155552671',
+        logId: 'log-sms',
+      }),
+    )
+    expect(prisma.aIRecommendationLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'log-email' },
+        data: expect.objectContaining({ status: 'sent', externalMessageId: 'msg-1' }),
+      }),
+    )
+    expect(prisma.aIRecommendationLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'log-sms' },
+        data: expect.objectContaining({ status: 'sent', externalMessageId: 'sms-1' }),
+      }),
+    )
+    expect(result.totalSent).toBe(2)
+    expect(result.totalFailed).toBe(0)
+  })
+
+  it('fails the sms leg when the member has not opted in while still sending email', async () => {
+    const prisma = createMockPrisma()
+    const now = new Date('2026-05-13T10:00:00.000Z')
+
+    prisma.campaign.findMany.mockResolvedValue([
+      makeOneTimeCampaign({
+        channels: ['email', 'sms'],
+      }),
+    ])
+    prisma.aIRecommendationLog.findMany.mockResolvedValueOnce([])
+    prisma.$queryRawUnsafe.mockResolvedValue([
+      {
+        id: 'log-email',
+        userId: 'member-1',
+        channel: 'email',
+        retry_count: 0,
+        sequence_step: null,
+        parent_log_id: null,
+        scheduled_for: now,
+      },
+      {
+        id: 'log-sms',
+        userId: 'member-1',
+        channel: 'sms',
+        retry_count: 0,
+        sequence_step: null,
+        parent_log_id: null,
+        scheduled_for: now,
+      },
+    ])
+    prisma.user.findMany.mockResolvedValue([
+      {
+        id: 'member-1',
+        email: 'member@clubmail.com',
+        name: 'Member One',
+        phone: '+14155552671',
+        smsOptIn: false,
+      },
+    ])
+    prisma.club.findUnique.mockResolvedValue({ name: 'IQ Club' })
+    prisma.aIRecommendationLog.count
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0)
+
+    const result = await runCampaignSendTick(prisma, { now })
+
+    expect(sendOutreachEmail).toHaveBeenCalledTimes(1)
+    expect(sendSms).not.toHaveBeenCalled()
+    expect(prisma.aIRecommendationLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'log-sms' },
+        data: expect.objectContaining({ status: 'failed', bounceType: 'sms_opt_in_required' }),
+      }),
+    )
+    expect(result.totalSent).toBe(1)
+    expect(result.totalFailed).toBe(1)
+  })
+
+  it('fans out the next sequence step across both channels after the first successful send', async () => {
+    const prisma = createMockPrisma()
+    const now = new Date('2026-05-13T10:00:00.000Z')
+
+    prisma.campaign.findMany.mockResolvedValue([
+      makeSequenceCampaign({
+        channels: ['email', 'sms'],
+      }),
+    ])
+    prisma.aIRecommendationLog.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+    prisma.$queryRawUnsafe.mockResolvedValue([
+      {
+        id: 'log-step-0-email',
+        userId: 'member-1',
+        channel: 'email',
+        retry_count: 0,
+        sequence_step: 0,
+        parent_log_id: null,
+        scheduled_for: now,
+      },
+    ])
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'member-1', email: 'member@clubmail.com', name: 'Member One', phone: '+14155552671', smsOptIn: true },
+    ])
+    prisma.club.findUnique.mockResolvedValue({ name: 'IQ Club' })
+
+    const result = await runCampaignSendTick(prisma, { now })
+
+    expect(prisma.aIRecommendationLog.createMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.arrayContaining([
+          expect.objectContaining({
+            campaignId: 'campaign-1',
+            userId: 'member-1',
+            sequenceStep: 1,
+            channel: 'email',
+            parentLogId: 'log-step-0-email',
+          }),
+          expect.objectContaining({
+            campaignId: 'campaign-1',
+            userId: 'member-1',
+            sequenceStep: 1,
+            channel: 'sms',
+            parentLogId: 'log-step-0-email',
+          }),
+        ]),
+      }),
+    )
+    expect(result.sequenceQueued).toBe(2)
     expect(result.totalSent).toBe(1)
   })
 })
