@@ -67,6 +67,15 @@ interface ClaimedRow {
 interface SequenceStepData {
   stepIndex: number
   delayDays: number
+  /**
+   * Optional test-mode override. When > 0, the fan-out cron treats this
+   * step's delay as `delayMinutes` instead of `delayDays`. Used by the
+   * Campaign Wizard test mode to make a 5-day sequence fire in 5 minutes
+   * for end-to-end QA without waiting through real production delays.
+   *
+   * If absent / 0 → fall back to delayDays (production behaviour).
+   */
+  delayMinutes?: number
   subject: string
   body: string
   ctaLabel?: string | null
@@ -309,7 +318,18 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
   }> = []
 
   for (let n = 0; n < steps.length - 1; n++) {
-    const delayDays = steps[n + 1].delayDays | 0
+    const nextStep = steps[n + 1]
+    const delayDays = nextStep.delayDays | 0
+    const delayMinutes = (nextStep.delayMinutes ?? 0) | 0
+
+    // Test-mode override: if delayMinutes > 0, treat the whole step delay
+    // as minutes (overrides delayDays). Otherwise use delayDays.
+    // We compute a single total in minutes so the SQL can use a single
+    // INTERVAL expression with parameterized count.
+    const totalMinutes = delayMinutes > 0
+      ? delayMinutes
+      : delayDays * 24 * 60
+
     const rows = await prisma.$queryRaw<Array<{
       logId: string
       userId: string
@@ -327,7 +347,7 @@ async function fanOutNextSteps(campaign: CampaignForCron): Promise<{ created: nu
         AND log.sent_at IS NOT NULL
         AND log.status = 'sent'
         AND log.sequence_step = ${n}
-        AND log.sent_at <= NOW() - (${delayDays} * INTERVAL '1 day')
+        AND log.sent_at <= NOW() - (${totalMinutes} * INTERVAL '1 minute')
         AND NOT EXISTS (
           SELECT 1 FROM ai_recommendation_logs nl
           WHERE nl.campaign_id = log.campaign_id
