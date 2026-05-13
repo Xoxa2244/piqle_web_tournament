@@ -1792,6 +1792,7 @@ model AIRecommendationLog {
   // failed_count on the parent Campaign.
   campaignId         String?                 @map("campaign_id")  @db.Uuid
   campaign           Campaign?               @relation("CampaignRecipientLogs", fields: [campaignId], references: [id], onDelete: SetNull)
+  scheduledFor       DateTime?               @map("scheduled_for") @db.Timestamptz()
   sentAt             DateTime?               @map("sent_at")      @db.Timestamptz()
   retryCount         Int                     @default(0) @map("retry_count")
 
@@ -1816,6 +1817,7 @@ model AIRecommendationLog {
   @@index([externalMessageId])
   @@index([variantId, type])
   @@index([clubId, type, status])
+  @@index([campaignId, scheduledFor, status])
   @@index([parentLogId])
   @@index([campaignId, createdAt])
   @@map("ai_recommendation_logs")

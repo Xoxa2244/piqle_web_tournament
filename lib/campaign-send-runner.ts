@@ -2,14 +2,14 @@ import { buildOutreachTemplateValues, isBlockedEmail, sendOutreachEmail } from '
 import { resolveAgentControlPlane } from '@/lib/ai/agent-control-plane'
 import { cronLogger as log } from '@/lib/logger'
 import {
-  getCampaignSequenceDueCandidates,
   parseRecurringCron,
+  resolveSequenceDelay,
   shouldFireRecurringNow,
 } from '@/lib/campaign-scheduling'
 
 const MAX_BATCH = 50
 const MAX_RETRIES = 3
-const FAN_OUT_LIMIT = 200
+const REPAIR_LIMIT = 200
 
 interface CampaignSendRunnerOptions {
   campaignId?: string
@@ -22,6 +22,8 @@ interface ClaimedRow {
   userId: string
   retry_count: number
   sequence_step: number | null
+  parent_log_id: string | null
+  scheduled_for: Date | null
 }
 
 interface CampaignUserRow {
@@ -73,6 +75,14 @@ type SequenceLogSnapshot = {
   reasoning?: unknown
 }
 
+type PendingLogSeed = {
+  userId: string
+  sequenceStep: number | null
+  parentLogId?: string | null
+  scheduledFor: Date
+  reasoning?: Record<string, unknown>
+}
+
 function toSnapshotRecord(value: unknown) {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -103,14 +113,82 @@ function getPrimaryChannel(channels: string[]) {
   return channels.includes('email') ? 'email' : 'sms'
 }
 
-function buildSequenceReasoning(campaign: CampaignForRunner, stepIndex: number) {
+function buildSequenceReasoning(
+  campaign: CampaignForRunner,
+  stepIndex: number,
+  opts?: { scheduledFor?: Date; parentLogId?: string | null },
+) {
   const steps = getCampaignSequenceSteps(campaign)
+  const step = steps[stepIndex]
+  const delay = step ? resolveSequenceDelay(step) : null
   return {
     campaignName: campaign.name,
     totalSteps: steps.length,
     sequenceStep: stepIndex,
     stepNumber: stepIndex + 1,
+    ...(delay ? { delayAmount: delay.amount, delayUnit: delay.unit } : {}),
+    ...(opts?.scheduledFor ? { scheduledFor: opts.scheduledFor.toISOString() } : {}),
+    ...(opts?.parentLogId ? { parentLogId: opts.parentLogId } : {}),
   }
+}
+
+function addSequenceDelay(base: Date, step: SequenceStepData) {
+  const delay = resolveSequenceDelay(step)
+  const delayMs = delay.unit === 'minutes'
+    ? delay.amount * 60 * 1000
+    : delay.amount * 24 * 60 * 60 * 1000
+  return new Date(base.getTime() + delayMs)
+}
+
+function getCampaignLaunchBase(campaign: CampaignForRunner, now: Date) {
+  if (campaign.launchedAt) return campaign.launchedAt
+  if (campaign.scheduledAt && campaign.scheduledAt.getTime() <= now.getTime()) return campaign.scheduledAt
+  return now
+}
+
+async function createMissingCampaignLogs(
+  prisma: any,
+  campaign: CampaignForRunner,
+  seeds: PendingLogSeed[],
+) {
+  if (seeds.length === 0) return { created: 0 }
+
+  const existingLogs = await prisma.aIRecommendationLog.findMany({
+    where: {
+      campaignId: campaign.id,
+      type: 'CAMPAIGN_SEND',
+      OR: seeds.map((seed) => ({
+        userId: seed.userId,
+        sequenceStep: seed.sequenceStep,
+      })),
+    },
+    select: { userId: true, sequenceStep: true },
+  })
+
+  const existingKeys = new Set(
+    existingLogs.map((entry: { userId: string; sequenceStep: number | null }) => `${entry.userId}:${entry.sequenceStep ?? -1}`),
+  )
+  const missing = seeds.filter((seed) => !existingKeys.has(`${seed.userId}:${seed.sequenceStep ?? -1}`))
+  if (missing.length === 0) return { created: 0 }
+
+  await prisma.aIRecommendationLog.createMany({
+    data: missing.map((seed) => ({
+      clubId: campaign.clubId,
+      userId: seed.userId,
+      type: 'CAMPAIGN_SEND' as const,
+      channel: getPrimaryChannel(campaign.channels),
+      status: 'pending',
+      campaignId: campaign.id,
+      sequenceStep: seed.sequenceStep,
+      parentLogId: seed.parentLogId ?? null,
+      scheduledFor: seed.scheduledFor,
+      reasoning: seed.reasoning ?? {
+        campaignName: campaign.name,
+      },
+    })),
+  })
+
+  return { created: missing.length }
 }
 
 export function authorizeCampaignSendCron(request: Request) {
@@ -170,7 +248,7 @@ async function activateCampaignIfDue(prisma: any, campaign: CampaignForRunner, n
   return updated as CampaignForRunner
 }
 
-async function ensureSequenceRootLogs(prisma: any, campaign: CampaignForRunner) {
+async function ensureSequenceRootLogs(prisma: any, campaign: CampaignForRunner, now: Date) {
   if (campaign.format !== 'sequence') return { created: 0 }
 
   const steps = getCampaignSequenceSteps(campaign)
@@ -179,39 +257,37 @@ async function ensureSequenceRootLogs(prisma: any, campaign: CampaignForRunner) 
   const userIds = getCampaignSnapshotUserIds(campaign.cohortSnapshot)
   if (userIds.length === 0) return { created: 0 }
 
-  const existingLogs = await prisma.aIRecommendationLog.findMany({
-    where: {
-      campaignId: campaign.id,
-      type: 'CAMPAIGN_SEND',
-      sequenceStep: 0,
-      userId: { in: userIds },
-    },
-    select: { userId: true },
-  })
-
-  const existingUserIds = new Set(
-    existingLogs
-      .map((log: { userId?: string | null }) => (typeof log.userId === 'string' ? log.userId : null))
-      .filter((value: string | null): value is string => Boolean(value)),
-  )
-
-  const missingUserIds = userIds.filter((userId) => !existingUserIds.has(userId))
-  if (missingUserIds.length === 0) return { created: 0 }
-
-  await prisma.aIRecommendationLog.createMany({
-    data: missingUserIds.map((userId) => ({
-      clubId: campaign.clubId,
+  const scheduledFor = getCampaignLaunchBase(campaign, now)
+  return createMissingCampaignLogs(
+    prisma,
+    campaign,
+    userIds.map((userId) => ({
       userId,
-      type: 'CAMPAIGN_SEND' as const,
-      channel: getPrimaryChannel(campaign.channels),
-      status: 'pending',
-      campaignId: campaign.id,
       sequenceStep: 0,
-      reasoning: buildSequenceReasoning(campaign, 0),
+      scheduledFor,
+      reasoning: buildSequenceReasoning(campaign, 0, { scheduledFor }),
     })),
-  })
+  )
+}
 
-  return { created: missingUserIds.length }
+async function ensureOneTimeLogs(prisma: any, campaign: CampaignForRunner, now: Date) {
+  if (campaign.format !== 'one_time') return { created: 0 }
+
+  const userIds = getCampaignSnapshotUserIds(campaign.cohortSnapshot)
+  if (userIds.length === 0) return { created: 0 }
+
+  return createMissingCampaignLogs(
+    prisma,
+    campaign,
+    userIds.map((userId) => ({
+      userId,
+      sequenceStep: null,
+      scheduledFor: getCampaignLaunchBase(campaign, now),
+      reasoning: {
+        campaignName: campaign.name,
+      },
+    })),
+  )
 }
 
 async function fanOutRecurring(prisma: any, campaign: CampaignForRunner, now: Date): Promise<{ created: number }> {
@@ -270,6 +346,7 @@ async function fanOutRecurring(prisma: any, campaign: CampaignForRunner, now: Da
       channel: getPrimaryChannel(campaign.channels),
       status: 'pending',
       campaignId: campaign.id,
+      scheduledFor: now,
       reasoning: {
         campaignName: campaign.name,
         recurringTickAt: now.toISOString(),
@@ -285,17 +362,44 @@ async function fanOutRecurring(prisma: any, campaign: CampaignForRunner, now: Da
   return { created: userIds.length }
 }
 
-async function fanOutNextSteps(prisma: any, campaign: CampaignForRunner, now: Date): Promise<{ created: number; exited: number }> {
-  if (campaign.format !== 'sequence') return { created: 0, exited: 0 }
+async function queueNextSequenceStep(
+  prisma: any,
+  campaign: CampaignForRunner,
+  sentLog: { id: string; userId: string; sequenceStep: number | null },
+  sentAt: Date,
+) {
+  if (campaign.format !== 'sequence' || typeof sentLog.sequenceStep !== 'number') return { created: 0 }
 
   const steps = getCampaignSequenceSteps(campaign)
-  if (steps.length <= 1) return { created: 0, exited: 0 }
+  const nextStep = sentLog.sequenceStep + 1
+  const nextStepData = steps[nextStep]
+  if (!nextStepData) return { created: 0 }
 
-  const sequenceLogs: SequenceLogSnapshot[] = await prisma.aIRecommendationLog.findMany({
+  const scheduledFor = addSequenceDelay(sentAt, nextStepData)
+  return createMissingCampaignLogs(prisma, campaign, [{
+    userId: sentLog.userId,
+    sequenceStep: nextStep,
+    parentLogId: sentLog.id,
+    scheduledFor,
+    reasoning: buildSequenceReasoning(campaign, nextStep, {
+      scheduledFor,
+      parentLogId: sentLog.id,
+    }),
+  }])
+}
+
+async function repairSequenceQueue(prisma: any, campaign: CampaignForRunner) {
+  if (campaign.format !== 'sequence') return { created: 0 }
+
+  const steps = getCampaignSequenceSteps(campaign)
+  if (steps.length <= 1) return { created: 0 }
+
+  const sentLogs: SequenceLogSnapshot[] = await prisma.aIRecommendationLog.findMany({
     where: {
       campaignId: campaign.id,
       type: 'CAMPAIGN_SEND',
       sequenceStep: { not: null },
+      status: { in: ['sent', 'delivered', 'opened', 'clicked', 'converted'] },
     },
     select: {
       id: true,
@@ -306,112 +410,34 @@ async function fanOutNextSteps(prisma: any, campaign: CampaignForRunner, now: Da
       sentAt: true,
       reasoning: true,
     },
+    orderBy: { createdAt: 'asc' },
+    take: REPAIR_LIMIT,
   })
 
-  if (sequenceLogs.length === 0) return { created: 0, exited: 0 }
+  const seeds: PendingLogSeed[] = []
+  for (const logEntry of sentLogs) {
+    if (typeof logEntry.sequenceStep !== 'number') continue
+    if (toSnapshotRecord(logEntry.reasoning).sequenceExit) continue
 
-  const sourceLogById = new Map(sequenceLogs.map((entry: SequenceLogSnapshot) => [entry.id, entry] as const))
-  const candidates = getCampaignSequenceDueCandidates(steps, sequenceLogs, now).slice(0, FAN_OUT_LIMIT)
-  if (candidates.length === 0) return { created: 0, exited: 0 }
+    const nextStep = logEntry.sequenceStep + 1
+    const nextStepData = steps[nextStep]
+    if (!nextStepData) continue
 
-  let exited = 0
-  let queueCandidates = candidates
-
-  if (campaign.exitOnBooking) {
-    const userIds = Array.from(new Set(candidates.map((candidate) => candidate.userId)))
-    const minSentAt = candidates.reduce<Date>(
-      (min, candidate) => (candidate.sentAt < min ? candidate.sentAt : min),
-      candidates[0].sentAt,
-    )
-
-    const bookings = await prisma.playSessionBooking.findMany({
-      where: {
-        userId: { in: userIds },
-        bookedAt: { gte: minSentAt },
-        status: 'CONFIRMED',
-      },
-      select: {
-        userId: true,
-        bookedAt: true,
-      },
+    const baseSentAt = logEntry.sentAt ?? logEntry.createdAt
+    const scheduledFor = addSequenceDelay(baseSentAt, nextStepData)
+    seeds.push({
+      userId: logEntry.userId,
+      sequenceStep: nextStep,
+      parentLogId: logEntry.id,
+      scheduledFor,
+      reasoning: buildSequenceReasoning(campaign, nextStep, {
+        scheduledFor,
+        parentLogId: logEntry.id,
+      }),
     })
-
-    const latestBookingByUser = new Map<string, Date>()
-    for (const booking of bookings) {
-      const current = latestBookingByUser.get(booking.userId)
-      if (!current || booking.bookedAt > current) {
-        latestBookingByUser.set(booking.userId, booking.bookedAt)
-      }
-    }
-
-    const exitedLogIds = new Set<string>()
-    for (const candidate of candidates) {
-      const bookedAt = latestBookingByUser.get(candidate.userId)
-      if (!bookedAt || bookedAt < candidate.sentAt) continue
-
-      exited += 1
-      exitedLogIds.add(candidate.logId)
-
-      const sourceLog = sourceLogById.get(candidate.logId)
-      const baseReasoning = toSnapshotRecord(sourceLog?.reasoning)
-      await prisma.aIRecommendationLog.update({
-        where: { id: candidate.logId },
-        data: {
-          reasoning: {
-            ...baseReasoning,
-            sequenceExit: 'booked_session',
-            exitedAt: bookedAt.toISOString(),
-            exitedBeforeStep: candidate.nextStep + 1,
-          },
-        },
-      })
-    }
-
-    queueCandidates = candidates.filter((candidate) => !exitedLogIds.has(candidate.logId))
   }
 
-  if (queueCandidates.length === 0) {
-    return { created: 0, exited }
-  }
-
-  const existingLogs = await prisma.aIRecommendationLog.findMany({
-    where: {
-      campaignId: campaign.id,
-      type: 'CAMPAIGN_SEND',
-      OR: queueCandidates.map((candidate) => ({
-        userId: candidate.userId,
-        sequenceStep: candidate.nextStep,
-      })),
-    },
-    select: {
-      userId: true,
-      sequenceStep: true,
-    },
-  })
-
-  const existingKeys = new Set(
-    existingLogs.map((entry: { userId: string; sequenceStep: number | null }) => `${entry.userId}:${entry.sequenceStep ?? -1}`),
-  )
-  const newLogs = queueCandidates.filter((candidate) => !existingKeys.has(`${candidate.userId}:${candidate.nextStep}`))
-  if (newLogs.length === 0) {
-    return { created: 0, exited }
-  }
-
-  await prisma.aIRecommendationLog.createMany({
-    data: newLogs.map((candidate) => ({
-      clubId: campaign.clubId,
-      userId: candidate.userId,
-      type: 'CAMPAIGN_SEND' as const,
-      channel: getPrimaryChannel(campaign.channels),
-      status: 'pending',
-      campaignId: campaign.id,
-      sequenceStep: candidate.nextStep,
-      parentLogId: candidate.logId,
-      reasoning: buildSequenceReasoning(campaign, candidate.nextStep),
-    })),
-  })
-
-  return { created: newLogs.length, exited }
+  return createMissingCampaignLogs(prisma, campaign, seeds)
 }
 
 function resolveContentForLog(
@@ -439,29 +465,75 @@ function resolveContentForLog(
   }
 }
 
-async function processCampaign(prisma: any, campaign: CampaignForRunner): Promise<{ sent: number; failed: number; skipped: number }> {
+async function getParentSequenceLog(prisma: any, row: ClaimedRow) {
+  if (!row.parent_log_id) return null
+
+  return prisma.aIRecommendationLog.findUnique({
+    where: { id: row.parent_log_id },
+    select: {
+      id: true,
+      userId: true,
+      status: true,
+      sentAt: true,
+      createdAt: true,
+      reasoning: true,
+    },
+  })
+}
+
+async function shouldExitSequenceRow(prisma: any, campaign: CampaignForRunner, row: ClaimedRow) {
+  if (campaign.format !== 'sequence' || !campaign.exitOnBooking || !row.parent_log_id) {
+    return { exit: false as const }
+  }
+
+  const parentLog = await getParentSequenceLog(prisma, row)
+  if (!parentLog) return { exit: false as const }
+
+  const parentSentAt = parentLog.sentAt ?? parentLog.createdAt
+  const booking = await prisma.playSessionBooking.findFirst({
+    where: {
+      userId: row.userId,
+      bookedAt: { gte: parentSentAt },
+      status: 'CONFIRMED',
+    },
+    select: { bookedAt: true },
+    orderBy: { bookedAt: 'desc' },
+  })
+
+  if (!booking) return { exit: false as const }
+
+  return {
+    exit: true as const,
+    bookedAt: booking.bookedAt as Date,
+    parentLog,
+  }
+}
+
+async function processCampaign(prisma: any, campaign: CampaignForRunner, now: Date): Promise<{ sent: number; failed: number; skipped: number; exited: number; queued: number }> {
   const claimed = await prisma.$queryRawUnsafe(
     `
     UPDATE ai_recommendation_logs
-       SET sent_at = NOW()
+       SET sent_at = $3::timestamptz
      WHERE id IN (
         SELECT id FROM ai_recommendation_logs
          WHERE campaign_id = $1::uuid
            AND sent_at IS NULL
            AND type = 'CAMPAIGN_SEND'
            AND status = 'pending'
+           AND (scheduled_for IS NULL OR scheduled_for <= $3::timestamptz)
          ORDER BY "createdAt" ASC
         LIMIT $2
         FOR UPDATE SKIP LOCKED
      )
-     RETURNING id, "userId", retry_count, sequence_step
+     RETURNING id, "userId", retry_count, sequence_step, parent_log_id, scheduled_for
     `,
     campaign.id,
     MAX_BATCH,
+    now,
   ) as ClaimedRow[]
 
   if (claimed.length === 0) {
-    return { sent: 0, failed: 0, skipped: 0 }
+    return { sent: 0, failed: 0, skipped: 0, exited: 0, queued: 0 }
   }
 
   const users: CampaignUserRow[] = await prisma.user.findMany({
@@ -481,6 +553,8 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner): Promis
   let sent = 0
   let failed = 0
   let skipped = 0
+  let exited = 0
+  let queued = 0
 
   for (const row of claimed) {
     const user = userById.get(row.userId)
@@ -499,6 +573,24 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner): Promis
         data: { status: 'failed', bouncedAt: new Date(), bounceType: 'blocked_domain' },
       })
       failed += 1
+      continue
+    }
+
+    const exit = await shouldExitSequenceRow(prisma, campaign, row)
+    if (exit.exit) {
+      await prisma.aIRecommendationLog.update({
+        where: { id: row.id },
+        data: {
+          sentAt: null,
+          status: 'exited',
+          reasoning: {
+            ...buildSequenceReasoning(campaign, row.sequence_step ?? 0),
+            sequenceExit: 'booked_session',
+            exitedAt: exit.bookedAt.toISOString(),
+          },
+        },
+      })
+      exited += 1
       continue
     }
 
@@ -530,6 +622,12 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner): Promis
         where: { id: row.id },
         data: { externalMessageId: messageId, status: 'sent' },
       })
+      const queuedNext = await queueNextSequenceStep(prisma, campaign, {
+        id: row.id,
+        userId: row.userId,
+        sequenceStep: row.sequence_step,
+      }, now)
+      queued += queuedNext.created
       sent += 1
     } catch (error: any) {
       const message = String(error?.message ?? error).slice(0, 200)
@@ -568,7 +666,7 @@ async function processCampaign(prisma: any, campaign: CampaignForRunner): Promis
     })
   }
 
-  return { sent, failed, skipped }
+  return { sent, failed, skipped, exited, queued }
 }
 
 async function maybeCompleteCampaign(prisma: any, campaignId: string) {
@@ -651,6 +749,7 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
       sequenceFannedOut: 0,
       sequenceExited: 0,
       recurringFannedOut: 0,
+      sequenceQueued: 0,
     }
   }
 
@@ -659,7 +758,7 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
   let totalSkipped = 0
   let totalCompleted = 0
   let totalSequenceSeeded = 0
-  let totalSequenceFannedOut = 0
+  let totalSequenceQueued = 0
   let totalSequenceExited = 0
   let totalRecurringFanOut = 0
   const liveModeSkips: string[] = []
@@ -675,20 +774,22 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
         continue
       }
 
-      const seeded = await ensureSequenceRootLogs(prisma, campaign)
-      totalSequenceSeeded += seeded.created
+      await ensureOneTimeLogs(prisma, campaign, now)
+      const sequenceSeeded = await ensureSequenceRootLogs(prisma, campaign, now)
+      totalSequenceSeeded += sequenceSeeded.created
 
       const recurringResult = await fanOutRecurring(prisma, campaign, now)
       totalRecurringFanOut += recurringResult.created
 
-      const fanOut = await fanOutNextSteps(prisma, campaign, now)
-      totalSequenceFannedOut += fanOut.created
-      totalSequenceExited += fanOut.exited
+      const repaired = await repairSequenceQueue(prisma, campaign)
+      totalSequenceQueued += repaired.created
 
-      const result = await processCampaign(prisma, campaign)
+      const result = await processCampaign(prisma, campaign, now)
       totalSent += result.sent
       totalFailed += result.failed
       totalSkipped += result.skipped
+      totalSequenceExited += result.exited
+      totalSequenceQueued += result.queued
 
       if (campaign.format === 'one_time') {
         const completed = await maybeCompleteCampaign(prisma, campaign.id)
@@ -711,7 +812,8 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
     totalRetried: totalSkipped,
     completed: totalCompleted,
     sequenceSeeded: totalSequenceSeeded,
-    sequenceFannedOut: totalSequenceFannedOut,
+    sequenceFannedOut: totalSequenceQueued,
+    sequenceQueued: totalSequenceQueued,
     sequenceExited: totalSequenceExited,
     recurringFannedOut: totalRecurringFanOut,
   }
@@ -726,6 +828,7 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
       totalRetried: result.totalRetried,
       completed: result.completed,
       sequenceSeeded: result.sequenceSeeded,
+      sequenceQueued: result.sequenceQueued,
       sequenceFannedOut: result.sequenceFannedOut,
       sequenceExited: result.sequenceExited,
       recurringFannedOut: result.recurringFannedOut,

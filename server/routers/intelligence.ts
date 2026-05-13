@@ -43,7 +43,6 @@ import {
   withAdvisorDraftMetadata,
 } from '@/lib/ai/advisor-drafts'
 import {
-  processCampaignSendQueue,
   scheduleCampaignSend,
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
@@ -11784,16 +11783,25 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       // wizard reflects the real status. Future sends stay queued for cron.
       let finalStatus = campaign.status
       if (input.format === 'one_time' && !isFuture) {
-        const queueResult = await processCampaignSendQueue(ctx.prisma, { campaignId: campaign.id })
-        const processedCampaign = queueResult.campaigns.find((entry) => entry.id === campaign.id)
-        if (processedCampaign?.status) {
-          finalStatus = processedCampaign.status
-        }
+        await runCampaignSendTick(ctx.prisma, {
+          campaignId: campaign.id,
+          now,
+        })
+        const refreshed = await ctx.prisma.campaign.findUnique({
+          where: { id: campaign.id },
+          select: { status: true },
+        })
+        finalStatus = refreshed?.status ?? finalStatus
       } else if (input.format === 'sequence' && !isFuture) {
         await runCampaignSendTick(ctx.prisma, {
           campaignId: campaign.id,
           now,
         })
+        const refreshed = await ctx.prisma.campaign.findUnique({
+          where: { id: campaign.id },
+          select: { status: true },
+        })
+        finalStatus = refreshed?.status ?? finalStatus
       }
 
       return {

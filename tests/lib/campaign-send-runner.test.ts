@@ -32,9 +32,11 @@ function createMockPrisma() {
     },
     playSessionBooking: {
       findMany: vi.fn(),
+      findFirst: vi.fn(),
     },
     aIRecommendationLog: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
       createMany: vi.fn(),
       update: vi.fn(),
     },
@@ -54,7 +56,7 @@ function makeSequenceCampaign(overrides?: Partial<any>) {
       sendFormat: 'sequence',
       steps: [
         { stepIndex: 0, delayDays: 0, subject: 'Step 1', body: 'Hello' },
-        { stepIndex: 1, delayDays: 1, delayMinutes: 5, subject: 'Step 2', body: 'Follow up' },
+        { stepIndex: 1, delayDays: 1, delayMinutes: 17, subject: 'Step 2', body: 'Follow up' },
       ],
     },
     ctaLabel: null,
@@ -62,7 +64,7 @@ function makeSequenceCampaign(overrides?: Partial<any>) {
     format: 'sequence',
     steps: [
       { stepIndex: 0, delayDays: 0, subject: 'Step 1', body: 'Hello' },
-      { stepIndex: 1, delayDays: 1, delayMinutes: 5, subject: 'Step 2', body: 'Follow up' },
+      { stepIndex: 1, delayDays: 1, delayMinutes: 17, subject: 'Step 2', body: 'Follow up' },
     ],
     exitOnBooking: true,
     cohortId: null,
@@ -87,7 +89,7 @@ describe('campaign send runner', () => {
     sendOutreachEmail.mockResolvedValue({ messageId: 'msg-1' })
   })
 
-  it('seeds step zero when a scheduled sequence campaign becomes due', async () => {
+  it('queues follow-up using the arbitrary minute delay from the wizard', async () => {
     const prisma = createMockPrisma()
     const dueAt = new Date('2026-05-13T10:00:00.000Z')
     const scheduledCampaign = makeSequenceCampaign({
@@ -107,8 +109,9 @@ describe('campaign send runner', () => {
     prisma.aIRecommendationLog.findMany
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
     prisma.$queryRawUnsafe.mockResolvedValue([
-      { id: 'log-1', userId: 'member-1', retry_count: 0, sequence_step: 0 },
+      { id: 'log-1', userId: 'member-1', retry_count: 0, sequence_step: 0, parent_log_id: null, scheduled_for: dueAt },
     ])
     prisma.user.findMany.mockResolvedValue([
       { id: 'member-1', email: 'member@clubmail.com', name: 'Member One' },
@@ -131,13 +134,34 @@ describe('campaign send runner', () => {
             campaignId: 'campaign-1',
             userId: 'member-1',
             sequenceStep: 0,
+            scheduledFor: dueAt,
             status: 'pending',
+          }),
+        ],
+      }),
+    )
+    expect(prisma.aIRecommendationLog.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            campaignId: 'campaign-1',
+            userId: 'member-1',
+            sequenceStep: 1,
+            parentLogId: 'log-1',
+            scheduledFor: new Date('2026-05-13T10:17:00.000Z'),
+            status: 'pending',
+            reasoning: expect.objectContaining({
+              delayAmount: 17,
+              delayUnit: 'minutes',
+              scheduledFor: '2026-05-13T10:17:00.000Z',
+            }),
           }),
         ],
       }),
     )
     expect(sendOutreachEmail).toHaveBeenCalledTimes(1)
     expect(result.sequenceSeeded).toBe(1)
+    expect(result.sequenceQueued).toBe(1)
     expect(result.totalSent).toBe(1)
   })
 
@@ -147,7 +171,7 @@ describe('campaign send runner', () => {
 
     prisma.campaign.findMany.mockResolvedValue([makeSequenceCampaign()])
     prisma.aIRecommendationLog.findMany
-      .mockResolvedValueOnce([{ userId: 'member-1' }])
+      .mockResolvedValueOnce([{ userId: 'member-1', sequenceStep: 0 }])
       .mockResolvedValueOnce([
         {
           id: 'log-step-0',
@@ -166,7 +190,61 @@ describe('campaign send runner', () => {
     const result = await runCampaignSendTick(prisma, { now })
 
     expect(prisma.aIRecommendationLog.createMany).not.toHaveBeenCalled()
-    expect(result.sequenceFannedOut).toBe(0)
+    expect(result.sequenceQueued).toBe(0)
     expect(sendOutreachEmail).not.toHaveBeenCalled()
+  })
+
+  it('queues follow-up using day-based delays from the wizard', async () => {
+    const prisma = createMockPrisma()
+    const now = new Date('2026-05-13T10:00:00.000Z')
+    const steps = [
+      { stepIndex: 0, delayDays: 0, subject: 'Step 1', body: 'Hello' },
+      { stepIndex: 1, delayDays: 2, subject: 'Step 2', body: 'Two days later' },
+    ]
+
+    prisma.campaign.findMany.mockResolvedValue([
+      makeSequenceCampaign({
+        steps,
+        cohortSnapshot: {
+          userIds: ['member-1'],
+          sendFormat: 'sequence',
+          steps,
+        },
+      }),
+    ])
+    prisma.aIRecommendationLog.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+    prisma.$queryRawUnsafe.mockResolvedValue([
+      { id: 'log-1', userId: 'member-1', retry_count: 0, sequence_step: 0, parent_log_id: null, scheduled_for: now },
+    ])
+    prisma.user.findMany.mockResolvedValue([
+      { id: 'member-1', email: 'member@clubmail.com', name: 'Member One' },
+    ])
+    prisma.club.findUnique.mockResolvedValue({ name: 'IQ Club' })
+
+    const result = await runCampaignSendTick(prisma, { now })
+
+    expect(prisma.aIRecommendationLog.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [
+          expect.objectContaining({
+            campaignId: 'campaign-1',
+            userId: 'member-1',
+            sequenceStep: 1,
+            parentLogId: 'log-1',
+            scheduledFor: new Date('2026-05-15T10:00:00.000Z'),
+            reasoning: expect.objectContaining({
+              delayAmount: 2,
+              delayUnit: 'days',
+              scheduledFor: '2026-05-15T10:00:00.000Z',
+            }),
+          }),
+        ],
+      }),
+    )
+    expect(result.sequenceQueued).toBe(1)
+    expect(result.totalSent).toBe(1)
   })
 })
