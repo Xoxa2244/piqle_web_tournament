@@ -22,6 +22,8 @@ import { X, Check, ChevronRight, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { CourtReserveConnector } from "./shared/CourtReserveConnector";
 import { AIRevenueTile } from "../ai-revenue-tile";
+import { IntroFunnelTile } from "../intro-funnel-tile";
+import { TierBreakdownTile } from "../tier-breakdown-tile";
 
 type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
 
@@ -102,7 +104,7 @@ function getPeriodLabel(p: Period): { current: string; previous: string } {
   return { current: "Selected range", previous: "Previous range" };
 }
 
-type KpiItem = { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[]; href: string };
+type KpiItem = { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[] };
 
 const emptyHealth = [
   { level: "Healthy", count: 0, pct: 0, color: "#10B981" },
@@ -290,8 +292,26 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
       // Default to membership when pricingModel not configured
       const isMembership = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
       return [
-        { label: "Active Players", value: m.members.value, change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`, up: m.members.trend.direction === 'up', icon: Users, gradient: "from-violet-500 to-purple-600", href: "/members", sparkData: m.members.trend.sparkline || [] },
-        { label: "Court Occupancy", value: m.occupancy.value, change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`, up: m.occupancy.trend.direction === 'up', icon: Target, gradient: "from-cyan-500 to-teal-500", href: "/sessions", sparkData: m.occupancy.trend.sparkline || [] },
+        {
+          label: "Active Players",
+          value: m.members.value,
+          change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`,
+          up: m.members.trend.direction === 'up',
+          icon: Users,
+          gradient: "from-violet-500 to-purple-600",
+          sparkData: m.members.trend.sparkline || [],
+          tooltip: 'Members who booked at least one session in the dashboard period (default: last 30 days). Different from Active Subscribers (a billing metric, see Members page).',
+        },
+        {
+          label: "Court Occupancy",
+          value: m.occupancy.value,
+          change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`,
+          up: m.occupancy.trend.direction === 'up',
+          icon: Target,
+          gradient: "from-cyan-500 to-teal-500",
+          sparkData: m.occupancy.trend.sparkline || [],
+          tooltip: 'Average per-session occupancy — registered players ÷ max capacity, averaged across all sessions in the period. Same formula used by the Schedule page.',
+        },
         {
           label: "Player Sessions",
           value: m.bookings.value,
@@ -299,8 +319,8 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
           up: m.bookings.trend.direction === 'up',
           icon: Activity,
           gradient: "from-emerald-500 to-green-500",
-          href: "/sessions",
           sparkData: m.bookings.trend.sparkline || [],
+          tooltip: 'Total confirmed bookings in the dashboard period (one row per player per session). Counts all sessions, not just sessions that ran.',
         },
         isMembership
         ? (() => {
@@ -313,8 +333,8 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
               up: false,
               icon: UserPlus,
               gradient: "from-amber-500 to-orange-500",
-              href: "/members",
               sparkData: [],
+              tooltip: 'Followers whose CR subscription is Suspended, Expired, or set to "No Membership". These are recovery candidates for win-back campaigns.',
             };
           })()
         : {
@@ -322,9 +342,9 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
             value: m.lostRevenue.value,
             change: `${m.lostRevenue.trend.direction === 'up' ? '+' : '-'}${Math.abs(m.lostRevenue.trend.changePercent)}%`,
             up: m.lostRevenue.trend.direction === 'down',
+            tooltip: 'Estimated revenue lost to empty slots — empty slot count × average session price across the period. Shrinking this number is exactly what Slot Filler is for.',
             icon: AlertTriangle,
             gradient: "from-red-500 to-orange-500",
-            href: "/slot-filler",
             sparkData: m.lostRevenue.trend.sparkline || [],
           },
       ];
@@ -954,12 +974,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              whileHover={{ scale: 1.02, y: -2 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => router.push(`/clubs/${clubId}/intelligence${kpi.href}`)}
-              className="cursor-pointer"
             >
-              <Card className="relative overflow-hidden transition-shadow hover:shadow-lg hover:shadow-black/10">
+              <div title={(kpi as { tooltip?: string }).tooltip}>
+              <Card className="relative overflow-hidden">
                 <div className="flex items-start justify-between mb-3">
                   <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
                     <Icon className="w-5 h-5 text-white" />
@@ -968,13 +985,25 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 </div>
                 <div className="mb-1" style={{ fontSize: "28px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs" style={{ color: "var(--t3)" }}>{kpi.label}</span>
+                  <span className="text-xs flex items-center gap-1" style={{ color: "var(--t3)" }}>
+                    <span className="truncate">{kpi.label}</span>
+                    {(kpi as { tooltip?: string }).tooltip && (
+                      <span
+                        className="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] cursor-help shrink-0"
+                        style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}
+                        aria-hidden
+                      >
+                        ?
+                      </span>
+                    )}
+                  </span>
                   <div className={`flex items-center gap-1 text-xs ${kpi.up ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>
                     {kpi.up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
                     {kpi.change}
                   </div>
                 </div>
               </Card>
+              </div>
             </motion.div>
           );
         })}
@@ -990,6 +1019,18 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       >
         <AIRevenueTile clubId={clubId} />
       </motion.div>
+
+      {/* P1.3 (Sprint 1) — Pickleball 101 → Membership conversion funnel.
+          Sits between AI Revenue and Player Health so club owners see
+          their top-of-funnel acquisition story before churn analytics.
+          Tier 1.3 of IPC's Programming OS. */}
+      <IntroFunnelTile clubId={clubId} />
+
+      {/* P1.4 (Sprint 1) — 7-tier programming breakdown across IPC's
+          Programming OS taxonomy (T1 Core → T7 Youth). Lets the
+          operator see "what kind of programming did we actually run
+          this week?" without scanning the schedule. */}
+      <TierBreakdownTile clubId={clubId} />
 
       {/* Player Health Overview */}
       <div className="space-y-4">

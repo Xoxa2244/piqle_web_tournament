@@ -84,14 +84,11 @@ function isLikelyEditRequest(
     /\b(trial|renewal|first[- ]?play|first booking|expired membership|suspended membership)\b/,
     /\b(schedule|programming|session plan|new session|clinic|drill|open play|league|evening session|morning session|weekday|weekend)\b/,
   ]) || containsAny(lower, [
-    /\b(короче|длиннее|измени|исправь|обнови|убери|добавь|оставь|только)\b/,
-    /\b(другую сессию|другой слот|топ-\d{1,2}|топ \d{1,2})\b/,
     /\b(mas corto|más corto|actualiza|edita|cambia|quita|solo)\b/,
   ])
 
   const pronounEdit = containsAny(lower, [
     /\b(it|them|that|this)\b/,
-    /\b(его|ее|её|их|это|эту|этот)\b/,
     /\b(eso|esa|ese|ellos|ellas)\b/,
   ])
 
@@ -119,57 +116,56 @@ function applyHeuristicProgrammingEdit(
     changed = true
   }
 
-  if (containsAny(lower, [/\b(morning|before work|early)\b/, /\b(утром|утренн)\b/])) {
+  if (containsAny(lower, [/\b(morning|before work|early)\b/])) {
     nextPrimary.timeSlot = 'morning'
     nextPrimary.startTime = '09:00'
     nextPrimary.endTime = '10:30'
     changed = true
-  } else if (containsAny(lower, [/\b(afternoon|midday|lunch)\b/, /\b(днем|дн[её]м)\b/])) {
+  } else if (containsAny(lower, [/\b(afternoon|midday|lunch)\b/])) {
     nextPrimary.timeSlot = 'afternoon'
     nextPrimary.startTime = '13:00'
     nextPrimary.endTime = '14:30'
     changed = true
-  } else if (containsAny(lower, [/\b(evening|after work|night)\b/, /\b(вечером|вечерн)\b/])) {
+  } else if (containsAny(lower, [/\b(evening|after work|night)\b/])) {
     nextPrimary.timeSlot = 'evening'
     nextPrimary.startTime = nextPrimary.format === 'LEAGUE_PLAY' ? '18:30' : '18:00'
     nextPrimary.endTime = nextPrimary.format === 'LEAGUE_PLAY' ? '20:30' : '19:30'
     changed = true
   }
 
-  if (containsAny(lower, [/\b(open play)\b/, /\b(открыт\w+ игру|open play)\b/])) {
+  if (containsAny(lower, [/\b(open play)\b/])) {
     nextPrimary.format = 'OPEN_PLAY'
     changed = true
-  } else if (containsAny(lower, [/\b(clinic)\b/, /\b(клиник|clinic)\b/])) {
+  } else if (containsAny(lower, [/\b(clinic)\b/])) {
     nextPrimary.format = 'CLINIC'
     changed = true
-  } else if (containsAny(lower, [/\b(drill)\b/, /\b(дрилл|drill)\b/])) {
+  } else if (containsAny(lower, [/\b(drill)\b/])) {
     nextPrimary.format = 'DRILL'
     changed = true
-  } else if (containsAny(lower, [/\b(league)\b/, /\b(лигу|league)\b/])) {
+  } else if (containsAny(lower, [/\b(league)\b/])) {
     nextPrimary.format = 'LEAGUE_PLAY'
     changed = true
-  } else if (containsAny(lower, [/\b(social)\b/, /\b(соушл|social)\b/])) {
+  } else if (containsAny(lower, [/\b(social)\b/])) {
     nextPrimary.format = 'SOCIAL'
     changed = true
   }
 
-  if (containsAny(lower, [/\b(beginner)\b/, /\b(новичк|beginner)\b/])) {
+  if (containsAny(lower, [/\b(beginner)\b/])) {
     nextPrimary.skillLevel = 'BEGINNER'
     changed = true
-  } else if (containsAny(lower, [/\b(intermediate)\b/, /\b(средн\w+ уров|intermediate)\b/])) {
+  } else if (containsAny(lower, [/\b(intermediate)\b/])) {
     nextPrimary.skillLevel = 'INTERMEDIATE'
     changed = true
-  } else if (containsAny(lower, [/\b(advanced|competitive)\b/, /\b(продвинут|competitive)\b/])) {
+  } else if (containsAny(lower, [/\b(advanced|competitive)\b/])) {
     nextPrimary.skillLevel = 'ADVANCED'
     changed = true
-  } else if (containsAny(lower, [/\b(all levels|all-levels)\b/, /\b(для всех уровней)\b/])) {
+  } else if (containsAny(lower, [/\b(all levels|all-levels)\b/])) {
     nextPrimary.skillLevel = 'ALL_LEVELS'
     changed = true
   }
 
   if (containsAny(lower, [
     /\b(another idea|another option|show me another|different idea|pick another)\b/,
-    /\b(другую идею|другой вариант|покажи другую)\b/,
   ]) && alternatives.length > 0) {
     const [nextAlternative, ...rest] = alternatives
     alternatives = [nextPrimary, ...rest]
@@ -198,8 +194,7 @@ function extractCandidateLimit(message: string) {
     lower.match(/\btop\s+(\d{1,2})\b/) ||
     lower.match(/\bbest\s+(\d{1,2})\b/) ||
     lower.match(/\binvite(?:\s+only)?\s+(\d{1,2})\s+(?:players?|members?|people)\b/) ||
-    lower.match(/\bonly\s+(\d{1,2})\s+(?:players?|members?|people)\b/) ||
-    lower.match(/\bтоп[- ]?(\d{1,2})\b/)
+    lower.match(/\bonly\s+(\d{1,2})\s+(?:players?|members?|people)\b/)
 
   if (!match) return null
 
@@ -226,7 +221,7 @@ function applyHeuristicAudienceEdit(message: string, state: AdvisorConversationS
   let audience = { ...state.currentAudience, filters: [...state.currentAudience.filters] }
   let changed = false
 
-  if (containsAny(lower, [/\b(active this week|played this week|recently active)\b/, /\b(играл[аи] на этой неделе|активн\w+ на этой неделе)\b/])) {
+  if (containsAny(lower, [/\b(active this week|played this week|recently active)\b/])) {
     audience = {
       ...audience,
       name: `${audience.name} (excluding recent players)`,
@@ -235,7 +230,7 @@ function applyHeuristicAudienceEdit(message: string, state: AdvisorConversationS
     changed = true
   }
 
-  if (containsAny(lower, [/\b(inactive members|inactive players)\b/, /\b(неактивн\w+ игроков?|неактивн\w+ участников?)\b/])) {
+  if (containsAny(lower, [/\b(inactive members|inactive players)\b/])) {
     audience = {
       ...audience,
       name: `${audience.name} (inactive)`,
@@ -244,7 +239,7 @@ function applyHeuristicAudienceEdit(message: string, state: AdvisorConversationS
     changed = true
   }
 
-  if (containsAny(lower, [/\b(women|female)\b/, /\b(женщин|женские)\b/])) {
+  if (containsAny(lower, [/\b(women|female)\b/])) {
     audience = {
       ...audience,
       name: `${audience.name} - Women`,
@@ -253,7 +248,7 @@ function applyHeuristicAudienceEdit(message: string, state: AdvisorConversationS
     changed = true
   }
 
-  if (containsAny(lower, [/\b(men|male)\b/, /\b(мужчин|мужские)\b/])) {
+  if (containsAny(lower, [/\b(men|male)\b/])) {
     audience = {
       ...audience,
       name: `${audience.name} - Men`,
@@ -312,20 +307,20 @@ function applyHeuristicCampaignEdit(
   let campaign = { ...state.currentCampaign }
   let changed = false
 
-  if (containsAny(lower, [/\b(sms only|text only)\b/, /\b(только sms|только смс)\b/])) {
+  if (containsAny(lower, [/\b(sms only|text only)\b/])) {
     campaign.channel = 'sms'
     campaign.smsBody = truncateText(campaign.smsBody || campaign.body, 160)
     changed = true
-  } else if (containsAny(lower, [/\b(email only)\b/, /\b(только email|только имейл|только емейл)\b/])) {
+  } else if (containsAny(lower, [/\b(email only)\b/])) {
     campaign.channel = 'email'
     changed = true
-  } else if (containsAny(lower, [/\b(both channels|email and sms|both)\b/, /\b(и email и sms|оба канала)\b/])) {
+  } else if (containsAny(lower, [/\b(both channels|email and sms|both)\b/])) {
     campaign.channel = 'both'
     campaign.smsBody = campaign.smsBody || truncateText(campaign.body, 160)
     changed = true
   }
 
-  if (containsAny(lower, [/\b(shorter|shorten|more concise|brief)\b/, /\b(короче|сократи|более коротк)\b/])) {
+  if (containsAny(lower, [/\b(shorter|shorten|more concise|brief)\b/])) {
     campaign.body = truncateText(campaign.body, 320)
     if (campaign.smsBody) campaign.smsBody = truncateText(campaign.smsBody, 140)
     if (campaign.subject) campaign.subject = truncateText(campaign.subject, 60)
@@ -334,7 +329,6 @@ function applyHeuristicCampaignEdit(
 
   if (containsAny(lower, [
     /\b(send now|launch now|go ahead|approve and send|send it)\b/,
-    /\b(отправь сейчас|запускай|запусти сейчас)\b/,
   ])) {
     campaign.execution = {
       ...campaign.execution,
@@ -344,7 +338,6 @@ function applyHeuristicCampaignEdit(
     changed = true
   } else if (containsAny(lower, [
     /\b(save as draft|keep as draft|draft only|don'?t send|do not send|hold for now|preview only)\b/,
-    /\b(сохрани как черновик|оставь как черновик|не отправляй|только черновик)\b/,
   ])) {
     campaign.execution = {
       ...campaign.execution,
@@ -378,7 +371,6 @@ function applyHeuristicCampaignEdit(
 
   if (containsAny(lower, [
     /\b(only members with email|email only recipients|exclude members without email|only reachable by email)\b/,
-    /\b(только с email|убери без email|исключи без email)\b/,
   ])) {
     campaign.execution = {
       ...campaign.execution,
@@ -392,7 +384,6 @@ function applyHeuristicCampaignEdit(
 
   if (containsAny(lower, [
     /\b(only members with phone|exclude members without phone|phone only recipients)\b/,
-    /\b(только с телефоном|убери без телефона|исключи без телефона)\b/,
   ])) {
     campaign.execution = {
       ...campaign.execution,
@@ -406,7 +397,6 @@ function applyHeuristicCampaignEdit(
 
   if (containsAny(lower, [
     /\b(sms opt-?ins only|opt-?ins only|only opted in members)\b/,
-    /\b(только sms opt-?in|только с согласием на sms|только opt-?in)\b/,
   ])) {
     campaign.execution = {
       ...campaign.execution,
@@ -456,14 +446,14 @@ function applyHeuristicFillSessionEdit(
   }
   let changed = false
 
-  if (containsAny(lower, [/\b(sms only|text only|use sms instead|switch to sms)\b/, /\b(только sms|только смс|переключи на sms|смс вместо email)\b/])) {
+  if (containsAny(lower, [/\b(sms only|text only|use sms instead|switch to sms)\b/])) {
     nextAction.outreach.channel = 'sms'
     nextAction.outreach.message = truncateText(nextAction.outreach.message, 160)
     changed = true
-  } else if (containsAny(lower, [/\b(email only|use email instead|switch to email)\b/, /\b(только email|только имейл|только емейл|переключи на email)\b/])) {
+  } else if (containsAny(lower, [/\b(email only|use email instead|switch to email)\b/])) {
     nextAction.outreach.channel = 'email'
     changed = true
-  } else if (containsAny(lower, [/\b(both|both channels|email and sms)\b/, /\b(оба канала|и email и sms|и емейл и смс)\b/])) {
+  } else if (containsAny(lower, [/\b(both|both channels|email and sms)\b/])) {
     nextAction.outreach.channel = 'both'
     changed = true
   }
@@ -480,7 +470,6 @@ function applyHeuristicFillSessionEdit(
     if (containsAny(lower, [
       /\b(another|different|other)\s+(session|slot|match)\b/,
       /\b(show me another|pick another|choose another)\b/,
-      /\b(другую сессию|другой слот|покажи другую)\b/,
     ])) {
       nextSession = pickAlternateSession(sessions, nextAction.session)
     } else {
@@ -524,14 +513,14 @@ function applyHeuristicReactivationEdit(
   }
   let changed = false
 
-  if (containsAny(lower, [/\b(sms only|text only|use sms instead|switch to sms)\b/, /\b(только sms|только смс|переключи на sms)\b/])) {
+  if (containsAny(lower, [/\b(sms only|text only|use sms instead|switch to sms)\b/])) {
     nextAction.reactivation.channel = 'sms'
     nextAction.reactivation.message = truncateText(nextAction.reactivation.message, 160)
     changed = true
-  } else if (containsAny(lower, [/\b(email only|use email instead|switch to email)\b/, /\b(только email|переключи на email)\b/])) {
+  } else if (containsAny(lower, [/\b(email only|use email instead|switch to email)\b/])) {
     nextAction.reactivation.channel = 'email'
     changed = true
-  } else if (containsAny(lower, [/\b(both|both channels|email and sms)\b/, /\b(оба канала|и email и sms)\b/])) {
+  } else if (containsAny(lower, [/\b(both|both channels|email and sms)\b/])) {
     nextAction.reactivation.channel = 'both'
     nextAction.reactivation.message = truncateText(nextAction.reactivation.message, 160)
     changed = true
@@ -588,15 +577,15 @@ function applyHeuristicMembershipLifecycleEdit(
   ) as MembershipLifecycleAction
   let changed = false
 
-  if (containsAny(lower, [/\b(sms only|text only|use sms instead|switch to sms)\b/, /\b(только sms|только смс|переключи на sms)\b/])) {
+  if (containsAny(lower, [/\b(sms only|text only|use sms instead|switch to sms)\b/])) {
     nextAction.lifecycle.channel = 'sms'
     nextAction.lifecycle.message = truncateText(nextAction.lifecycle.message, 160)
     nextAction.lifecycle.smsBody = truncateText(nextAction.lifecycle.smsBody || nextAction.lifecycle.message, 160)
     changed = true
-  } else if (containsAny(lower, [/\b(email only|use email instead|switch to email)\b/, /\b(только email|переключи на email)\b/])) {
+  } else if (containsAny(lower, [/\b(email only|use email instead|switch to email)\b/])) {
     nextAction.lifecycle.channel = 'email'
     changed = true
-  } else if (containsAny(lower, [/\b(both|both channels|email and sms)\b/, /\b(оба канала|и email и sms)\b/])) {
+  } else if (containsAny(lower, [/\b(both|both channels|email and sms)\b/])) {
     nextAction.lifecycle.channel = 'both'
     nextAction.lifecycle.smsBody = truncateText(nextAction.lifecycle.smsBody || nextAction.lifecycle.message, 160)
     changed = true
@@ -611,7 +600,6 @@ function applyHeuristicMembershipLifecycleEdit(
 
   if (containsAny(lower, [
     /\b(send now|launch now|go ahead|approve and send|send it)\b/,
-    /\b(отправь сейчас|запускай|запусти сейчас)\b/,
   ])) {
     nextAction.lifecycle.execution = {
       ...nextAction.lifecycle.execution,
@@ -621,7 +609,6 @@ function applyHeuristicMembershipLifecycleEdit(
     changed = true
   } else if (containsAny(lower, [
     /\b(save as draft|keep as draft|draft only|don'?t send|do not send|hold for now|preview only)\b/,
-    /\b(сохрани как черновик|оставь как черновик|не отправляй|только черновик)\b/,
   ])) {
     nextAction.lifecycle.execution = {
       ...nextAction.lifecycle.execution,
@@ -697,7 +684,7 @@ Rules:
 - For "SMS opt-ins only", set recipientRules.smsOptInOnly=true.
 - If this is not clearly an edit of the active draft, return {"handled":false}.`
 
-const EDIT_COPY: Record<'en' | 'ru' | 'es', {
+const EDIT_COPY: Record<'en' | 'es', {
   audienceUpdated: (name: string, count: number) => string
   campaignUpdated: (name: string, count: number) => string
   fillSessionUpdated: (title: string, count: number) => string
@@ -751,51 +738,6 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
       ],
     },
   },
-  ru: {
-    audienceUpdated: (name, count) => `Я обновил активную аудиторию "${name}". Сейчас в ней ${count} подходящих участников. Проверь черновик ниже и подтверди, когда будешь готов.`,
-    campaignUpdated: (name, count) => `Я обновил активную кампанию для аудитории "${name}" на ${count} участников. Проверь обновленный черновик ниже и подтверди отправку.`,
-    fillSessionUpdated: (title, count) => `Я обновил активный черновик заполнения для "${title}" на ${count} игроков. Проверь приглашение ниже и подтверди, когда будешь готов.`,
-    reactivationUpdated: (title, count) => `Я обновил активный черновик реактивации для "${title}" на ${count} неактивных участников. Проверь win-back сообщение ниже и подтверди, когда будешь готов.`,
-    membershipUpdated: (title, count) => `Я обновил активный membership-flow "${title}" на ${count} кандидатов. Проверь обновленный черновик ниже и подтверди, когда будешь готов.`,
-    programmingUpdated: (title, count) => `Я обновил активный programming draft вокруг "${title}" на ${count} идей для расписания. Проверь план ниже и подтверди, когда будешь готов.`,
-    suggestions: {
-      create_cohort: [
-        'Подготовь кампанию для этой аудитории',
-        'Убери тех, кто играл на этой неделе',
-        'Снова покажи эту аудиторию',
-      ],
-      create_campaign: [
-        'Сделай текст короче',
-        'Переключи только на SMS',
-        'Убери тех, кто играл на этой неделе',
-      ],
-      fill_session: [
-        'Переключи на SMS',
-        'Пригласи топ-3 игроков',
-        'Выбери другую сессию',
-      ],
-      reactivate_members: [
-        'Переключи на SMS',
-        'Оставь только топ-5',
-        'Возьми тех, кто не играл 30+ дней',
-      ],
-      trial_follow_up: [
-        'Переключи на SMS',
-        'Оставь только топ-3 trial-участников',
-        'Запланируй это на завтра в 18:00',
-      ],
-      renewal_reactivation: [
-        'Переключи на SMS',
-        'Оставь только топ-5 renewal-кандидатов',
-        'Запланируй это на завтра в 9 утра',
-      ],
-      program_schedule: [
-        'Сделай основной вариант вечерней сессией',
-        'Сфокусируй это на beginner-программировании',
-        'Покажи другую идею для расписания',
-      ],
-    },
-  },
   es: {
     audienceUpdated: (name, count) => `Actualicé la audiencia activa "${name}" y ahora apunta a ${count} miembros. Revisa el borrador abajo y apruébalo cuando quieras.`,
     campaignUpdated: (name, count) => `Actualicé la campaña activa para la audiencia "${name}" con ${count} miembros. Revisa el borrador actualizado abajo y apruébalo cuando quieras.`,
@@ -844,7 +786,7 @@ const EDIT_COPY: Record<'en' | 'ru' | 'es', {
 }
 
 export function getAdvisorEditCopy(language: SupportedLanguage | string) {
-  const locale = language === 'ru' || language === 'es' ? language : 'en'
+  const locale = language === 'es' ? 'es' : 'en'
   return EDIT_COPY[locale]
 }
 

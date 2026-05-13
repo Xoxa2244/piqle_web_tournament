@@ -7,6 +7,7 @@ import { ExternalEntityType } from '@prisma/client'
 import { CourtReserveClient } from './courtreserve-client'
 import { decryptCredentials } from './encryption'
 import { normalizePhone } from '@/lib/phone-normalize'
+import { canonicalizeMembershipTier } from './membership-canonicalize'
 import type { CRMember, CRReservation, CRCourt, SyncResult, SyncError } from './courtreserve-types'
 
 const PARTNER_PREFIX = 'cr' // ExternalIdMapping partnerId prefix
@@ -486,6 +487,79 @@ async function syncCourts(
   return { created, updated, errors }
 }
 
+/**
+ * Sync the CourtReserve membership-package catalog into
+ * club_membership_types. This populates packages even when no member is
+ * currently subscribed — letting the Members → Filter UI show "Inactive
+ * tiers (in catalog)" alongside the active ones.
+ *
+ * Strategy:
+ *  - Pull /api/v1/membershiptype/get
+ *  - Apply canonicalizeMembershipTier() so the names match what
+ *    users.membership_type stores (whitespace, junk filter)
+ *  - Upsert by (clubId, name)
+ *  - Stamp synced_at so we can later prune rows that disappeared
+ *    from CR (not done here — left for a follow-up sweep)
+ */
+async function syncMembershipTypes(
+  client: CourtReserveClient,
+  clubId: string,
+): Promise<{ created: number; updated: number; errors: number }> {
+  let created = 0, updated = 0, errors = 0
+  let types: any[] = []
+  try {
+    types = await client.getMembershipTypes()
+  } catch (err: any) {
+    console.error(`[CR Sync] ${clubId}: getMembershipTypes failed:`, err.message)
+    return { created: 0, updated: 0, errors: 1 }
+  }
+
+  console.log(`[CR Sync] ${clubId}: getMembershipTypes returned ${types.length} packages`)
+
+  const now = new Date()
+  for (const type of types) {
+    try {
+      // CR returns shapes vary by tenant — try both casings.
+      const rawName = type?.Name || type?.name || type?.MembershipName || type?.membershipName
+      const canonical = canonicalizeMembershipTier(rawName)
+      if (!canonical) continue // junk row (Cole Seager / Mark J. Lawler)
+
+      const shortCode = type?.ShortCode || type?.shortCode || type?.Code || null
+      const crEntityId = type?.Id != null ? String(type.Id) : (type?.id != null ? String(type.id) : null)
+
+      const existing = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM club_membership_types
+        WHERE club_id = ${clubId} AND name = ${canonical}
+        LIMIT 1
+      `
+
+      if (existing.length > 0) {
+        await prisma.$executeRaw`
+          UPDATE club_membership_types
+          SET short_code = ${shortCode},
+              cr_entity_id = ${crEntityId},
+              raw_data = ${type as any}::jsonb,
+              synced_at = ${now},
+              updated_at = NOW()
+          WHERE id = ${existing[0].id}
+        `
+        updated++
+      } else {
+        await prisma.$executeRaw`
+          INSERT INTO club_membership_types (id, club_id, name, short_code, cr_entity_id, raw_data, synced_at, created_at, updated_at)
+          VALUES (gen_random_uuid()::text, ${clubId}, ${canonical}, ${shortCode}, ${crEntityId}, ${type as any}::jsonb, ${now}, NOW(), NOW())
+        `
+        created++
+      }
+    } catch (err: any) {
+      console.error(`[CR Sync] MembershipType error:`, err.message)
+      errors++
+    }
+  }
+
+  return { created, updated, errors }
+}
+
 /** Sync members from CourtReserve */
 async function syncMembersWithProgress(
   client: CourtReserveClient,
@@ -556,7 +630,7 @@ async function syncMembersWithProgress(
             ...(duprSingles !== undefined ? { duprRatingSingles: duprSingles } : {}),
             ...(duprDoubles !== undefined ? { duprRatingDoubles: duprDoubles } : {}),
             ...(dateOfBirth ? { dateOfBirth } : {}),
-            ...(member.membershipTypeName ? { membershipType: member.membershipTypeName } : {}),
+            ...(canonicalizeMembershipTier(member.membershipTypeName) ? { membershipType: canonicalizeMembershipTier(member.membershipTypeName)! } : {}),
             ...(member.membershipStatus ? { membershipStatus: member.membershipStatus } : {}),
             ...(member.zipCode ? { zipCode: member.zipCode } : {}),
             ...(member.skillLevel ? { skillLevel: member.skillLevel } : {}),
@@ -1233,6 +1307,18 @@ export async function runCourtReserveSync(
       await updateProgress({ phase: 'courts', percent: 10, status: `${courtsResult.created + courtsResult.updated} courts synced`, courtsDone: true })
     } else {
       console.log(`[CR Sync] ${clubId}: courts already done, skipping`)
+    }
+
+    // 1b. Sync the membership-package catalog. Cheap call (one endpoint,
+    // a few dozen rows), runs every sync — no resume needed. Failures
+    // are non-fatal: the rest of the sync continues, the Filter UI just
+    // won't show "Inactive tiers (in catalog)" until next run.
+    try {
+      console.log(`[CR Sync] ${clubId}: syncing membership-type catalog...`)
+      const mtResult = await syncMembershipTypes(client, clubId)
+      console.log(`[CR Sync] ${clubId}: membership-types — ${mtResult.created} created, ${mtResult.updated} updated, ${mtResult.errors} errors`)
+    } catch (err: any) {
+      console.error(`[CR Sync] ${clubId}: membership-type sync failed (non-fatal):`, err.message)
     }
 
     // 2. Sync members (skip if already done in previous chunk)

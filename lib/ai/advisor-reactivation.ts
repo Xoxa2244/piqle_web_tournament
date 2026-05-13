@@ -10,8 +10,6 @@ export function parseAdvisorInactivityDays(message: string): number | null {
     /\b(?:inactive|inactivity|lapsed|haven't played|have not played|without playing|for|last)\s+(?:for\s+)?(\d{1,3})\s*(?:day|days|d)\b/,
     /\b(\d{1,3})\+\s*(?:day|days|d)\s+(?:inactive|inactivity|lapsed|without playing)\b/,
     /\b(\d{1,3})\s*(?:day|days|d)\s+(?:inactive|inactivity|lapsed|without playing)\b/,
-    /\b(?:не играл[аи]?|не играли|неактивн\w*|без игры)\s+(\d{1,3})\s*дн/i,
-    /\b(\d{1,3})\s*дн\w*\s+(?:неактивн\w*|без игры|не играл[аи]?)/i,
   ]
 
   for (const pattern of patterns) {

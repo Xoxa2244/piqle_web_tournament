@@ -31,54 +31,40 @@ const ACTION_PATTERNS: Record<AgentAutonomyAction, RegExp[]> = {
     /\bwelcome\b/,
     /\bnew member(?:s)?\b/,
     /\bonboarding\b/,
-    /\bприветств\w+\b/,
-    /\bнов(ых|ые|ый)\s+участник\w+\b/,
   ],
   slotFiller: [
     /\bslot filler\b/,
     /\bfill session\b/,
     /\bunderfilled\b/,
     /\bopen spots?\b/,
-    /\bнедозаполн\w+\s+сесси\w+\b/,
-    /\bзаполн(ение|ять)\s+сесси\w+\b/,
   ],
   checkIn: [
     /\bcheck[- ]?in\b/,
     /\bchecking in\b/,
-    /\bчек-?ин\b/,
-    /\bпроверочн\w+\s+сообщени\w+\b/,
   ],
   retentionBoost: [
     /\bretention boost\b/,
     /\bat-risk\b/,
     /\bwatch\b/,
     /\bretention\b/,
-    /\bудержан\w+\b/,
-    /\bриск\w+\b/,
   ],
   reactivation: [
     /\breactivat\w*\b/,
     /\bwin[- ]?back\b/,
     /\bbring back\b/,
     /\blapsed members?\b/,
-    /\bнеактивн\w+\b/,
-    /\bреактивац\w+\b/,
   ],
   trialFollowUp: [
     /\btrial follow[- ]?up\b/,
     /\bfirst[- ]?play\b/,
     /\bfirst booking\b/,
     /\btrial members?\b/,
-    /\bтриал\w*\b/,
-    /\bперв\w+\s+бронирован\w+\b/,
   ],
   renewalReactivation: [
     /\brenewal(?: outreach)?\b/,
     /\bexpir\w+\s+membership\b/,
     /\bexpired members?\b/,
     /\brenew\b/,
-    /\bпродлен\w+\b/,
-    /\bистек\w+\s+membership\b/,
     /\brenewal reactivation\b/,
   ],
 }
@@ -86,7 +72,6 @@ const ACTION_PATTERNS: Record<AgentAutonomyAction, RegExp[]> = {
 const ALL_ACTION_PATTERNS = [
   /\b(all actions?|everything|whole autopilot|entire autopilot|full autopilot|all outreach)\b/,
   /\ball\s+autopilot\s+actions\b/,
-  /\b(все действия|весь автопилот|всю автоматику|все авто-?действия)\b/,
 ]
 
 export const advisorAutonomyPolicyDraftSchema = agentAutonomyPolicySchema.extend({
@@ -143,7 +128,7 @@ function clonePolicy(policy: AdvisorAutonomyPolicyDraft): AdvisorAutonomyPolicyD
 }
 
 function extractActionSnippet(message: string, action: AgentAutonomyAction) {
-  const delimiters = [',', ';', ' and ', ' but ', ' then ', ' и ', ' но ', ' y ']
+  const delimiters = [',', ';', ' and ', ' but ', ' then ', ' y ']
 
   for (const pattern of ACTION_PATTERNS[action]) {
     const match = pattern.exec(message)
@@ -179,17 +164,14 @@ function parseMode(message: string): AgentAutonomyMode | null {
 
   if (containsAny(lower, [
     /\b(off|turn off|disable|disabled|manual only|never auto|block(?:ed)?|stop auto)\b/,
-    /\b(выключи|отключи|без авто|только вручную|никогда автоматически)\b/,
   ])) return 'off'
 
   if (containsAny(lower, [
     /\b(auto|automatic|automatically|run automatically|send automatically)\b/,
-    /\b(авто|автоматическ\w+)\b/,
   ])) return 'auto'
 
   if (containsAny(lower, [
     /\b(approve|approval|manual review|manual approval|pending review|human review)\b/,
-    /\b(аппрув|подтвержден\w+|ручн\w+\s+провер\w+|ручн\w+\s+аппрув)\b/,
   ])) return 'approve'
 
   return null
@@ -199,9 +181,7 @@ function parseConfidenceThreshold(message: string) {
   const lower = message.toLowerCase()
   const match =
     lower.match(/\b(?:min(?:imum)?|at least|confidence(?: threshold)?|threshold(?: of)?|above)\s*(\d{1,3})\s*%?\b/) ||
-    lower.match(/\b(\d{1,3})\s*%\s*confidence\b/) ||
-    lower.match(/\b(\d{1,3})\s*%\s*уверенност\w+\b/) ||
-    lower.match(/\bуверенност\w+\s*(\d{1,3})\b/)
+    lower.match(/\b(\d{1,3})\s*%\s*confidence\b/)
   if (!match) return null
   return clampInt(match[1], 0, 100, 80)
 }
@@ -211,9 +191,7 @@ function parseMaxRecipients(message: string) {
   const match =
     lower.match(/\b(?:max(?:imum)?|up to|limit(?:ed)? to|only)\s*(\d{1,3})\s*(?:recipients?|members?|players?|people)\b/) ||
     lower.match(/\b(\d{1,3})\s*(?:recipients?|members?|players?|people)\s*max\b/) ||
-    lower.match(/\b(?:auto(?:-send)?|automatic(?:ally)?)\s*(?:up to|for)?\s*(\d{1,3})\b/) ||
-    lower.match(/\bдо\s*(\d{1,3})\s*(?:игрок\w+|участник\w+|получател\w+)\b/) ||
-    lower.match(/\bмакс(?:имум)?\s*(\d{1,3})\b/)
+    lower.match(/\b(?:auto(?:-send)?|automatic(?:ally)?)\s*(?:up to|for)?\s*(\d{1,3})\b/)
   if (!match) return null
   return clampInt(match[1], 1, 500, 5)
 }
@@ -223,17 +201,12 @@ function parseMembershipRequirement(message: string) {
 
   if (containsAny(lower, [
     /\b(don'?t require|without requiring|ignore)\s+(?:a\s+)?membership(?: signal| data| status| type)?\b/,
-    /\bбез\s+membership\b/,
-    /\bне треб\w+ membership\b/,
   ])) return false
 
   if (containsAny(lower, [
     /\b(require|only with|only when there is)\s+(?:a\s+)?(?:strong\s+)?membership(?: signal| data| status| type)?\b/,
     /\bstrong membership\b/,
     /\bmembership signal required\b/,
-    /\bтреб\w+ membership\b/,
-    /\bтолько\s+с\s+membership\b/,
-    /\bтолько\s+если\s+извест\w+\s+membership\b/,
   ])) return true
 
   return null
@@ -263,13 +236,11 @@ export function isAdvisorAutonomyPolicyRequest(message: string) {
   const mentionsPolicy =
     containsAny(lower, [
       /\b(autonomy policy|autonomy matrix|autopilot|auto-?run rules?|approval matrix|approval policy)\b/,
-      /\b(политик\w+ автопилота|матриц\w+ автопилота|автопилот|авто-?режим|правил\w+ аппрува)\b/,
     ]) ||
     collectTargetActions(lower).length > 0
 
   const wantsChange = containsAny(lower, [
     /\b(set|change|update|adjust|tighten|relax|turn|make|keep|allow|require|disable|enable|move)\b/,
-    /\b(поставь|измени|обнови|настрой|сделай|оставь|разреши|требуй|выключи|включи)\b/,
   ])
 
   return mentionsPolicy && wantsChange

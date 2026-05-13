@@ -38,7 +38,6 @@ function wantsClearEmail(message: string) {
   const lower = message.toLowerCase()
   return containsAny(lower, [
     /\b(clear|remove|delete)\s+(the\s+)?(admin\s+)?reminder\s+email\b/,
-    /\b(очисти|убери|удали)\s+(email|почт\w+)\s+(для\s+)?напоминан\w+\b/,
   ])
 }
 
@@ -46,7 +45,6 @@ function wantsClearPhone(message: string) {
   const lower = message.toLowerCase()
   return containsAny(lower, [
     /\b(clear|remove|delete)\s+(the\s+)?(admin\s+)?reminder\s+(phone|sms)\b/,
-    /\b(очисти|убери|удали)\s+(телефон|номер|sms|смс)\s+(для\s+)?напоминан\w+\b/,
   ])
 }
 
@@ -54,7 +52,6 @@ function wantsInAppOnly(message: string) {
   const lower = message.toLowerCase()
   return containsAny(lower, [
     /\b(in[- ]?app only|only in app|no email|no sms|do not text|do not email)\b/,
-    /\b(только в приложении|только в app|без email|без sms|не пиши sms|не шли email)\b/,
   ])
 }
 
@@ -62,11 +59,11 @@ function parseChannel(message: string): AdvisorAdminReminderRoutingDraft['channe
   const lower = message.toLowerCase()
 
   if (wantsInAppOnly(message)) return 'in_app'
-  if (containsAny(lower, [/\b(email|e-mail)\b/]) && containsAny(lower, [/\b(sms|text|phone)\b/, /\b(смс|sms|телефон)\b/])) {
+  if (containsAny(lower, [/\b(email|e-mail)\b/]) && containsAny(lower, [/\b(sms|text|phone)\b/])) {
     return 'both'
   }
-  if (containsAny(lower, [/\b(email|e-mail)\b/, /\b(почт\w+|емейл|email)\b/])) return 'email'
-  if (containsAny(lower, [/\b(sms|text|phone)\b/, /\b(смс|sms|телефон|номер)\b/])) return 'sms'
+  if (containsAny(lower, [/\b(email|e-mail)\b/])) return 'email'
+  if (containsAny(lower, [/\b(sms|text|phone)\b/])) return 'sms'
 
   return null
 }
@@ -140,15 +137,12 @@ export function isAdvisorAdminReminderRoutingRequest(message: string) {
   const mentionsReminder = containsAny(lower, [
     /\b(admin reminders?|agent reminders?|daily reminders?|task reminders?|remind me)\b/,
     /\b(reminders?|notifications?)\b/,
-    /\b(напоминан\w+|напомни|уведомлен\w+)\b/,
   ])
   const mentionsChannel = containsAny(lower, [
     /\b(email|e-mail|sms|text|phone|in[- ]?app)\b/,
-    /\b(почт\w+|емейл|email|смс|sms|телефон|в приложении)\b/,
   ]) || extractEmails(message).length > 0 || extractPhones(message).length > 0
   const wantsChange = containsAny(lower, [
     /\b(use|send|remind|notify|route|change|update|set|switch|text|email)\b/,
-    /\b(используй|шли|напомин\w+|уведомляй|измени|обнови|поставь|переключи)\b/,
   ])
 
   return mentionsReminder && (mentionsChannel || wantsChange)

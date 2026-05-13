@@ -1,5 +1,6 @@
 'use client'
 import React, { useState, useMemo, useCallback } from "react"
+import { getTierMeta } from "@/lib/ai/programming-tier-classifier"
 import {
   ChevronLeft, ChevronRight, CalendarDays, Sparkles,
 } from "lucide-react"
@@ -589,6 +590,15 @@ export function ScheduleIQ({
                                   const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
                                   const timeRange = `${s.startTime} - ${s.endTime}`
                                   const title = (s.title || '').trim() || sk.label
+                                  // P1.4 (Sprint 1): Programming Tier indicator.
+                                  // Each session cell carries a tiny dot in
+                                  // the top-right corner, coloured per IPC's
+                                  // 7-tier taxonomy. Tooltip on hover shows
+                                  // the full tier label + cadence.
+                                  const tierMeta = getTierMeta({
+                                    title: (s as any).title,
+                                    format: s.format,
+                                  })
                                   return (
                                     <button
                                       key={s.id}
@@ -600,7 +610,16 @@ export function ScheduleIQ({
                                         position: 'relative',
                                         zIndex: isOccupied ? 3 : 1,
                                       }}
+                                      title={`${tierMeta.label} · ${tierMeta.cadence}`}
                                     >
+                                      <div
+                                        className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full pointer-events-none"
+                                        style={{
+                                          background: tierMeta.color,
+                                          boxShadow: `0 0 0 1px ${tierMeta.bg}`,
+                                        }}
+                                        aria-label={tierMeta.label}
+                                      />
                                       <div>
                                         <div className="truncate text-[10px] font-semibold leading-tight" style={{ color: colors.text }}>{title}</div>
                                         {title !== sk.label && (

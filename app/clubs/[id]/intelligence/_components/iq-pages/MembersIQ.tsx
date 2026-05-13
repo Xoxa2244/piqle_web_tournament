@@ -653,8 +653,8 @@ function buildMembersAudienceContext(input: {
     input.filterRisk !== 'all' ? `risk ${input.filterRisk}` : null,
     input.filterTrend !== 'all' ? `trend ${input.filterTrend}` : null,
     input.filterValue !== 'all' ? `value ${input.filterValue}` : null,
-    input.filterMembershipType !== 'all' ? `membership tier ${formatNormalizedMembershipType(input.filterMembershipType)}` : null,
-    input.filterMembershipStatus !== 'all' ? `membership state ${formatNormalizedMembershipStatus(input.filterMembershipStatus)}` : null,
+    input.filterMembershipType !== 'all' ? `membership tier ${input.filterMembershipType === '__null__' ? 'No tier' : input.filterMembershipType}` : null,
+    input.filterMembershipStatus !== 'all' ? `membership state ${input.filterMembershipStatus === '__null__' ? 'No status' : input.filterMembershipStatus}` : null,
   ].filter(Boolean)
 
   return parts.length > 0 ? parts.join(', ') : null
@@ -1264,6 +1264,45 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const [filterValue, setFilterValue] = useState<string>("all");
   const [filterMembershipType, setFilterMembershipType] = useState<string>("all");
   const [filterMembershipStatus, setFilterMembershipStatus] = useState<string>("all");
+
+  // Real CR membership facets (raw membership_type / membership_status values
+  // with counts) for the filter drawer chips. Replaces the legacy 9-bucket
+  // hardcoded taxonomy on the Members page — admins now filter by the exact
+  // tier strings their CourtReserve account uses.
+  const membershipFacetsQuery = trpc.intelligence.getMembershipFacets.useQuery(
+    { clubId: clubId || '' },
+    { enabled: !!clubId, staleTime: 5 * 60_000 },
+  );
+  const dynamicTierOptions = useMemo(() => {
+    const base = [{ key: 'all', label: 'All' }] as Array<{ key: string; label: string; count?: number; inactive?: boolean }>
+    if (!membershipFacetsQuery.data?.tiers) return base
+    for (const t of membershipFacetsQuery.data.tiers) {
+      // A tier is "inactive" only when it lives in the CR catalog
+      // (inCatalog === true) AND has zero current subscribers (count === 0).
+      // Such tiers render in the collapsible "Inactive (in catalog)"
+      // section so the primary list stays focused on what's actually used.
+      const inactive = t.count === 0 && t.inCatalog === true
+      base.push({
+        key: t.value ?? '__null__',
+        label: t.value ?? 'No tier',
+        count: t.count,
+        inactive,
+      })
+    }
+    return base
+  }, [membershipFacetsQuery.data])
+  const dynamicStatusOptions = useMemo(() => {
+    const base = [{ key: 'all', label: 'All' }] as Array<{ key: string; label: string; count?: number }>
+    if (!membershipFacetsQuery.data?.states) return base
+    for (const s of membershipFacetsQuery.data.states) {
+      base.push({
+        key: s.value ?? '__null__',
+        label: s.value ?? 'No status',
+        count: s.count,
+      })
+    }
+    return base
+  }, [membershipFacetsQuery.data])
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "health" | "revenue" | "sessions">("health");
   // P2-T2: viewMode defaults to "list" (compact rows, scales to 500+ members),
@@ -1335,7 +1374,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       chips.push({
         key: 'state',
         group: 'State',
-        label: formatNormalizedMembershipStatus(filterMembershipStatus) || filterMembershipStatus,
+        label: filterMembershipStatus === '__null__' ? 'No status' : filterMembershipStatus,
         onClear: () => setFilterMembershipStatus('all'),
       })
     }
@@ -1343,7 +1382,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       chips.push({
         key: 'tier',
         group: 'Tier',
-        label: formatNormalizedMembershipType(filterMembershipType) || filterMembershipType,
+        label: filterMembershipType === '__null__' ? 'No tier' : filterMembershipType,
         onClear: () => setFilterMembershipType('all'),
       })
     }
@@ -1393,8 +1432,15 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     if (activeFilterCount === 1) {
       if (filterRisk === 'at-risk') return 'At-Risk'
       if (filterRisk === 'critical') return 'Critical'
-      if (filterMembershipType === 'unlimited') return 'VIP'
-      if (filterMembershipType === 'trial') return 'Trial members'
+      // Smart aliases for the most-used real CR tiers (case-insensitive
+      // substring match — works regardless of pricing tier suffix).
+      if (filterMembershipType !== 'all' && filterMembershipType !== '__null__') {
+        const t = filterMembershipType.toLowerCase()
+        if (t.includes('vip')) return 'VIP'
+        if (t.includes('trial') || t.includes('intro')) return 'Trial members'
+        if (t.includes('open play')) return 'Open Play'
+        if (t.includes('guest')) return 'Guest passes'
+      }
       if (filterActivity === 'occasional') return 'Inactive'
       if (filterActivity === 'power') return 'Power players'
     }
@@ -1507,8 +1553,26 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       if (filterRisk !== "all" && m.segment !== filterRisk) return false;
       if (filterTrend !== "all" && m.engagementTrend !== filterTrend) return false;
       if (filterValue !== "all" && m.valueTier !== filterValue) return false;
-      if (filterMembershipType !== "all" && m.normalizedMembershipType !== filterMembershipType) return false;
-      if (filterMembershipStatus !== "all" && m.normalizedMembershipStatus !== filterMembershipStatus) return false;
+      // Match raw CR membership_type / membership_status verbatim. The
+      // legacy normalised-bucket comparison (m.normalizedMembershipType
+      // === filterMembershipType) was replaced because the bucket
+      // taxonomy didn't match what admins actually see in their CR
+      // dashboard. "__null__" is the sentinel for rows where the field
+      // is null (members with no tier/status assigned).
+      if (filterMembershipType !== "all") {
+        if (filterMembershipType === "__null__") {
+          if (m.membershipType != null) return false;
+        } else if (m.membershipType !== filterMembershipType) {
+          return false;
+        }
+      }
+      if (filterMembershipStatus !== "all") {
+        if (filterMembershipStatus === "__null__") {
+          if (m.membershipStatus != null) return false;
+        } else if (m.membershipStatus !== filterMembershipStatus) {
+          return false;
+        }
+      }
       if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase()) && !m.email.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       return true;
     })
@@ -2589,7 +2653,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <Mail className="w-4 h-4" style={{ color: '#EF4444' }} />
-                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Win-Back бывших</h3>
+                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Win-Back former members</h3>
               </div>
               <p className="text-[11px]" style={{ color: "var(--t4)", maxWidth: 760 }}>
                 This lane treats former and drifting members differently: expired memberships, cancelled memberships, and high-value players who quietly lapsed each get their own comeback motion.
@@ -4049,8 +4113,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           filterTrend !== 'all' ? `Trend: ${filterTrend}` : '',
           filterValue !== 'all' ? `Value: ${filterValue}` : '',
           filterActivity !== 'all' ? `Activity: ${filterActivity}` : '',
-          filterMembershipStatus !== 'all' ? `Membership state: ${formatNormalizedMembershipStatus(filterMembershipStatus)}` : '',
-          filterMembershipType !== 'all' ? `Membership tier: ${formatNormalizedMembershipType(filterMembershipType)}` : '',
+          filterMembershipStatus !== 'all' ? `Membership state: ${filterMembershipStatus === '__null__' ? 'No status' : filterMembershipStatus}` : '',
+          filterMembershipType !== 'all' ? `Membership tier: ${filterMembershipType === '__null__' ? 'No tier' : filterMembershipType}` : '',
         ].filter(Boolean).join(', ')} count={filtered.length} />
       )}
 
@@ -4373,6 +4437,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         setFilterTrend={setFilterTrend}
         filterValue={filterValue}
         setFilterValue={setFilterValue}
+        statusOptions={dynamicStatusOptions}
+        tierOptions={dynamicTierOptions}
         isDark={isDark}
       />
 
@@ -4446,12 +4512,58 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
             ? `$${(ltvTotalCents / 100_000).toFixed(1)}K`
             : `$${Math.round(ltvTotalCents / 100)}`;
 
+          // Each KPI carries a tooltip with its precise definition. We
+          // surface "Active Subscribers" (subscription_status='Active'
+          // in CR), distinct from "Active Players" (members who booked
+          // a session in the last 30 days — visible on the Dashboard
+          // KPI strip). Same word in two metrics is the #1 source of
+          // confusion per Chris's feedback notes §3-A.
           const kpis = [
-            { label: 'Active Members', value: String(active || allMembers.length), icon: Users, gradient: 'from-violet-500 to-purple-600', sub: `of ${allMembers.length} total`, delta: fmtDelta(kpiDeltas?.activeDelta) },
-            { label: 'Avg Health', value: String(avgHealth), icon: Heart, gradient: 'from-emerald-500 to-green-500', sub: 'engagement score', delta: fmtDelta(kpiDeltas?.avgHealthDelta, 'pts vs last') },
-            { label: 'At-Risk', value: String(atRisk), icon: AlertTriangle, gradient: 'from-orange-500 to-red-500', sub: atRisk > 0 ? 'need attention' : 'all healthy', delta: fmtDelta(kpiDeltas?.atRiskDelta) },
-            { label: 'LTV total', value: ltvDisplay, icon: DollarSign, gradient: 'from-amber-500 to-yellow-500', sub: 'cumulative revenue', delta: fmtMoneyDelta(kpiDeltas?.ltvDeltaCents) },
-            { label: 'VIP', value: String(vip), icon: Sparkles, gradient: 'from-cyan-500 to-blue-500', sub: `${packages} Package${packages !== 1 ? 's' : ''}`, delta: { text: '', color: 'transparent' } },
+            {
+              label: 'Active Subscribers',
+              value: String(active || allMembers.length),
+              icon: Users,
+              gradient: 'from-violet-500 to-purple-600',
+              sub: `of ${allMembers.length} members`,
+              delta: fmtDelta(kpiDeltas?.activeDelta),
+              tooltip: 'Members whose CourtReserve subscription_status is "Active". This is a billing metric — different from Active Players (booked in the last 30 days, see the Dashboard).',
+            },
+            {
+              label: 'Avg Health',
+              value: String(avgHealth),
+              icon: Heart,
+              gradient: 'from-emerald-500 to-green-500',
+              sub: 'engagement score',
+              delta: fmtDelta(kpiDeltas?.avgHealthDelta, 'pts vs last'),
+              tooltip: 'Average member health score (0–100). Computed by the AI model from booking frequency, recency, attendance ratio, and trend.',
+            },
+            {
+              label: 'At-Risk',
+              value: String(atRisk),
+              icon: AlertTriangle,
+              gradient: 'from-orange-500 to-red-500',
+              sub: atRisk > 0 ? 'need attention' : 'all healthy',
+              delta: fmtDelta(kpiDeltas?.atRiskDelta),
+              tooltip: 'Members in segment "at-risk" or "critical" — health score below the threshold or activity sharply declining. These are the people most likely to churn this month.',
+            },
+            {
+              label: 'LTV total',
+              value: ltvDisplay,
+              icon: DollarSign,
+              gradient: 'from-amber-500 to-yellow-500',
+              sub: 'cumulative revenue',
+              delta: fmtMoneyDelta(kpiDeltas?.ltvDeltaCents),
+              tooltip: 'Lifetime revenue across all members in the current view (sum of every booking + subscription charge captured in CourtReserve transactions).',
+            },
+            {
+              label: 'VIP',
+              value: String(vip),
+              icon: Sparkles,
+              gradient: 'from-cyan-500 to-blue-500',
+              sub: `${packages} Package${packages !== 1 ? 's' : ''}`,
+              delta: { text: '', color: 'transparent' },
+              tooltip: 'Members on a VIP / Unlimited tier (any CR package matched into the "unlimited" normalised bucket). Sub-count shows how many are on multi-session Packages.',
+            },
           ];
 
           return (
@@ -4461,14 +4573,31 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                 {kpis.map((kpi) => {
                   const Icon = kpi.icon;
                   return (
-                    <div key={kpi.label} className="rounded-2xl p-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                    <div
+                      key={kpi.label}
+                      className="rounded-2xl p-3 relative"
+                      style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+                      title={kpi.tooltip}
+                    >
                       <div className="flex items-center gap-2.5">
                         <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center shrink-0`}>
                           <Icon className="w-4 h-4 text-white" />
                         </div>
                         <div className="min-w-0">
                           <div style={{ fontSize: '20px', fontWeight: 800, color: 'var(--heading)', lineHeight: 1 }}>{kpi.value}</div>
-                          <div className="text-[10px] mt-0.5" style={{ color: 'var(--t3)' }}>{kpi.label}</div>
+                          <div className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: 'var(--t3)' }}>
+                            <span className="truncate">{kpi.label}</span>
+                            {/* Native title= on the wrapper handles the actual
+                                tooltip; the dot is just a hint that hover
+                                reveals more. */}
+                            <span
+                              className="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] cursor-help shrink-0"
+                              style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}
+                              aria-hidden
+                            >
+                              ?
+                            </span>
+                          </div>
                         </div>
                       </div>
                       <div className="text-[10px] mt-2" style={{ color: 'var(--t4)' }}>{kpi.sub}</div>
