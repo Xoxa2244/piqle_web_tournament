@@ -87,6 +87,7 @@ function describeRecurringSchedule(schedule: ScheduleSettings) {
 
 interface Step3Props {
   schedule: ScheduleSettings
+  recurringDisabledReason?: string | null
   onChange: (next: ScheduleSettings) => void
 }
 
@@ -116,7 +117,7 @@ const FORMAT_OPTIONS: Array<{
   },
 ]
 
-export function Step3Schedule({ schedule, onChange }: Step3Props) {
+export function Step3Schedule({ schedule, recurringDisabledReason, onChange }: Step3Props) {
   const recurringCron = buildRecurringCron(schedule)
   const recurringSummary = describeRecurringSchedule(schedule)
 
@@ -133,15 +134,21 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
         <div className="grid sm:grid-cols-3 gap-2">
           {FORMAT_OPTIONS.map(({ key, label, hint, icon: Icon }) => {
             const active = schedule.format === key
+            const disabled = key === 'recurring' && !!recurringDisabledReason && !active
             return (
               <div key={key} className="h-full">
                 <button
-                  onClick={() => onChange({ ...schedule, format: key })}
+                  onClick={() => {
+                    if (disabled) return
+                    onChange({ ...schedule, format: key })
+                  }}
+                  disabled={disabled}
                   className="relative text-left rounded-xl p-3 transition-all flex h-full w-full flex-col gap-1"
                   style={{
                     background: active ? 'rgba(139,92,246,0.08)' : 'var(--card-bg)',
                     border: `1px solid ${active ? '#8B5CF6' : 'var(--card-border)'}`,
-                    cursor: 'pointer',
+                    cursor: disabled ? 'not-allowed' : 'pointer',
+                    opacity: disabled ? 0.55 : 1,
                   }}
                 >
                   <div className="flex items-center gap-2">
@@ -149,6 +156,11 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
                     <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>{label}</span>
                   </div>
                   <p className="text-[11px] leading-relaxed" style={{ color: 'var(--t4)' }}>{hint}</p>
+                  {disabled && (
+                    <p className="text-[10px] leading-relaxed" style={{ color: '#F59E0B' }}>
+                      {recurringDisabledReason}
+                    </p>
+                  )}
                 </button>
               </div>
             )
@@ -165,6 +177,15 @@ export function Step3Schedule({ schedule, onChange }: Step3Props) {
             <Repeat className="w-4 h-4" style={{ color: '#A78BFA' }} />
             <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>Recurring schedule</span>
           </div>
+
+          {recurringDisabledReason && (
+            <div
+              className="rounded-lg p-2 text-[11px] leading-relaxed"
+              style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', color: '#FCD34D' }}
+            >
+              {recurringDisabledReason}
+            </div>
+          )}
 
           <div>
             <label className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>Frequency</label>

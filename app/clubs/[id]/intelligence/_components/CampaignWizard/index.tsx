@@ -234,15 +234,6 @@ export function CampaignWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedCohorts.length])
 
-  useEffect(() => {
-    if (state.audience?.kind !== 'ai_suggested' || state.schedule.format !== 'recurring') return
-    setState((s) => (
-      s.audience?.kind === 'ai_suggested' && s.schedule.format === 'recurring'
-        ? { ...s, schedule: { ...s.schedule, format: 'one_time' } }
-        : s
-    ))
-  }, [state.audience?.kind, state.schedule.format])
-
   const canAdvance = (() => {
     if (step === 1) return !!state.audience
     if (step === 2) return !!state.goal
@@ -334,6 +325,11 @@ export function CampaignWizard({
     ))
   )
   const recurringMissingCohort = isRecurring && !state.audience?.cohortId
+  const recurringDisabledReason = !state.audience?.cohortId
+    ? state.audience?.kind === 'ai_suggested'
+      ? 'Recurring needs a saved cohort. This suggested audience is a snapshot unless the full saved suggestion is selected.'
+      : 'Recurring needs a saved cohort because the audience is re-checked on every run.'
+    : null
 
   const handleLaunch = async () => {
     if (liveMode !== 'live') return
@@ -514,6 +510,7 @@ export function CampaignWizard({
             ) : step === 3 ? (
               <Step3Schedule
                 schedule={state.schedule}
+                recurringDisabledReason={recurringDisabledReason}
                 onChange={(schedule: ScheduleSettings) => setState((s) => ({ ...s, schedule }))}
               />
             ) : (
