@@ -1,8 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// SMS path runs `generateUnsubscribeUrl`, which reads CRON_SECRET at call
-// time. Without this the SMS branch throws before sendSms is invoked and
-// the test sees 0 calls instead of the expected 1 (see lib/unsubscribe.ts).
 process.env.CRON_SECRET = process.env.CRON_SECRET || 'test-cron-secret'
 
 const { sendOutreachEmail, sendSms, reportUsage, appendSmsOptOut } = vi.hoisted(() => ({
@@ -12,7 +9,7 @@ const { sendOutreachEmail, sendSms, reportUsage, appendSmsOptOut } = vi.hoisted(
   // advisor-campaign-jobs wraps every SMS body via appendSmsOptOut from
   // the same module — mock both or the SMS branch throws before sendSms
   // is reached.
-  appendSmsOptOut: vi.fn((body: string, url: string) => `${body} Reply STOP to opt out: ${url}`),
+  appendSmsOptOut: vi.fn((body: string) => `${body} Reply STOP to opt out`),
 }))
 
 vi.mock('@/lib/email', async (importOriginal) => {

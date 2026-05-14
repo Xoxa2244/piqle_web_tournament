@@ -13,7 +13,6 @@ import {
   shouldFireRecurringNow,
 } from '@/lib/campaign-scheduling'
 import { appendSmsOptOut, sendSms } from '@/lib/sms'
-import { generateUnsubscribeUrl } from '@/lib/unsubscribe'
 
 const MAX_BATCH = 50
 const MAX_RETRIES = 3
@@ -165,14 +164,6 @@ function getPendingLogSeedKey(seed: Pick<PendingLogSeed, 'userId' | 'sequenceSte
   return `${seed.userId}:${seed.sequenceStep ?? -1}:${seed.channel}`
 }
 
-function getSafeSmsOptOutUrl(userId: string, clubId: string) {
-  try {
-    return generateUnsubscribeUrl(userId, clubId)
-  } catch {
-    return undefined
-  }
-}
-
 function buildCampaignSmsBody(input: {
   campaign: CampaignForRunner
   user: Pick<CampaignUserRow, 'id' | 'name'>
@@ -195,10 +186,7 @@ function buildCampaignSmsBody(input: {
     .replace(/\s+/g, ' ')
     .trim()
 
-  return appendSmsOptOut(
-    message || subject || input.campaign.name,
-    getSafeSmsOptOutUrl(input.user.id, input.campaign.clubId),
-  )
+  return appendSmsOptOut(message || subject || input.campaign.name)
 }
 
 function buildSequenceReasoning(

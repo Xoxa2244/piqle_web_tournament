@@ -23,7 +23,6 @@ import {
   inferReferralOfferAttribution,
   type ReferralExecutionContext,
 } from './referral-offers'
-import { generateUnsubscribeUrl } from '@/lib/unsubscribe'
 import { normalizePhone } from '@/lib/phone-normalize'
 
 type CampaignChannel = 'email' | 'sms' | 'both'
@@ -155,10 +154,9 @@ async function deliverCampaignToUser(opts: {
     const smsTo = normalizePhone(user.phone) || user.phone || null
     if (smsText && smsTo && user.smsOptIn) {
       try {
-        const optOutUrl = generateUnsubscribeUrl(user.id, club.id)
         const result = await sendSms({
           to: smsTo,
-          body: appendSmsOptOut(smsText, optOutUrl),
+          body: appendSmsOptOut(smsText),
           logId,
         })
         smsDelivered = true
