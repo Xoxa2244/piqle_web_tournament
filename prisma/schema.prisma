@@ -1007,6 +1007,7 @@ model Player {
   createdAt        DateTime        @default(now()) @map("createdAt")
   updatedAt        DateTime        @updatedAt @map("updatedAt")
   duprRating       Decimal?        @map("dupr_rating") @db.Decimal(3, 2)
+  registrationComment Json?        @map("registration_comment")
   isPaid           Boolean?        @default(false) @map("is_paid")
   isWaitlist       Boolean?        @default(false) @map("is_waitlist")
   dupr             String?         @db.VarChar

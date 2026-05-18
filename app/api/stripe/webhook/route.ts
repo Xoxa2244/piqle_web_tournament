@@ -73,7 +73,7 @@ export async function POST(request: Request) {
       if (payer?.player?.userId) {
         pushToUser(payer.player.userId, {
           type: 'invalidate',
-          keys: ['notification.list', 'registration.getMyStatus', 'registration.getSeatMap'],
+          keys: ['notification.list', 'registration.getInviteRegistration', 'registration.getMyStatus', 'registration.getSeatMap'],
         })
       }
       return
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     if (payerPaid?.player?.userId) {
       pushToUser(payerPaid.player.userId, {
         type: 'invalidate',
-        keys: ['notification.list', 'registration.getMyStatus', 'registration.getSeatMap'],
+        keys: ['notification.list', 'registration.getInviteRegistration', 'registration.getMyStatus', 'registration.getSeatMap'],
       })
     }
   }

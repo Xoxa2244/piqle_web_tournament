@@ -14,6 +14,7 @@ export type RealtimeEvent = {
     | 'tournamentChat.listTournamentThread'
     | 'tournamentChat.listDivisionThread'
     | 'directChat.listMyChats'
+    | 'registration.getInviteRegistration'
     | 'registration.getMyStatus'
     | 'registration.getSeatMap'
   )[]

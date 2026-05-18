@@ -42,6 +42,31 @@ export default function TournamentLayout({
     router.push(`/scoreboard/${tournamentId}`)
   }
 
+  const handleInviteRegistrationClick = async () => {
+    const origin = baseUrl || (typeof window !== 'undefined' ? window.location.origin : '')
+    const inviteUrl = `${origin}/tournaments/${tournamentId}/invite`
+
+    try {
+      await navigator.clipboard.writeText(inviteUrl)
+      toast({ title: 'Invite link copied', description: 'Registration invite link has been copied to clipboard.' })
+    } catch (error) {
+      const textArea = document.createElement('textarea')
+      textArea.value = inviteUrl
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        toast({ title: 'Invite link copied', description: 'Registration invite link has been copied to clipboard.' })
+      } catch {
+        toast({ title: 'Error', description: 'Failed to copy invite link.', variant: 'destructive' })
+      } finally {
+        document.body.removeChild(textArea)
+      }
+    }
+  }
+
   const handleEditTournamentClick = () => {
     router.push(`/admin/${tournamentId}?edit=1`)
   }
@@ -62,6 +87,7 @@ export default function TournamentLayout({
         isAdmin={isAdmin}
         isOwner={isOwner}
         pendingRequestsCount={pendingRequestsCount}
+        onInviteRegistrationClick={handleInviteRegistrationClick}
         onPublicScoreboardClick={handlePublicScoreboardClick}
         onEditTournamentClick={handleEditTournamentClick}
         publicScoreboardUrl={tournament.isPublicBoardEnabled && baseUrl ? `${baseUrl}/scoreboard/${tournamentId}` : undefined}

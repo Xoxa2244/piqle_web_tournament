@@ -17,7 +17,8 @@ import {
   Target,
   AlertTriangle,
   Info,
-  TrendingUp
+  TrendingUp,
+  UserPlus
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ShareButton from '@/components/ShareButton'
@@ -29,6 +30,7 @@ interface TournamentNavBarProps {
   isAdmin?: boolean
   isOwner?: boolean
   pendingRequestsCount?: number
+  onInviteRegistrationClick?: () => void
   onPublicScoreboardClick?: () => void
   onEditTournamentClick?: () => void
   publicScoreboardUrl?: string
@@ -50,6 +52,7 @@ function TournamentNavBarContent({
   isAdmin = false,
   isOwner = false,
   pendingRequestsCount = 0,
+  onInviteRegistrationClick,
   onPublicScoreboardClick,
   onEditTournamentClick,
   publicScoreboardUrl,
@@ -119,6 +122,16 @@ function TournamentNavBarContent({
                 <Upload className="w-3.5 h-3.5 mr-1.5" />
                 CSV Import
               </Link>
+            )}
+
+            {isAdmin && onInviteRegistrationClick && (
+              <button
+                onClick={onInviteRegistrationClick}
+                className="flex items-center px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium"
+              >
+                <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                Invite
+              </button>
             )}
             
             {onPublicScoreboardClick && (

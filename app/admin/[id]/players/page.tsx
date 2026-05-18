@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useState, useMemo, useEffect } from 'react'
+import { Fragment, useState, useMemo, useEffect } from 'react'
 import { trpc } from '@/lib/trpc'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,9 @@ import {
   UserPlus,
   Edit,
   Trash2,
-  Mail
+  Mail,
+  ChevronDown,
+  MessageSquareText
 } from 'lucide-react'
 import Link from 'next/link'
 import AddParticipantModal from '@/components/AddParticipantModal'
@@ -21,6 +23,10 @@ import EditPlayerModal from '@/components/EditPlayerModal'
 import ConfirmModal from '@/components/ConfirmModal'
 import { formatDuprRating } from '@/lib/utils'
 import { toast } from '@/components/ui/use-toast'
+import {
+  type InviteRegistrationComment,
+  isInviteRegistrationComment,
+} from '@/lib/inviteRegistration'
 
 interface Player {
   id: string
@@ -41,6 +47,7 @@ interface Player {
   gender: 'M' | 'F' | 'X' | null
   isPaid: boolean | null
   isWaitlist: boolean | null
+  registrationComment: unknown
   teamPlayers: Array<{
     id: string
     teamId: string
@@ -54,6 +61,12 @@ interface Player {
       }
     }
   }>
+}
+
+function getInviteDetails(player: Player): InviteRegistrationComment | null {
+  return isInviteRegistrationComment(player.registrationComment)
+    ? player.registrationComment
+    : null
 }
 
 export default function PlayersPage() {
@@ -72,6 +85,7 @@ export default function PlayersPage() {
   const [divisionFilter, setDivisionFilter] = useState('')
   const [teamFilter, setTeamFilter] = useState('')
   const [paymentFilter, setPaymentFilter] = useState('')
+  const [expandedInviteDetails, setExpandedInviteDetails] = useState<Set<string>>(new Set())
 
   const { data: tournament, refetch } = trpc.tournament.get.useQuery(
     { id: tournamentId },
@@ -155,6 +169,17 @@ export default function PlayersPage() {
         player.user?.email?.toLowerCase().includes(query) ||
         player.dupr?.toLowerCase().includes(query) ||
         player.user?.duprId?.toLowerCase().includes(query) ||
+        (() => {
+          const details = getInviteDetails(player)
+          if (!details) return false
+          return [
+            details.fullName,
+            details.desiredLevel,
+            details.clubName,
+            String(details.duprRating),
+            details.gender,
+          ].some((value) => value.toLowerCase().includes(query))
+        })() ||
         player.teamPlayers.some(tp => 
           tp.team.name.toLowerCase().includes(query) ||
           tp.team.division.name.toLowerCase().includes(query)
@@ -209,6 +234,18 @@ export default function PlayersPage() {
     setPlayerToDelete(playerId)
   }
 
+  const toggleInviteDetails = (playerId: string) => {
+    setExpandedInviteDetails((prev) => {
+      const next = new Set(prev)
+      if (next.has(playerId)) {
+        next.delete(playerId)
+      } else {
+        next.add(playerId)
+      }
+      return next
+    })
+  }
+
   const getPlayerDivision = (player: Player) => {
     const teamPlayer = player.teamPlayers[0]
     return teamPlayer ? teamPlayer.team.division.name : '—'
@@ -220,6 +257,8 @@ export default function PlayersPage() {
   }
 
   const getDuprRating = (player: Player) => {
+    const inviteDetails = getInviteDetails(player)
+    if (inviteDetails) return formatDuprRating(inviteDetails.duprRating) || '—'
     const userRating = player.user?.duprRatingDoubles ?? player.user?.duprRatingSingles
     if (userRating != null) return formatDuprRating(String(userRating)) || '—'
     if (player.duprRating === null) return '—'
@@ -231,10 +270,14 @@ export default function PlayersPage() {
   }
 
   const getDisplayGender = (player: Player) => {
+    const inviteDetails = getInviteDetails(player)
+    if (inviteDetails) return inviteDetails.gender
     return player.user?.gender ?? player.gender
   }
 
   const getDisplayName = (player: Player) => {
+    const inviteDetails = getInviteDetails(player)
+    if (inviteDetails?.fullName) return inviteDetails.fullName
     const userName = player.user?.name?.trim()
     if (userName) return userName
     return `${player.firstName} ${player.lastName}`.trim()
@@ -250,6 +293,13 @@ export default function PlayersPage() {
     // Not in any team: show neutral "No team" (covers new players and unassigned)
     if (player.isPaid !== true) return 'NO_TEAM'
     return 'INACTIVE'
+  }
+
+  const formatSubmittedAt = (value: string | undefined) => {
+    if (!value) return '—'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return '—'
+    return date.toLocaleString()
   }
 
   if (!tournament) {
@@ -392,6 +442,7 @@ export default function PlayersPage() {
                   <th className="text-left p-3 font-medium">Team</th>
                   <th className="text-left p-3 font-medium">Payment Status</th>
                   <th className="text-left p-3 font-medium">List Status</th>
+                  <th className="text-left p-3 font-medium">Invite Details</th>
                   <th className="text-left p-3 font-medium">Account</th>
                   <th className="text-left p-3 font-medium">Actions</th>
                 </tr>
@@ -399,7 +450,7 @@ export default function PlayersPage() {
               <tbody>
                 {filteredPlayers.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="text-center py-8 text-gray-500">
+                    <td colSpan={12} className="text-center py-8 text-gray-500">
                       {searchQuery || divisionFilter || teamFilter || paymentFilter || rosterFilter !== 'active_in_team'
                         ? 'Players not found' 
                         : 'No players in tournament'
@@ -407,98 +458,153 @@ export default function PlayersPage() {
                     </td>
                   </tr>
                 ) : (
-                  filteredPlayers.map((player) => (
-                    <tr key={player.id} className="border-b hover:bg-gray-50">
-                      <td className="p-3">
-                        <div className="font-medium">
-                          {getDisplayName(player)}
-                        </div>
-                      </td>
-                      <td className="p-3 text-sm text-gray-600">
-                        {getDisplayGender(player) ? (
-                          <Badge variant={getDisplayGender(player) === 'M' ? 'default' : getDisplayGender(player) === 'F' ? 'secondary' : 'outline'}>
-                            {getDisplayGender(player) === 'M' ? 'Male' : getDisplayGender(player) === 'F' ? 'Female' : 'Other'}
-                          </Badge>
-                        ) : '—'}
-                      </td>
-                      <td className="p-3 text-sm text-gray-600">
-                        {getDisplayEmail(player)}
-                      </td>
-                      <td className="p-3 text-sm text-gray-600">
-                        {getDisplayDuprId(player)}
-                      </td>
-                      <td className="p-3 text-sm text-gray-600">
-                        {getDuprRating(player)}
-                      </td>
-                      <td className="p-3 text-sm text-gray-600">
-                        {getPlayerDivision(player)}
-                      </td>
-                      <td className="p-3 text-sm text-gray-600">
-                        {getPlayerTeam(player)}
-                      </td>
-                      <td className="p-3">
-                        <Badge variant={player.isPaid ? "default" : "secondary"}>
-                          {player.isPaid ? 'Paid' : 'Pending'}
-                        </Badge>
-                      </td>
-                      <td className="p-3">
-                        {getListStatus(player) === 'WAITLIST' ? (
-                          <Badge variant="secondary">Waitlist</Badge>
-                        ) : getListStatus(player) === 'ACTIVE' ? (
-                          <Badge variant="default">Active</Badge>
-                        ) : getListStatus(player) === 'NO_TEAM' ? (
-                          <Badge variant="secondary">No team</Badge>
-                        ) : (
-                          <Badge variant="outline">Inactive</Badge>
+                  filteredPlayers.map((player) => {
+                    const inviteDetails = getInviteDetails(player)
+                    const isExpanded = expandedInviteDetails.has(player.id)
+
+                    return (
+                      <Fragment key={player.id}>
+                        <tr className="border-b hover:bg-gray-50">
+                          <td className="p-3">
+                            <div className="font-medium">
+                              {getDisplayName(player)}
+                            </div>
+                          </td>
+                          <td className="p-3 text-sm text-gray-600">
+                            {getDisplayGender(player) ? (
+                              <Badge variant={getDisplayGender(player) === 'M' ? 'default' : getDisplayGender(player) === 'F' ? 'secondary' : 'outline'}>
+                                {getDisplayGender(player) === 'M' ? 'Male' : getDisplayGender(player) === 'F' ? 'Female' : 'Other'}
+                              </Badge>
+                            ) : '—'}
+                          </td>
+                          <td className="p-3 text-sm text-gray-600">
+                            {getDisplayEmail(player)}
+                          </td>
+                          <td className="p-3 text-sm text-gray-600">
+                            {getDisplayDuprId(player)}
+                          </td>
+                          <td className="p-3 text-sm text-gray-600">
+                            {getDuprRating(player)}
+                          </td>
+                          <td className="p-3 text-sm text-gray-600">
+                            {getPlayerDivision(player)}
+                          </td>
+                          <td className="p-3 text-sm text-gray-600">
+                            {getPlayerTeam(player)}
+                          </td>
+                          <td className="p-3">
+                            <Badge variant={player.isPaid ? "default" : "secondary"}>
+                              {player.isPaid ? 'Paid' : 'Pending'}
+                            </Badge>
+                          </td>
+                          <td className="p-3">
+                            {getListStatus(player) === 'WAITLIST' ? (
+                              <Badge variant="secondary">Waitlist</Badge>
+                            ) : getListStatus(player) === 'ACTIVE' ? (
+                              <Badge variant="default">Active</Badge>
+                            ) : getListStatus(player) === 'NO_TEAM' ? (
+                              <Badge variant="secondary">No team</Badge>
+                            ) : (
+                              <Badge variant="outline">Inactive</Badge>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {inviteDetails ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleInviteDetails(player.id)}
+                                className="gap-1"
+                              >
+                                <MessageSquareText className="h-4 w-4" />
+                                Details
+                                <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                              </Button>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {player.user?.id ? (
+                              <Badge variant="default">Registered</Badge>
+                            ) : player.email ? (
+                              <Badge variant="secondary">Not registered</Badge>
+                            ) : (
+                              <Badge variant="outline">No email</Badge>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            {isAdmin && (
+                              <div className="flex items-center space-x-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={inviteByEmailMutation.isPending || !player.email || Boolean(player.user?.id)}
+                                  onClick={() => inviteByEmailMutation.mutate({ playerId: player.id, baseUrl: typeof window !== 'undefined' ? window.location.origin : null })}
+                                  title={
+                                    !player.email
+                                      ? 'No email on player'
+                                      : player.user?.id
+                                        ? 'Already registered'
+                                        : 'Invite by email'
+                                  }
+                                >
+                                  <Mail className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleEditPlayer(player)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeletePlayer(player.id)}
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                        {inviteDetails && isExpanded && (
+                          <tr className="border-b bg-blue-50/40">
+                            <td colSpan={12} className="p-4">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-sm">
+                                <div>
+                                  <div className="text-xs font-medium uppercase text-gray-500">Name</div>
+                                  <div className="text-gray-900">{inviteDetails.fullName}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs font-medium uppercase text-gray-500">Gender</div>
+                                  <div className="text-gray-900">{inviteDetails.gender}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs font-medium uppercase text-gray-500">DUPR</div>
+                                  <div className="text-gray-900">{formatDuprRating(inviteDetails.duprRating) ?? '—'}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs font-medium uppercase text-gray-500">Level</div>
+                                  <div className="text-gray-900">{inviteDetails.desiredLevel}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs font-medium uppercase text-gray-500">Club</div>
+                                  <div className="text-gray-900">{inviteDetails.clubName}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs font-medium uppercase text-gray-500">Submitted</div>
+                                  <div className="text-gray-900">{formatSubmittedAt(inviteDetails.submittedAt)}</div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="p-3">
-                        {player.user?.id ? (
-                          <Badge variant="default">Registered</Badge>
-                        ) : player.email ? (
-                          <Badge variant="secondary">Not registered</Badge>
-                        ) : (
-                          <Badge variant="outline">No email</Badge>
-                        )}
-                      </td>
-                      <td className="p-3">
-                        {isAdmin && (
-                          <div className="flex items-center space-x-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={inviteByEmailMutation.isPending || !player.email || Boolean(player.user?.id)}
-                              onClick={() => inviteByEmailMutation.mutate({ playerId: player.id, baseUrl: typeof window !== 'undefined' ? window.location.origin : null })}
-                              title={
-                                !player.email
-                                  ? 'No email on player'
-                                  : player.user?.id
-                                    ? 'Already registered'
-                                    : 'Invite by email'
-                              }
-                            >
-                              <Mail className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleEditPlayer(player)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeletePlayer(player.id)}
-                              className="text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                      </Fragment>
+                    )
+                  })
                 )}
               </tbody>
             </table>

@@ -5,6 +5,11 @@ import { getTeamSlotCount, normalizeTeamSlots } from '../utils/teamSlots'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import {
+  INVITE_REGISTRATION_CLUBS,
+  INVITE_REGISTRATION_LEVELS,
+  parseInviteRegistrationName,
+} from '@/lib/inviteRegistration'
+import {
   releaseExpiredUnpaidRegistrations as releaseExpiredUnpaidRegistrationsCore,
   isDuePaymentsSchemaError,
 } from '../utils/paymentDue'
@@ -60,6 +65,93 @@ const getPaymentDueAt = (
   return new Date(now.getTime() + FIFTEEN_MINUTES_MS)
 }
 
+const getEntryFeeCents = (tournament: {
+  entryFeeCents?: number | null
+  entryFee?: unknown
+}) => {
+  if (typeof tournament.entryFeeCents === 'number') return tournament.entryFeeCents
+  const fee = Number(tournament.entryFee ?? 0)
+  return Number.isFinite(fee) ? Math.round(fee * 100) : 0
+}
+
+const inviteRegistrationInputSchema = z.object({
+  tournamentId: z.string(),
+  fullName: z
+    .string()
+    .trim()
+    .min(3, 'Enter last name and first name')
+    .refine((value) => value.split(/\s+/).length >= 2, 'Enter last name and first name'),
+  gender: z.enum(['M', 'F']),
+  duprRating: z.number().min(0).max(8),
+  desiredLevel: z.enum(INVITE_REGISTRATION_LEVELS),
+  clubName: z.enum(INVITE_REGISTRATION_CLUBS),
+})
+
+const upsertPendingInvitePayment = async (
+  tx: any,
+  tournament: {
+    id: string
+    entryFeeCents?: number | null
+    entryFee?: unknown
+    currency?: string | null
+    paymentTiming?: 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' | null
+    registrationEndDate?: Date | null
+    startDate: Date
+  },
+  playerId: string,
+  now = new Date()
+) => {
+  const entryFeeCents = getEntryFeeCents(tournament)
+  if (entryFeeCents <= 0) return null
+
+  const { platformFeeCents, stripeFeeCents } = calculateOrganizerNetCents(entryFeeCents)
+  const dueAt = getPaymentDueAt(
+    {
+      paymentTiming: getEffectivePaymentTiming(tournament.paymentTiming),
+      registrationEndDate: tournament.registrationEndDate,
+      startDate: tournament.startDate,
+    },
+    now
+  )
+
+  const pendingPayment = await tx.payment.findFirst({
+    where: {
+      tournamentId: tournament.id,
+      playerId,
+      status: 'PENDING',
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  })
+
+  const paymentData = {
+    teamId: null,
+    slotIndex: null,
+    entryFeeAmount: fromCents(entryFeeCents),
+    platformFeeAmount: fromCents(platformFeeCents),
+    stripeFeeAmount: fromCents(stripeFeeCents),
+    totalAmount: fromCents(entryFeeCents),
+    currency: tournament.currency ?? 'usd',
+    dueAt,
+    status: 'PENDING' as const,
+  }
+
+  if (pendingPayment) {
+    return tx.payment.update({
+      where: { id: pendingPayment.id },
+      data: paymentData,
+    })
+  }
+
+  return tx.payment.create({
+    data: {
+      tournamentId: tournament.id,
+      playerId,
+      ...paymentData,
+    },
+  })
+}
+
 const releaseExpiredUnpaidRegistrations = async (prisma: any, tournamentId: string) => {
   try {
     await releaseExpiredUnpaidRegistrationsCore(prisma, tournamentId)
@@ -72,6 +164,216 @@ const releaseExpiredUnpaidRegistrations = async (prisma: any, tournamentId: stri
 }
 
 export const registrationRouter = createTRPCRouter({
+  getInviteRegistration: protectedProcedure
+    .input(z.object({ tournamentId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await releaseExpiredUnpaidRegistrations(ctx.prisma, input.tournamentId)
+
+      const tournament = await ctx.prisma.tournament.findUnique({
+        where: { id: input.tournamentId },
+        select: {
+          id: true,
+          title: true,
+          startDate: true,
+          registrationStartDate: true,
+          registrationEndDate: true,
+          entryFee: true,
+          entryFeeCents: true,
+          currency: true,
+          paymentTiming: true,
+          user: {
+            select: {
+              organizerStripeAccountId: true,
+              stripeOnboardingComplete: true,
+            },
+          },
+        },
+      })
+
+      if (!tournament) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Tournament not found' })
+      }
+
+      const entryFeeCents = getEntryFeeCents(tournament)
+      const player = await ctx.prisma.player.findUnique({
+        where: {
+          userId_tournamentId: {
+            userId: ctx.session.user.id,
+            tournamentId: input.tournamentId,
+          },
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          gender: true,
+          duprRating: true,
+          isPaid: true,
+          registrationComment: true,
+          createdAt: true,
+        },
+      })
+
+      const latestPayment =
+        player && entryFeeCents > 0
+          ? await ctx.prisma.payment.findFirst({
+              where: {
+                playerId: player.id,
+                tournamentId: input.tournamentId,
+              },
+              orderBy: { createdAt: 'desc' },
+              select: {
+                id: true,
+                status: true,
+                dueAt: true,
+                createdAt: true,
+              },
+            })
+          : null
+
+      return {
+        tournament: {
+          id: tournament.id,
+          title: tournament.title,
+          startDate: tournament.startDate,
+          registrationStartDate: tournament.registrationStartDate,
+          registrationEndDate: tournament.registrationEndDate,
+          entryFeeCents,
+          currency: tournament.currency ?? 'usd',
+          registrationOpen: isRegistrationOpen(tournament),
+          payoutsActive:
+            Boolean(tournament.user?.organizerStripeAccountId) &&
+            Boolean(tournament.user?.stripeOnboardingComplete),
+        },
+        player: player
+          ? {
+              id: player.id,
+              firstName: player.firstName,
+              lastName: player.lastName,
+              email: player.email,
+              gender: player.gender,
+              duprRating: player.duprRating == null ? null : Number(player.duprRating),
+              isPaid: Boolean(player.isPaid) || entryFeeCents <= 0,
+              registrationComment: player.registrationComment,
+              createdAt: player.createdAt,
+              paymentStatus: latestPayment?.status ?? (entryFeeCents > 0 ? 'PENDING' : 'PAID'),
+              paymentDueAt: latestPayment?.dueAt ?? null,
+            }
+          : null,
+      }
+    }),
+
+  submitInviteRegistration: protectedProcedure
+    .input(inviteRegistrationInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const normalizedFullName = input.fullName.trim().replace(/\s+/g, ' ')
+      const roundedDuprRating = Math.round(input.duprRating * 100) / 100
+
+      return ctx.prisma.$transaction(async (tx) => {
+        const tournament = await tx.tournament.findUnique({
+          where: { id: input.tournamentId },
+          select: {
+            id: true,
+            title: true,
+            startDate: true,
+            registrationStartDate: true,
+            registrationEndDate: true,
+            entryFee: true,
+            entryFeeCents: true,
+            currency: true,
+            paymentTiming: true,
+          },
+        })
+
+        if (!tournament) {
+          throw new TRPCError({ code: 'NOT_FOUND', message: 'Tournament not found' })
+        }
+
+        if (!isRegistrationOpen(tournament)) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Registration closed' })
+        }
+
+        const existingPlayer = await tx.player.findUnique({
+          where: {
+            userId_tournamentId: {
+              userId: ctx.session.user.id,
+              tournamentId: input.tournamentId,
+            },
+          },
+          select: {
+            id: true,
+            isPaid: true,
+          },
+        })
+
+        const entryFeeCents = getEntryFeeCents(tournament)
+        const isPaidTournament = entryFeeCents > 0
+
+        if (existingPlayer) {
+          return {
+            alreadyRegistered: true,
+            playerId: existingPlayer.id,
+            paymentRequired: isPaidTournament && !existingPlayer.isPaid,
+            isPaid: Boolean(existingPlayer.isPaid) || !isPaidTournament,
+          }
+        }
+
+        const { firstName, lastName } = parseInviteRegistrationName(normalizedFullName)
+        const now = new Date()
+        const player = await tx.player.create({
+          data: {
+            tournamentId: input.tournamentId,
+            userId: ctx.session.user.id,
+            firstName,
+            lastName,
+            email: ctx.session.user.email ?? undefined,
+            gender: input.gender,
+            duprRating: roundedDuprRating,
+            isWaitlist: false,
+            isPaid: isPaidTournament ? false : true,
+            registrationComment: {
+              source: 'invite_registration',
+              fullName: normalizedFullName,
+              desiredLevel: input.desiredLevel,
+              clubName: input.clubName,
+              duprRating: roundedDuprRating,
+              gender: input.gender,
+              submittedAt: now.toISOString(),
+            },
+          },
+        })
+
+        if (isPaidTournament) {
+          await upsertPendingInvitePayment(tx, tournament, player.id, now)
+        }
+
+        await tx.auditLog.create({
+          data: {
+            actorUserId: ctx.session.user.id,
+            tournamentId: input.tournamentId,
+            action: 'PLAYER_INVITE_REGISTER',
+            entityType: 'Player',
+            entityId: player.id,
+            payload: {
+              fullName: normalizedFullName,
+              gender: input.gender,
+              duprRating: roundedDuprRating,
+              desiredLevel: input.desiredLevel,
+              clubName: input.clubName,
+            },
+          },
+        })
+
+        return {
+          alreadyRegistered: false,
+          playerId: player.id,
+          paymentRequired: isPaidTournament,
+          isPaid: !isPaidTournament,
+        }
+      })
+    }),
+
   getSeatMap: protectedProcedure
     .input(z.object({ tournamentId: z.string() }))
     .query(async ({ ctx, input }) => {

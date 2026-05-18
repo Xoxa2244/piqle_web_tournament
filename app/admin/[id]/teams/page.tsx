@@ -114,6 +114,7 @@ export default function TeamsPage() {
     { tournamentId },
     { enabled: !!tournamentId }
   )
+  const playersList = useMemo(() => (players as unknown as Player[]) ?? [], [players])
 
   // Delete team mutation
   const deleteTeamMutation = trpc.team.delete.useMutation({
@@ -148,9 +149,8 @@ export default function TeamsPage() {
 
   // Filter players without teams
   const unassignedPlayers = useMemo(() => {
-    if (!players) return []
-    return players.filter(player => player.teamPlayers.length === 0)
-  }, [players])
+    return playersList.filter(player => player.teamPlayers.length === 0)
+  }, [playersList])
 
   // Filter players by search query
   const filteredPlayers = useMemo(() => {
