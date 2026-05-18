@@ -76,11 +76,13 @@ export default function TournamentRegistrationPage() {
   const joinWaitlistMutation = trpc.registration.joinWaitlist.useMutation()
   const leaveWaitlistMutation = trpc.registration.leaveWaitlist.useMutation()
   const acceptInvitationMutation = trpc.tournamentInvitation.accept.useMutation()
+  const confirmPaymentMutation = trpc.payment.confirmCheckoutSession.useMutation()
   const [inviteAcceptHandled, setInviteAcceptHandled] = useState(false)
   const [saveCardLoading, setSaveCardLoading] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [leaveWaitlistDivisionId, setLeaveWaitlistDivisionId] = useState<string | null>(null)
   const handledPaymentResultRef = useRef<string | null>(null)
+  const passivePaymentCheckRef = useRef<string | null>(null)
   const utils = trpc.useUtils()
 
   useEffect(() => {
@@ -152,10 +154,21 @@ export default function TournamentRegistrationPage() {
       }
 
       if (paymentResult === 'success') {
+        const checkoutSessionId = params.get('session_id')
         let isPaid = false
         const maxAttempts = 10
 
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          try {
+            const confirmed = await confirmPaymentMutation.mutateAsync({
+              tournamentId,
+              sessionId: checkoutSessionId,
+            })
+            isPaid = Boolean(confirmed.isPaid)
+          } catch {
+            isPaid = false
+          }
+
           const [{ data: refreshedStatus }] = await Promise.all([
             refetchMyStatus(),
             refetchSeatMap(),
@@ -163,7 +176,7 @@ export default function TournamentRegistrationPage() {
 
           if (cancelled) return
 
-          isPaid = Boolean(refreshedStatus?.status === 'active' && refreshedStatus?.isPaid)
+          isPaid = isPaid || Boolean(refreshedStatus?.status === 'active' && refreshedStatus?.isPaid)
           if (isPaid) break
 
           await new Promise((resolve) => window.setTimeout(resolve, 1500))
@@ -180,6 +193,7 @@ export default function TournamentRegistrationPage() {
       }
 
       params.delete('payment')
+      params.delete('session_id')
       const nextQuery = params.toString()
       const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`
       window.history.replaceState({}, '', nextUrl)
@@ -198,7 +212,7 @@ export default function TournamentRegistrationPage() {
       window.removeEventListener('focus', handleWindowFocus)
       window.removeEventListener('pageshow', handleWindowFocus)
     }
-  }, [authStatus, tournamentId, refetchMyStatus, refetchSeatMap])
+  }, [authStatus, confirmPaymentMutation, tournamentId, refetchMyStatus, refetchSeatMap])
 
   const registrationOpen = seatMap ? isRegistrationOpen(seatMap) : false
   const divisions = (seatMap?.divisions ?? []) as any[]
@@ -207,6 +221,32 @@ export default function TournamentRegistrationPage() {
   const payoutsActive = Boolean(seatMap?.payoutsActive)
   const isLadderFormat =
     (seatMap as any)?.format === 'ONE_DAY_LADDER' || (seatMap as any)?.format === 'LADDER_LEAGUE'
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return
+    if (!isPaidTournament || myStatus?.status !== 'active' || myStatus.isPaid) return
+    if (!myStatus.playerId || passivePaymentCheckRef.current === myStatus.playerId) return
+
+    passivePaymentCheckRef.current = myStatus.playerId
+    void confirmPaymentMutation
+      .mutateAsync({ tournamentId, sessionId: null })
+      .then((confirmed) => {
+        if (confirmed.isPaid) {
+          void Promise.all([refetchMyStatus(), refetchSeatMap()])
+        }
+      })
+      .catch(() => {
+        // Payment can still be pending or Stripe may be unavailable in local env.
+      })
+  }, [
+    authStatus,
+    confirmPaymentMutation,
+    isPaidTournament,
+    myStatus,
+    refetchMyStatus,
+    refetchSeatMap,
+    tournamentId,
+  ])
 
   const handleClaimSlot = async (teamId: string, slotIndex: number) => {
     try {

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { TRPCError } from '@trpc/server'
 import { Prisma } from '@prisma/client'
+import type Stripe from 'stripe'
 import { createTRPCRouter, protectedProcedure } from '../trpc'
 import { getStripe } from '@/lib/stripe'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
@@ -29,6 +30,11 @@ const getStatusCount = (
   status: string,
   rows: Array<{ status: string; _count: { _all: number } }>
 ) => rows.find((row) => row.status === status)?._count._all ?? 0
+
+const getPaymentIntentId = (paymentIntent: string | Stripe.PaymentIntent | null) => {
+  if (!paymentIntent) return null
+  return typeof paymentIntent === 'string' ? paymentIntent : paymentIntent.id
+}
 
 export const paymentRouter = createTRPCRouter({
   organizerSummary: protectedProcedure.query(async ({ ctx }) => {
@@ -348,6 +354,131 @@ export const paymentRouter = createTRPCRouter({
       }
     }),
 
+  confirmCheckoutSession: protectedProcedure
+    .input(
+      z.object({
+        tournamentId: z.string(),
+        sessionId: z.string().optional().nullable(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const player = await ctx.prisma.player.findUnique({
+        where: {
+          userId_tournamentId: {
+            userId: ctx.session.user.id,
+            tournamentId: input.tournamentId,
+          },
+        },
+        select: {
+          id: true,
+          isPaid: true,
+        },
+      })
+
+      if (!player) {
+        return { status: 'none' as const, isPaid: false }
+      }
+
+      const sessionId = input.sessionId?.trim() || null
+      let payment = sessionId
+        ? await ctx.prisma.payment.findFirst({
+            where: {
+              tournamentId: input.tournamentId,
+              playerId: player.id,
+              stripeCheckoutSessionId: sessionId,
+            },
+            orderBy: { createdAt: 'desc' },
+          })
+        : await ctx.prisma.payment.findFirst({
+            where: {
+              tournamentId: input.tournamentId,
+              playerId: player.id,
+              stripeCheckoutSessionId: { not: null },
+              status: { not: 'PAID' },
+            },
+            orderBy: { createdAt: 'desc' },
+          })
+
+      if (!payment && sessionId) {
+        payment = await ctx.prisma.payment.findFirst({
+          where: {
+            tournamentId: input.tournamentId,
+            playerId: player.id,
+            stripeCheckoutSessionId: sessionId,
+          },
+          orderBy: { createdAt: 'desc' },
+        })
+      }
+
+      if (!payment?.stripeCheckoutSessionId) {
+        return {
+          status: payment?.status ?? (player.isPaid ? 'PAID' : 'none'),
+          isPaid: player.isPaid ?? false,
+        }
+      }
+
+      const stripe = getStripe()
+      const checkoutSession = await stripe.checkout.sessions.retrieve(payment.stripeCheckoutSessionId)
+
+      const metadataPaymentId = checkoutSession.metadata?.paymentId
+      const metadataTournamentId = checkoutSession.metadata?.tournamentId
+      const metadataPlayerId = checkoutSession.metadata?.playerId
+      const metadataUserId = checkoutSession.metadata?.userId
+
+      if (
+        (metadataPaymentId && metadataPaymentId !== payment.id) ||
+        (metadataTournamentId && metadataTournamentId !== input.tournamentId) ||
+        (metadataPlayerId && metadataPlayerId !== player.id) ||
+        (metadataUserId && metadataUserId !== ctx.session.user.id)
+      ) {
+        throw new TRPCError({
+          code: 'FORBIDDEN',
+          message: 'Checkout session does not belong to this registration',
+        })
+      }
+
+      if (checkoutSession.payment_status === 'paid') {
+        const paymentIntentId = getPaymentIntentId(checkoutSession.payment_intent as any)
+
+        await ctx.prisma.$transaction(async (tx) => {
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: 'PAID',
+              stripePaymentIntentId: paymentIntentId ?? payment.stripePaymentIntentId,
+            },
+          })
+
+          await tx.player.update({
+            where: { id: player.id },
+            data: { isPaid: true },
+          })
+
+          await tx.payment.updateMany({
+            where: {
+              id: { not: payment.id },
+              tournamentId: input.tournamentId,
+              playerId: player.id,
+              status: 'PENDING',
+            },
+            data: { status: 'CANCELED' },
+          })
+        })
+
+        return { status: 'PAID' as const, isPaid: true }
+      }
+
+      if (checkoutSession.status === 'expired' && payment.status === 'PENDING') {
+        await ctx.prisma.payment.update({
+          where: { id: payment.id },
+          data: { status: 'CANCELED' },
+        })
+        return { status: 'CANCELED' as const, isPaid: player.isPaid ?? false }
+      }
+
+      return { status: payment.status, isPaid: player.isPaid ?? false }
+    }),
+
   createCheckoutSession: protectedProcedure
     .input(
       z.object({
@@ -454,7 +585,7 @@ export const paymentRouter = createTRPCRouter({
       const mobileReturnPath = input.returnPath?.trim()
       const successUrl = mobileReturnPath
         ? buildMobileReturnUrl(appBaseUrl, mobileReturnPath, 'success')
-        : `${appBaseUrl}/tournaments/${tournament.id}/register?payment=success`
+        : `${appBaseUrl}/tournaments/${tournament.id}/register?payment=success&session_id={CHECKOUT_SESSION_ID}`
       const cancelUrl = mobileReturnPath
         ? buildMobileReturnUrl(appBaseUrl, mobileReturnPath, 'cancel')
         : `${appBaseUrl}/tournaments/${tournament.id}/register?payment=cancel`

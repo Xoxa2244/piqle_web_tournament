@@ -34,6 +34,7 @@ export default function TournamentInviteRegistrationPage() {
   const [showThanksModal, setShowThanksModal] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
   const handledPaymentResultRef = useRef<string | null>(null)
+  const passivePaymentCheckRef = useRef<string | null>(null)
 
   const {
     data,
@@ -59,6 +60,7 @@ export default function TournamentInviteRegistrationPage() {
       })
     },
   })
+  const confirmPaymentMutation = trpc.payment.confirmCheckoutSession.useMutation()
 
   useEffect(() => {
     if (authStatus === 'unauthenticated' && tournamentId) {
@@ -92,14 +94,25 @@ export default function TournamentInviteRegistrationPage() {
       }
 
       if (paymentResult === 'success') {
+        const checkoutSessionId = searchParams.get('session_id')
         let paid = false
         const maxAttempts = 10
 
         for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          try {
+            const confirmed = await confirmPaymentMutation.mutateAsync({
+              tournamentId,
+              sessionId: checkoutSessionId,
+            })
+            paid = Boolean(confirmed.isPaid)
+          } catch {
+            paid = false
+          }
+
           const { data: refreshed } = await refetch()
           if (cancelled) return
 
-          paid = Boolean(refreshed?.player?.isPaid)
+          paid = paid || Boolean(refreshed?.player?.isPaid)
           if (paid) break
 
           await new Promise((resolve) => window.setTimeout(resolve, 1500))
@@ -116,6 +129,7 @@ export default function TournamentInviteRegistrationPage() {
       }
 
       searchParams.delete('payment')
+      searchParams.delete('session_id')
       const nextQuery = searchParams.toString()
       const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}`
       window.history.replaceState({}, '', nextUrl)
@@ -134,13 +148,31 @@ export default function TournamentInviteRegistrationPage() {
       window.removeEventListener('focus', handleFocus)
       window.removeEventListener('pageshow', handleFocus)
     }
-  }, [authStatus, refetch, tournamentId])
+  }, [authStatus, confirmPaymentMutation, refetch, tournamentId])
 
   const tournament = data?.tournament
   const player = data?.player
   const isPaidTournament = (tournament?.entryFeeCents ?? 0) > 0
   const feeLabel = tournament ? `$${fromCents(tournament.entryFeeCents).toFixed(2)}` : ''
   const paymentPending = Boolean(player && isPaidTournament && !player.isPaid)
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return
+    if (!paymentPending || !player?.id) return
+    if (passivePaymentCheckRef.current === player.id) return
+
+    passivePaymentCheckRef.current = player.id
+    void confirmPaymentMutation
+      .mutateAsync({ tournamentId, sessionId: null })
+      .then((confirmed) => {
+        if (confirmed.isPaid) {
+          void refetch()
+        }
+      })
+      .catch(() => {
+        // Payment can still be pending or Stripe may be unavailable in local env.
+      })
+  }, [authStatus, confirmPaymentMutation, paymentPending, player?.id, refetch, tournamentId])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

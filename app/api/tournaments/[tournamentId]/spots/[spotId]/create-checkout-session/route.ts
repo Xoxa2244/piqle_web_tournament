@@ -295,7 +295,7 @@ export async function POST(
           quantity: 1,
         },
       ],
-      success_url: `${appBaseUrl}/tournaments/${tournament.id}/register?payment=success`,
+      success_url: `${appBaseUrl}/tournaments/${tournament.id}/register?payment=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appBaseUrl}/tournaments/${tournament.id}/register?payment=cancel`,
     })
 
