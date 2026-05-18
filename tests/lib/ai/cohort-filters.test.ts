@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildCohortWhereClause, type CohortFilter } from '@/server/routers/intelligence'
+import { buildCohortWhereClause, filterCohortFiltersByCapabilities, normalizeStoredCohortFilters, type CohortFilter } from '@/server/routers/intelligence'
 
 describe('Cohort Filters — buildCohortWhereClause', () => {
   describe('Empty filters', () => {
@@ -36,6 +36,7 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
   describe('Session Format filter (NEW)', () => {
     it('generates subquery for OPEN_PLAY', () => {
       const result = buildCohortWhereClause([{ field: 'sessionFormat', op: 'eq', value: 'OPEN_PLAY' }])
+      expect(result).toContain('u.id::text IN (SELECT psb."userId"::text')
       expect(result).toContain('play_session_bookings')
       expect(result).toContain('play_sessions')
       expect(result).toContain("ps.format = 'OPEN_PLAY'")
@@ -49,7 +50,7 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
 
     it('includes clubId placeholder $1', () => {
       const result = buildCohortWhereClause([{ field: 'sessionFormat', op: 'eq', value: 'LEAGUE_PLAY' }])
-      expect(result).toContain('ps."clubId" = $1')
+      expect(result).toContain('ps."clubId"::text = $1')
     })
   })
 
@@ -82,19 +83,18 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
 
   describe('UserId filter (NEW — cohort from session)', () => {
     // SQL injection protection: each id has single-quotes escaped (`'` → `''`)
-    // before being inlined. The original implementation also added a `::uuid`
-    // cast, but `users.id` is TEXT in this schema (not UUID) — the cast caused
-    // silent prod breakage (commit 6ec06847). Escaping alone is sufficient
-    // because the inlined string is always wrapped in single quotes.
+    // before being inlined. Production schemas have drifted between TEXT and
+    // UUID identifier columns, so the DB column is normalized via `::text`
+    // while the literals stay wrapped in single quotes.
     it('in operator with array of IDs', () => {
       const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ['user-1', 'user-2', 'user-3'] }])
-      expect(result).toContain("u.id IN ('user-1','user-2','user-3')")
+      expect(result).toContain("u.id::text IN ('user-1','user-2','user-3')")
     })
 
     it('escapes single quotes in user IDs', () => {
       const result = buildCohortWhereClause([{ field: 'userId', op: 'in', value: ["user-O'Brien"] }])
       // Escape still applied even with embedded quote.
-      expect(result).toContain("u.id IN ('user-O''Brien')")
+      expect(result).toContain("u.id::text IN ('user-O''Brien')")
     })
 
     it('non-in operator returns TRUE (safety)', () => {
@@ -199,6 +199,104 @@ describe('Cohort Filters — buildCohortWhereClause', () => {
     it('returns TRUE for unknown fields', () => {
       const result = buildCohortWhereClause([{ field: 'unknown_field' as any, op: 'eq', value: 'test' }])
       expect(result).toBe('TRUE')
+    })
+  })
+
+  describe('Schema fallback', () => {
+    it('drops filters that rely on missing profile columns', () => {
+      const filtered = filterCohortFiltersByCapabilities(
+        [
+          { field: 'age', op: 'gte', value: 40 },
+          { field: 'gender', op: 'eq', value: 'F' },
+          { field: 'frequency', op: 'gte', value: 2 },
+          { field: 'userId', op: 'in', value: ['user-1'] },
+        ],
+        {
+          userColumns: new Set(['id', 'name', 'email']),
+          clubFollowerColumns: new Set(['club_id', 'user_id']),
+          memberHealthColumns: new Set<string>(),
+          playSessionColumns: new Set<string>(),
+          playSessionBookingColumns: new Set<string>(),
+          hasMemberHealthSnapshots: false,
+        } as any,
+      )
+
+      expect(filtered).toEqual([
+        { field: 'userId', op: 'in', value: ['user-1'] },
+      ])
+    })
+
+    it('drops health filters when member health snapshots are unavailable', () => {
+      const filtered = filterCohortFiltersByCapabilities(
+        [
+          { field: 'healthScore', op: 'gte', value: 80 },
+          { field: 'riskLevel', op: 'eq', value: 'watch' },
+          { field: 'recency', op: 'lte', value: 30 },
+        ],
+        {
+          userColumns: new Set(['id', 'name', 'email', 'date_of_birth']),
+          clubFollowerColumns: new Set(['club_id', 'user_id', 'created_at']),
+          memberHealthColumns: new Set<string>(),
+          playSessionColumns: new Set<string>(),
+          playSessionBookingColumns: new Set<string>(),
+          hasMemberHealthSnapshots: false,
+        } as any,
+      )
+
+      expect(filtered).toEqual([
+      ])
+    })
+
+    it('drops activity filters when play session tables are unavailable', () => {
+      const filtered = filterCohortFiltersByCapabilities(
+        [
+          { field: 'sessionFormat', op: 'eq', value: 'OPEN_PLAY' },
+          { field: 'frequency', op: 'gte', value: 2 },
+          { field: 'recency', op: 'lte', value: 30 },
+          { field: 'city', op: 'eq', value: 'Austin' },
+        ],
+        {
+          userColumns: new Set(['id', 'name', 'email', 'city']),
+          clubFollowerColumns: new Set(['club_id', 'user_id', 'created_at']),
+          memberHealthColumns: new Set<string>(),
+          playSessionColumns: new Set<string>(),
+          playSessionBookingColumns: new Set<string>(),
+          hasMemberHealthSnapshots: false,
+        } as any,
+      )
+
+      expect(filtered).toEqual([
+        { field: 'city', op: 'eq', value: 'Austin' },
+      ])
+    })
+  })
+
+  describe('Stored filter normalization', () => {
+    it('accepts wrapper objects with filters array', () => {
+      expect(normalizeStoredCohortFilters({
+        filters: [
+          { field: 'gender', op: 'eq', value: 'F' },
+          { nope: true },
+        ],
+      })).toEqual([
+        { field: 'gender', op: 'eq', value: 'F' },
+      ])
+    })
+
+    it('accepts JSON strings and legacy conditions arrays', () => {
+      expect(normalizeStoredCohortFilters(JSON.stringify({
+        conditions: [
+          { field: 'recency', op: 'lte', value: 30 },
+          { field: 42, op: 'eq', value: 'x' },
+        ],
+      }))).toEqual([
+        { field: 'recency', op: 'lte', value: 30 },
+      ])
+    })
+
+    it('returns empty array for malformed stored filters', () => {
+      expect(normalizeStoredCohortFilters('{bad json')).toEqual([])
+      expect(normalizeStoredCohortFilters({ something: 'else' })).toEqual([])
     })
   })
 })

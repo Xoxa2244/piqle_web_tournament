@@ -64,6 +64,37 @@
     background: #0b0d17;
     color: #e2e8f0;
   }
+
+  body[data-brand="iqsport"] select {
+    color-scheme: dark;
+  }
+
+  body[data-brand="iqsport"] select option,
+  body[data-brand="iqsport"] select optgroup {
+    background-color: #111827;
+    color: #f8fafc;
+  }
+
+  select option,
+  select optgroup {
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+  }
+
+  select option:disabled,
+  select optgroup:disabled {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .dark select {
+    color-scheme: dark;
+  }
+
+  .dark select option,
+  .dark select optgroup {
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+  }
 }
 
 @layer utilities {

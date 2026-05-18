@@ -71,11 +71,9 @@ export function isTwilioConfigured(): boolean {
   return !!client && !!(messagingServiceSid || fromNumber)
 }
 
-export function appendSmsOptOut(text: string, optOutUrl?: string): string {
+export function appendSmsOptOut(text: string, _optOutUrl?: string): string {
   const trimmed = text.trim()
-  return optOutUrl
-    ? `${trimmed} Opt out: ${optOutUrl}`
-    : `${trimmed} Reply STOP to opt out`
+  return `${trimmed} Reply STOP to opt out`
 }
 
 /**
@@ -93,7 +91,6 @@ export function buildSlotFillerSms({
   spotsLeft,
   bookingUrl,
   customMessage,
-  optOutUrl,
 }: {
   memberName: string
   clubName: string
@@ -103,10 +100,9 @@ export function buildSlotFillerSms({
   spotsLeft: number
   bookingUrl: string
   customMessage?: string
-  optOutUrl?: string
 }): string {
   if (customMessage) {
-    return appendSmsOptOut(`IQSport: ${customMessage} Join now: ${bookingUrl}`, optOutUrl)
+    return appendSmsOptOut(`IQSport: ${customMessage} Join now: ${bookingUrl}`)
   }
   const name = memberName.split(' ')[0] || 'there'
   return appendSmsOptOut(
@@ -114,7 +110,6 @@ export function buildSlotFillerSms({
     `on ${sessionDate}, ${sessionTime}. ` +
     `${spotsLeft} spot${spotsLeft !== 1 ? 's' : ''} left. ` +
     `Join now: ${bookingUrl}`,
-    optOutUrl,
   )
 }
 
@@ -128,7 +123,6 @@ export function buildReactivationSms({
   sessionCount,
   bookingUrl,
   customMessage,
-  optOutUrl,
 }: {
   memberName: string
   clubName: string
@@ -136,10 +130,9 @@ export function buildReactivationSms({
   sessionCount: number
   bookingUrl: string
   customMessage?: string
-  optOutUrl?: string
 }): string {
   if (customMessage) {
-    return appendSmsOptOut(`IQSport: ${customMessage} Book now: ${bookingUrl}`, optOutUrl)
+    return appendSmsOptOut(`IQSport: ${customMessage} Book now: ${bookingUrl}`)
   }
   const name = memberName.split(' ')[0] || 'there'
   return appendSmsOptOut(
@@ -147,6 +140,5 @@ export function buildReactivationSms({
     `It's been ${daysSinceLastActivity} days since your last session. ` +
     `We have ${sessionCount} upcoming session${sessionCount !== 1 ? 's' : ''} that match your level. ` +
     `Book now: ${bookingUrl}`,
-    optOutUrl,
   )
 }

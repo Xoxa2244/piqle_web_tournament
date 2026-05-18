@@ -7,7 +7,7 @@
  *   - one_time: single subject + body editor (legacy behaviour)
  *   - sequence: multi-step editor (1..MAX_SEQUENCE_STEPS), step picker
  *               tabs, per-step subject/body/delay/CTA, Add/Remove
- *   - recurring: still rejected — placeholder pointing back to Step 3
+ *   - recurring: same single-message editor as one_time; schedule lives in Step 3
  *
  * Sequence state lives on `message.steps`. The currently-edited step
  * index is local UI state (`editingStepIndex`). Top-level
@@ -23,6 +23,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Wand2, Loader2, AlertTriangle, HelpCircle, Plus, X, Sparkles } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
+import { formatSequenceDelayCompact, resolveSequenceDelay, type SequenceDelayUnit } from '@/lib/campaign-scheduling'
 import { MAX_SEQUENCE_STEPS } from './types'
 import type { AudienceSelection, CampaignGoal, MessageDraft, ScheduleSettings, SequenceStep } from './types'
 
@@ -134,6 +135,7 @@ export function Step4Message({
   const isRecurring = schedule.format === 'recurring'
   const steps: SequenceStep[] = message.steps ?? []
   const editingStep: SequenceStep | undefined = isSequence ? steps[editingStepIndex] : undefined
+  const editingDelay = editingStep ? resolveSequenceDelay(editingStep) : null
 
   // Reading current values — same pattern works for both formats.
   const currentSubject = isSequence ? (editingStep?.subject ?? '') : message.subject
@@ -178,10 +180,48 @@ export function Step4Message({
     onChange({ ...message, steps: newSteps })
   }
 
-  const updateStepDelay = (idx: number, delayDays: number) => {
+  const updateStepDelay = (idx: number, patch: Partial<Pick<SequenceStep, 'delayDays' | 'delayMinutes'>>) => {
     const newSteps = [...steps]
-    newSteps[idx] = { ...newSteps[idx], delayDays }
+    newSteps[idx] = { ...newSteps[idx], ...patch }
     onChange({ ...message, steps: newSteps })
+  }
+
+  const updateStepDelayUnit = (idx: number, unit: SequenceDelayUnit) => {
+    const step = steps[idx]
+    if (!step) return
+    const resolved = resolveSequenceDelay(step)
+
+    if (unit === 'minutes') {
+      updateStepDelay(idx, {
+        delayDays: step.delayDays > 0 ? step.delayDays : 1,
+        delayMinutes: resolved.unit === 'minutes' ? resolved.amount : 10,
+      })
+      return
+    }
+
+    updateStepDelay(idx, {
+      delayDays: resolved.unit === 'days' ? Math.max(1, resolved.amount) : 1,
+      delayMinutes: undefined,
+    })
+  }
+
+  const updateStepDelayAmount = (idx: number, amount: number) => {
+    const step = steps[idx]
+    if (!step) return
+    const resolved = resolveSequenceDelay(step)
+
+    if (resolved.unit === 'minutes') {
+      updateStepDelay(idx, {
+        delayDays: step.delayDays > 0 ? step.delayDays : 1,
+        delayMinutes: Math.max(1, Math.min(1440, amount || 1)),
+      })
+      return
+    }
+
+    updateStepDelay(idx, {
+      delayDays: Math.max(1, Math.min(60, amount || 1)),
+      delayMinutes: undefined,
+    })
   }
 
   const addStep = () => {
@@ -419,7 +459,7 @@ export function Step4Message({
                 Step {idx + 1}
                 {idx > 0 && (
                   <span className="text-[10px]" style={{ opacity: 0.7 }}>
-                    +{s.delayDays}d
+                    {formatSequenceDelayCompact(s)}
                   </span>
                 )}
                 {idx > 0 && active && (
@@ -499,14 +539,23 @@ export function Step4Message({
           <input
             type="number"
             min={1}
-            max={60}
-            value={editingStep.delayDays}
-            onChange={(e) => updateStepDelay(editingStepIndex, Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
-            className="w-16 px-2 py-1 rounded-lg text-xs outline-none text-center"
+            max={editingDelay?.unit === 'minutes' ? 1440 : 60}
+            value={editingDelay?.amount ?? 1}
+            onChange={(e) => updateStepDelayAmount(editingStepIndex, Number(e.target.value) || 1)}
+            className="w-20 px-2 py-1 rounded-lg text-xs outline-none text-center"
             style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
           />
+          <select
+            value={editingDelay?.unit ?? 'days'}
+            onChange={(e) => updateStepDelayUnit(editingStepIndex, e.target.value as SequenceDelayUnit)}
+            className="px-2 py-1 rounded-lg text-xs outline-none"
+            style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)', color: 'var(--heading)' }}
+          >
+            <option value="days">day(s)</option>
+            <option value="minutes">minute(s)</option>
+          </select>
           <span className="text-[11px]" style={{ color: 'var(--t3)' }}>
-            day(s) after Step {editingStepIndex} was sent to the recipient.
+            after Step {editingStepIndex} was sent to the recipient.
           </span>
         </div>
       )}
@@ -728,17 +777,6 @@ export function Step4Message({
         </div>
       )}
 
-      {/* Launch */}
-      {(isSequence || isRecurring) && (
-        <div className="rounded-xl p-3 flex items-start gap-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
-          <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#F59E0B' }} />
-          <div className="text-xs" style={{ color: 'var(--heading)' }}>
-            {isSequence
-              ? 'Sequence campaigns are coming soon. For now, only one-time campaigns can be launched.'
-              : 'Recurring campaigns are coming soon. For now, only one-time campaigns can be launched.'}
-          </div>
-        </div>
-      )}
       {!isLive && (
         <div className="rounded-xl p-3 flex items-start gap-2" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
           <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#F59E0B' }} />

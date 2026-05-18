@@ -6,6 +6,8 @@
  * onChange to mutate it.
  */
 
+import { buildRecurringCron as buildRecurringCronShared, type RecurringFrequency } from '@/lib/campaign-scheduling'
+
 export type WizardStep = 1 | 2 | 3 | 4
 
 export type CampaignGoal =
@@ -22,9 +24,7 @@ export type CampaignChannel = 'email' | 'sms' | 'email+sms'
 
 export type ScheduleMode = 'now' | 'scheduled' | 'triggered'
 
-/** P2-T9 / Phase 6 prep: send format. v1 ships only `one_time`; the other
- *  two are surfaced in the wizard as "Coming soon" placeholders. Real
- *  sequence runner + cron-based recurring runner land in a follow-up sprint. */
+/** Supported send formats for campaign launch and follow-up automation. */
 export type SendFormat = 'one_time' | 'sequence' | 'recurring'
 
 export type AudienceSourceKind = 'saved_cohort' | 'ai_suggested' | 'inline_userIds'
@@ -43,6 +43,8 @@ export interface SequenceStep {
   stepIndex: number
   /** Days to wait after the previous step was sent. Always 0 for stepIndex=0. */
   delayDays: number
+  /** Optional fast-test delay. When present, takes priority over delayDays. */
+  delayMinutes?: number
   subject: string
   body: string
   /** Optional CTA per step (overrides campaign-level ctaLabel/ctaUrl). */
@@ -71,7 +73,7 @@ export interface MessageDraft {
   steps?: SequenceStep[]
 }
 
-export type RecurringFrequency = 'daily' | 'weekly' | 'monthly'
+export type { RecurringFrequency }
 
 export interface ScheduleSettings {
   /** Send format — drives whether Step 4 renders 1 or N message editors. */
@@ -93,6 +95,8 @@ export interface ScheduleSettings {
   recurringDayOfMonth?: number
   /** 0..23 — local hour to fire (interpreted in recurringTimezone). */
   recurringHour?: number
+  /** 1..59 — primarily useful for QA on cron-enabled environments. */
+  recurringIntervalMinutes?: number
   /** IANA timezone string. Defaults to 'UTC'. */
   recurringTimezone?: string
 }
@@ -101,22 +105,7 @@ export interface ScheduleSettings {
  *  We only generate the small set of patterns the Wizard supports; admins
  *  cannot type custom cron in MVP. */
 export function buildRecurringCron(s: ScheduleSettings): string | null {
-  if (s.format !== 'recurring') return null
-  const hour = Math.max(0, Math.min(23, s.recurringHour ?? 9))
-  switch (s.recurringFrequency) {
-    case 'daily':
-      return `0 ${hour} * * *`
-    case 'weekly': {
-      const dow = Math.max(0, Math.min(6, s.recurringDayOfWeek ?? 1))
-      return `0 ${hour} * * ${dow}`
-    }
-    case 'monthly': {
-      const dom = Math.max(1, Math.min(28, s.recurringDayOfMonth ?? 1))
-      return `0 ${hour} ${dom} * *`
-    }
-    default:
-      return null
-  }
+  return buildRecurringCronShared(s)
 }
 
 export interface WizardState {
@@ -140,6 +129,7 @@ export const EMPTY_WIZARD_STATE: WizardState = {
     recurringDayOfWeek: 1, // Monday
     recurringDayOfMonth: 1,
     recurringHour: 9,
+    recurringIntervalMinutes: 10,
     recurringTimezone: 'UTC',
   },
 }
