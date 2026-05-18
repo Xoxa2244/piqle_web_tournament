@@ -6,9 +6,8 @@
  * 4-step drawer rendered from CampaignsIQ when "+ New Campaign" is
  * clicked. State is held here and passed down to each step.
  *
- * NOTE: real Launch wiring (creating a Campaign DB row + queueing
- * sends) is gated by Live Mode. v1 ships the UX flow; the actual
- * submit path lands alongside the Campaign model in P5-T2.
+ * Launch writes a real Campaign row. Immediate sequence sends happen
+ * at launch; recurring and follow-up sequence steps continue via cron.
  */
 
 import { useState, useEffect, useMemo } from 'react'
@@ -235,15 +234,6 @@ export function CampaignWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedCohorts.length])
 
-  useEffect(() => {
-    if (state.audience?.kind !== 'ai_suggested' || state.schedule.format !== 'recurring') return
-    setState((s) => (
-      s.audience?.kind === 'ai_suggested' && s.schedule.format === 'recurring'
-        ? { ...s, schedule: { ...s.schedule, format: 'one_time' } }
-        : s
-    ))
-  }, [state.audience?.kind, state.schedule.format])
-
   const canAdvance = (() => {
     if (step === 1) return !!state.audience
     if (step === 2) return !!state.goal
@@ -335,11 +325,15 @@ export function CampaignWizard({
     ))
   )
   const recurringMissingCohort = isRecurring && !state.audience?.cohortId
+  const recurringDisabledReason = !state.audience?.cohortId
+    ? state.audience?.kind === 'ai_suggested'
+      ? 'Recurring needs a saved cohort. This suggested audience is a snapshot unless the full saved suggestion is selected.'
+      : 'Recurring needs a saved cohort because the audience is re-checked on every run.'
+    : null
 
   const handleLaunch = async () => {
     if (liveMode !== 'live') return
     if (!state.audience || !state.goal) return
-    if (state.schedule.format !== 'one_time') return
     setIsLaunching(true)
     try {
       // Build audience input. cohortId wins if available; otherwise use the
@@ -368,6 +362,7 @@ export function CampaignWizard({
               steps: sequenceSteps.map((s) => ({
                 stepIndex: s.stepIndex,
                 delayDays: s.delayDays,
+                ...(typeof s.delayMinutes === 'number' && s.delayMinutes > 0 ? { delayMinutes: s.delayMinutes } : {}),
                 subject: s.subject.trim(),
                 body: s.body.trim(),
                 ...(s.ctaLabel?.trim() ? { ctaLabel: s.ctaLabel.trim() } : {}),
@@ -390,7 +385,6 @@ export function CampaignWizard({
   const launchDisabled = step !== 4
     || !state.audience
     || !state.goal
-    || state.schedule.format !== 'one_time'
     || liveMode !== 'live'
     || isLaunching
     || launchMutation.isPending
@@ -515,8 +509,8 @@ export function CampaignWizard({
               />
             ) : step === 3 ? (
               <Step3Schedule
-                audienceKind={state.audience?.kind ?? null}
                 schedule={state.schedule}
+                recurringDisabledReason={recurringDisabledReason}
                 onChange={(schedule: ScheduleSettings) => setState((s) => ({ ...s, schedule }))}
               />
             ) : (

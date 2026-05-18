@@ -97,6 +97,31 @@
   color: var(--t1);
 }
 
+.iq-intelligence[data-theme="dark"] select {
+  color-scheme: dark;
+}
+
+.iq-intelligence[data-theme="dark"] select option,
+.iq-intelligence[data-theme="dark"] select optgroup {
+  background-color: #111827;
+  color: #F8FAFC;
+}
+
+.iq-intelligence[data-theme="dark"] select option:disabled,
+.iq-intelligence[data-theme="dark"] select optgroup:disabled {
+  color: #94A3B8;
+}
+
+.iq-intelligence[data-theme="light"] select {
+  color-scheme: light;
+}
+
+.iq-intelligence[data-theme="light"] select option,
+.iq-intelligence[data-theme="light"] select optgroup {
+  background-color: #FFFFFF;
+  color: #0F172A;
+}
+
 /* Scoped scrollbar */
 .iq-intelligence ::-webkit-scrollbar {
   width: 6px;

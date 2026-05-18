@@ -104,7 +104,7 @@ function getPeriodLabel(p: Period): { current: string; previous: string } {
   return { current: "Selected range", previous: "Previous range" };
 }
 
-type KpiItem = { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[] };
+type KpiItem = { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[]; tooltip?: string };
 
 const emptyHealth = [
   { level: "Healthy", count: 0, pct: 0, color: "#10B981" },
@@ -975,7 +975,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
             >
-              <div title={(kpi as { tooltip?: string }).tooltip}>
+              <div title={kpi.tooltip}>
               <Card className="relative overflow-hidden">
                 <div className="flex items-start justify-between mb-3">
                   <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
@@ -987,7 +987,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 <div className="flex items-center justify-between">
                   <span className="text-xs flex items-center gap-1" style={{ color: "var(--t3)" }}>
                     <span className="truncate">{kpi.label}</span>
-                    {(kpi as { tooltip?: string }).tooltip && (
+                    {kpi.tooltip && (
                       <span
                         className="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] cursor-help shrink-0"
                         style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}

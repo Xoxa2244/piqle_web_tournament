@@ -174,7 +174,7 @@ export function Step1Audience({
     onChange({ kind: 'saved_cohort', cohortId: id, cohortName: name, userIds: [], memberCount })
   }
 
-  const pickSuggested = (id: string, name: string, userIds: string[]) => {
+  const pickSuggested = (id: string, name: string, userIds: string[], cohortId: string | null = null) => {
     setActiveKind('ai_suggested')
     setActiveSuggestedAudienceId(id)
     const normalizedUserIds = Array.from(
@@ -188,7 +188,7 @@ export function Step1Audience({
 
     onChange({
       kind: 'ai_suggested',
-      cohortId: null,
+      cohortId,
       cohortName: name,
       userIds: normalizedUserIds,
       memberCount: normalizedUserIds.length,
@@ -205,6 +205,9 @@ export function Step1Audience({
       activeSuggestedAudience.id,
       activeSuggestedAudience.name,
       nextSelectedUserIds,
+      activeSuggestedAudience.cohortId && nextSelectedUserIds.length === activeSuggestedAudience.userIds.length
+        ? activeSuggestedAudience.cohortId
+        : null,
     )
   }
   const toggleSelectAllSuggestedUsers = () => {
@@ -214,6 +217,7 @@ export function Step1Audience({
       activeSuggestedAudience.id,
       activeSuggestedAudience.name,
       allSuggestedMembersSelected ? [] : activeSuggestedAudience.userIds,
+      allSuggestedMembersSelected ? null : activeSuggestedAudience.cohortId,
     )
   }
 
@@ -318,7 +322,7 @@ export function Step1Audience({
                       <button
                         key={c.id}
                         type="button"
-                        onClick={() => pickSuggested(c.id, c.name, c.userIds)}
+                        onClick={() => pickSuggested(c.id, c.name, c.userIds, c.cohortId)}
                         className="rounded-lg px-3 py-2 text-left text-xs transition-all"
                         style={{
                           background: selected ? 'rgba(139,92,246,0.12)' : 'var(--subtle)',

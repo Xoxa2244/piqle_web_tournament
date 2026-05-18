@@ -13,8 +13,7 @@ import { classifyArchetype } from './reactivation-messages';
 import { detectPersona, persistPersona, generatePersonalizedInvite, type BehaviorSignals, type PlayerPersona } from './persona';
 import { selectBestVariant } from './variant-optimizer';
 import { sendReactivationEmail, sendEventInviteEmail, sendSlotFillerInviteEmail } from '../email';
-import { sendSms, buildReactivationSms, buildSlotFillerSms } from '../sms';
-import { generateUnsubscribeUrl } from '@/lib/unsubscribe';
+import { sendSms, buildReactivationSms, buildSlotFillerSms, appendSmsOptOut } from '../sms';
 import { checkAntiSpam } from './anti-spam';
 import { resolvePreferences } from './inferred-preferences';
 import { getPlatformBaseUrl } from '@/lib/platform-base-url';
@@ -1228,7 +1227,6 @@ export async function sendInvites(
         if (!phone) throw new Error('Phone number not available')
         const smsOptIn = user.smsOptIn
         if (!smsOptIn) throw new Error('User has not opted in to SMS')
-        const optOutUrl = generateUnsubscribeUrl(user.id, clubId, options?.baseUrl)
         const body = buildSlotFillerSms({
           memberName: user.name || 'there',
           clubName: club.name,
@@ -1238,7 +1236,6 @@ export async function sendInvites(
           spotsLeft: sessionData.spotsLeft,
           bookingUrl,
           customMessage: candidate.customMessage || personalizedBody,
-          optOutUrl,
         })
         await sendSms({ to: phone, body })
         results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
@@ -1443,8 +1440,6 @@ export async function sendReactivationMessages(
         if (!phone) throw new Error('Phone number not available')
         const smsOptIn = user.smsOptIn
         if (!smsOptIn) throw new Error('User has not opted in to SMS')
-        const optOutUrl = generateUnsubscribeUrl(user.id, clubId, options?.baseUrl)
-
         const body = buildReactivationSms({
           memberName: user.name || 'there',
           clubName: club.name,
@@ -1452,7 +1447,6 @@ export async function sendReactivationMessages(
           sessionCount: suggestedSessions.length,
           bookingUrl: firstSessionDeepLink,
           customMessage,
-          optOutUrl,
         })
 
         const smsResult = await sendSms({ to: phone, body })
@@ -1592,8 +1586,7 @@ export async function sendEventInviteMessages(
         if (!phone) throw new Error('Phone number not available')
         const smsOptIn = user.smsOptIn
         if (!smsOptIn) throw new Error('User has not opted in to SMS')
-        const optOutUrl = generateUnsubscribeUrl(user.id, clubId, options?.baseUrl)
-        await sendSms({ to: phone, body: `${candidate.customMessage} Opt out: ${optOutUrl}` })
+        await sendSms({ to: phone, body: appendSmsOptOut(candidate.customMessage) })
         results.push({ memberId: user.id, channel: 'sms', status: 'sent' })
       } catch (err: any) {
         results.push({ memberId: user.id, channel: 'sms', status: 'failed', error: err.message })
@@ -2073,10 +2066,9 @@ export async function sendOutreachMessage(
       if (!phone) throw new Error('Phone number not available')
       const smsOptIn = (user as any).smsOptIn
       if (!smsOptIn) throw new Error('User has not opted in to SMS')
-      const optOutUrl = generateUnsubscribeUrl(user.id, clubId, options?.baseUrl)
       await sendSms({
         to: phone,
-        body: `${variant.smsBody || `${variant.emailBody} ${bookingUrl}`.slice(0, 320)} Opt out: ${optOutUrl}`,
+        body: appendSmsOptOut(variant.smsBody || `${variant.emailBody} ${bookingUrl}`.slice(0, 320)),
       })
       results.push({ channel: 'sms', status: 'sent' })
     } catch (err: any) {

@@ -43,10 +43,10 @@ import {
   withAdvisorDraftMetadata,
 } from '@/lib/ai/advisor-drafts'
 import {
-  processCampaignSendQueue,
   scheduleCampaignSend,
   sendCampaignNow,
 } from '@/lib/ai/advisor-campaign-jobs'
+import { runCampaignSendTick } from '@/lib/campaign-send-runner'
 import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy'
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy'
 import { resolveAdvisorSandboxRoutingDraft } from '@/lib/ai/advisor-sandbox-policy'
@@ -59,12 +59,14 @@ import { buildPlatformUrl, getPlatformBaseUrl, getPlatformBaseUrlFromRequest } f
 import { normalizeMembership } from '@/lib/ai/membership-intelligence'
 import { classifyActivityLevel, classifyEngagementTrend, classifyValueTier } from '@/lib/ai/member-health'
 import { PROGRAMMING_IQ_PRESET_IDS } from '@/lib/ai/programming-iq-strategy'
+import { describeRecurringCron, resolveSequenceDelay } from '@/lib/campaign-scheduling'
 
 // In-memory cache for expensive co-player social graph query (30 min TTL)
 const coPlayerCache = new Map<string, { ts: number; data: Map<string, { activeCoPlayers: number; totalCoPlayers: number }> }>()
 
 // ── In-memory caches (per serverless instance, 5 min TTL) ──
 const calendarCache = new Map<string, { data: any; ts: number }>()
+const cohortSchemaCache = new Map<string, { data: CohortSchemaCapabilities; ts: number }>()
 
 // ── Helper: Check club admin access ──
 async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
@@ -85,176 +87,6 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
     return { isAdmin: false, isMember: true }
   }
   return { isAdmin: true, isMember: true }
-}
-
-async function dispatchSequenceStepZeroNow(
-  prisma: any,
-  input: {
-    campaignId: string
-    clubId: string
-    campaignName: string
-    recipientIds: string[]
-    steps: Array<{
-      stepIndex: number
-      delayDays: number
-      subject: string
-      body: string
-      ctaLabel?: string
-      ctaUrl?: string
-    }>
-  },
-) {
-  type SequenceLaunchLog = { id: string; userId: string }
-  type SequenceLaunchUser = { id: string; email: string | null; name: string | null }
-
-  const stepZero = input.steps[0]
-  if (!stepZero || input.recipientIds.length === 0) {
-    return { sent: 0, failed: 0, skipped: 0 }
-  }
-
-  await prisma.aIRecommendationLog.createMany({
-    data: input.recipientIds.map((userId) => ({
-      clubId: input.clubId,
-      userId,
-      type: 'CAMPAIGN_SEND' as const,
-      channel: 'email',
-      status: 'pending',
-      campaignId: input.campaignId,
-      sequenceStep: 0,
-      reasoning: {
-        campaignName: input.campaignName,
-        totalSteps: input.steps.length,
-      },
-    })),
-    skipDuplicates: true,
-  })
-
-  const logs: SequenceLaunchLog[] = await prisma.aIRecommendationLog.findMany({
-    where: {
-      campaignId: input.campaignId,
-      type: 'CAMPAIGN_SEND',
-      sequenceStep: 0,
-      userId: { in: input.recipientIds },
-    },
-    select: { id: true, userId: true },
-  })
-
-  if (logs.length === 0) {
-    return { sent: 0, failed: 0, skipped: 0 }
-  }
-
-  const claimedAt = new Date()
-  await prisma.aIRecommendationLog.updateMany({
-    where: { id: { in: logs.map((row) => row.id) } },
-    data: { sentAt: claimedAt, status: 'pending' },
-  })
-
-  const users: SequenceLaunchUser[] = await prisma.user.findMany({
-    where: { id: { in: logs.map((row) => row.userId) } },
-    select: { id: true, email: true, name: true },
-  })
-  const userById = new Map<string, SequenceLaunchUser>(users.map((user) => [user.id, user] as const))
-
-  const club = await prisma.club.findUnique({
-    where: { id: input.clubId },
-    select: { name: true },
-  })
-  const clubName = club?.name ?? 'Your Club'
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://app.iqsport.ai'
-  const bookingUrl = `${baseUrl}/clubs/${input.clubId}`
-  const { buildOutreachTemplateValues, isBlockedEmail, sendOutreachEmail } = await import('@/lib/email')
-
-  let sent = 0
-  let failed = 0
-  let skipped = 0
-
-  for (const row of logs) {
-    const user = userById.get(row.userId)
-    if (!user?.email) {
-      await prisma.aIRecommendationLog.update({
-        where: { id: row.id },
-        data: {
-          status: 'failed',
-          bouncedAt: new Date(),
-          bounceType: 'no_email',
-        },
-      })
-      failed++
-      continue
-    }
-
-    if (isBlockedEmail(user.email)) {
-      await prisma.aIRecommendationLog.update({
-        where: { id: row.id },
-        data: {
-          status: 'failed',
-          bouncedAt: new Date(),
-          bounceType: 'blocked_domain',
-        },
-      })
-      failed++
-      continue
-    }
-
-    try {
-      const { messageId } = await sendOutreachEmail({
-        to: user.email,
-        subject: stepZero.subject || input.campaignName,
-        body: stepZero.body,
-        clubName,
-        bookingUrl,
-        templateValues: buildOutreachTemplateValues({
-          fullName: user.name,
-          clubName,
-        }),
-        ctaLabel: stepZero.ctaLabel,
-        ctaUrl: stepZero.ctaUrl,
-        metadata: {
-          logId: row.id,
-          clubId: input.clubId,
-          userId: user.id,
-        },
-        tags: ['campaign', `campaign:${input.campaignId}`, 'step:0'],
-      })
-
-      await prisma.aIRecommendationLog.update({
-        where: { id: row.id },
-        data: {
-          externalMessageId: messageId,
-          status: 'sent',
-        },
-      })
-      sent++
-    } catch (err: any) {
-      const message = String(err?.message ?? err).slice(0, 200)
-      await prisma.aIRecommendationLog.update({
-        where: { id: row.id },
-        data: {
-          sentAt: null,
-          retryCount: 1,
-          status: 'pending',
-          reasoning: {
-            campaignName: input.campaignName,
-            totalSteps: input.steps.length,
-            lastError: message,
-          },
-        },
-      })
-      skipped++
-    }
-  }
-
-  if (sent > 0 || failed > 0) {
-    await prisma.campaign.update({
-      where: { id: input.campaignId },
-      data: {
-        sentCount: { increment: sent },
-        failedCount: { increment: failed },
-      },
-    })
-  }
-
-  return { sent, failed, skipped }
 }
 
 // ── Helper: bucket a 24h time into morning/afternoon/evening ──
@@ -669,6 +501,134 @@ export interface CohortFilter {
   value: string | number | string[]
 }
 
+interface CohortSchemaCapabilities {
+  userColumns: Set<string>
+  clubFollowerColumns: Set<string>
+  memberHealthColumns: Set<string>
+  playSessionColumns: Set<string>
+  playSessionBookingColumns: Set<string>
+  hasMemberHealthSnapshots: boolean
+}
+
+function isCohortFilterLike(value: unknown): value is CohortFilter {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+
+  return typeof candidate.field === 'string'
+    && typeof candidate.op === 'string'
+    && (
+      typeof candidate.value === 'string'
+      || typeof candidate.value === 'number'
+      || (Array.isArray(candidate.value) && candidate.value.every((item) => typeof item === 'string'))
+    )
+}
+
+export function normalizeStoredCohortFilters(raw: unknown): CohortFilter[] {
+  if (Array.isArray(raw)) return raw.filter(isCohortFilterLike)
+
+  if (typeof raw === 'string') {
+    try {
+      return normalizeStoredCohortFilters(JSON.parse(raw))
+    } catch {
+      return []
+    }
+  }
+
+  if (raw && typeof raw === 'object') {
+    const record = raw as Record<string, unknown>
+    if (Array.isArray(record.filters)) return record.filters.filter(isCohortFilterLike)
+    if (Array.isArray(record.conditions)) return record.conditions.filter(isCohortFilterLike)
+  }
+
+  return []
+}
+
+function createDefaultCohortSchemaCapabilities(): CohortSchemaCapabilities {
+  return {
+    userColumns: new Set([
+      'id',
+      'name',
+      'email',
+      'gender',
+      'city',
+      'phone',
+      'sms_opt_in',
+      'date_of_birth',
+      'membership_type',
+      'membership_status',
+      'skill_level',
+      'zip_code',
+      'dupr_rating_doubles',
+      'dupr_rating_singles',
+      'image',
+    ]),
+    clubFollowerColumns: new Set(['club_id', 'user_id', 'created_at']),
+    memberHealthColumns: new Set(['club_id', 'user_id', 'date', 'health_score', 'risk_level']),
+    playSessionColumns: new Set(['id', 'clubId', 'date', 'format', 'pricePerSlot']),
+    playSessionBookingColumns: new Set(['sessionId', 'userId', 'status', 'bookedAt']),
+    hasMemberHealthSnapshots: true,
+  }
+}
+
+async function getCohortSchemaCapabilities(prisma: any): Promise<CohortSchemaCapabilities> {
+  const cacheKey = 'public'
+  const now = Date.now()
+  const cached = cohortSchemaCache.get(cacheKey)
+  if (cached && now - cached.ts < 5 * 60 * 1000) return cached.data
+
+  const fallback = createDefaultCohortSchemaCapabilities()
+
+  try {
+    const rows: Array<{ table_name: string; column_name: string }> = await prisma.$queryRawUnsafe(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND (
+          (table_name = 'users' AND column_name IN (
+            'id', 'name', 'email', 'gender', 'city', 'phone', 'sms_opt_in',
+            'date_of_birth', 'membership_type', 'membership_status',
+            'skill_level', 'zip_code', 'dupr_rating_doubles',
+            'dupr_rating_singles', 'image'
+          ))
+          OR (table_name = 'club_followers' AND column_name IN ('club_id', 'user_id', 'created_at'))
+          OR (table_name = 'member_health_snapshots' AND column_name IN ('club_id', 'user_id', 'date', 'health_score', 'risk_level'))
+          OR (table_name = 'play_sessions' AND column_name IN ('id', 'clubId', 'date', 'format', 'pricePerSlot'))
+          OR (table_name = 'play_session_bookings' AND column_name IN ('sessionId', 'userId', 'status', 'bookedAt'))
+        )
+    `)
+
+    const userColumns = new Set<string>()
+    const clubFollowerColumns = new Set<string>()
+    const memberHealthColumns = new Set<string>()
+    const playSessionColumns = new Set<string>()
+    const playSessionBookingColumns = new Set<string>()
+
+    for (const row of rows) {
+      if (row.table_name === 'users') userColumns.add(row.column_name)
+      if (row.table_name === 'club_followers') clubFollowerColumns.add(row.column_name)
+      if (row.table_name === 'member_health_snapshots') memberHealthColumns.add(row.column_name)
+      if (row.table_name === 'play_sessions') playSessionColumns.add(row.column_name)
+      if (row.table_name === 'play_session_bookings') playSessionBookingColumns.add(row.column_name)
+    }
+
+    const capabilities: CohortSchemaCapabilities = {
+      userColumns,
+      clubFollowerColumns,
+      memberHealthColumns,
+      playSessionColumns,
+      playSessionBookingColumns,
+      hasMemberHealthSnapshots: memberHealthColumns.size > 0,
+    }
+
+    cohortSchemaCache.set(cacheKey, { data: capabilities, ts: now })
+    return capabilities
+  } catch (error) {
+    log.warn('[Cohorts] schema capability probe failed, falling back to assumed schema:', error instanceof Error ? error.message : String(error))
+    cohortSchemaCache.set(cacheKey, { data: fallback, ts: now })
+    return fallback
+  }
+}
+
 // Allowlist of fields/ops that buildCohortWhereClause understands. Any value
 // outside this list returns TRUE (no-op filter) — defense-in-depth on top of
 // the Zod schema at the tRPC procedure boundary. Stored cohort filters come
@@ -761,6 +721,93 @@ function splitCohortFilters(filters: CohortFilter[]) {
   }
 
   return { sqlFilters, enrichedFilters, attendanceFilters }
+}
+
+function hasMemberHealthSnapshotSupport(capabilities: CohortSchemaCapabilities) {
+  return capabilities.hasMemberHealthSnapshots
+    && capabilities.memberHealthColumns.has('club_id')
+    && capabilities.memberHealthColumns.has('user_id')
+    && capabilities.memberHealthColumns.has('date')
+    && capabilities.memberHealthColumns.has('health_score')
+    && capabilities.memberHealthColumns.has('risk_level')
+}
+
+function hasPlaySessionSupport(capabilities: CohortSchemaCapabilities) {
+  return capabilities.playSessionColumns.has('id')
+    && capabilities.playSessionColumns.has('clubId')
+    && capabilities.playSessionColumns.has('date')
+    && capabilities.playSessionColumns.has('format')
+    && capabilities.playSessionColumns.has('pricePerSlot')
+    && capabilities.playSessionBookingColumns.has('sessionId')
+    && capabilities.playSessionBookingColumns.has('userId')
+    && capabilities.playSessionBookingColumns.has('status')
+    && capabilities.playSessionBookingColumns.has('bookedAt')
+}
+
+function isCohortFilterSupportedBySchema(filter: CohortFilter, capabilities: CohortSchemaCapabilities) {
+  switch (filter.field) {
+    case 'age':
+    case 'birthdayMonth':
+      return capabilities.userColumns.has('date_of_birth')
+    case 'gender':
+      return capabilities.userColumns.has('gender')
+    case 'membershipType':
+    case 'normalizedMembershipType':
+      return capabilities.userColumns.has('membership_type')
+    case 'membershipStatus':
+    case 'normalizedMembershipStatus':
+      return capabilities.userColumns.has('membership_status')
+    case 'skillLevel':
+      return capabilities.userColumns.has('skill_level')
+    case 'zipCode':
+      return capabilities.userColumns.has('zip_code')
+    case 'city':
+      return capabilities.userColumns.has('city')
+    case 'duprRating':
+      return capabilities.userColumns.has('dupr_rating_doubles')
+        && capabilities.userColumns.has('dupr_rating_singles')
+        && capabilities.userColumns.has('skill_level')
+    case 'sessionFormat':
+    case 'dayOfWeek':
+    case 'frequency':
+    case 'recency':
+      return hasPlaySessionSupport(capabilities)
+    case 'healthScore':
+    case 'riskLevel':
+      return hasMemberHealthSnapshotSupport(capabilities)
+    case 'joinedDaysAgo':
+      return capabilities.clubFollowerColumns.has('created_at')
+    default:
+      return true
+  }
+}
+
+export function filterCohortFiltersByCapabilities(filters: CohortFilter[], capabilities: CohortSchemaCapabilities) {
+  return filters.filter((filter) => isCohortFilterSupportedBySchema(filter, capabilities))
+}
+
+function sqlColumnOrNull(
+  source: string,
+  columnName: string,
+  alias: string,
+  availableColumns: Set<string>,
+  nullCast: string,
+) {
+  return availableColumns.has(columnName)
+    ? `${source}.${columnName} as "${alias}"`
+    : `NULL::${nullCast} as "${alias}"`
+}
+
+function sqlExpressionOrNull(expression: string, alias: string, isAvailable: boolean, nullCast: string) {
+  return isAvailable
+    ? `${expression} as "${alias}"`
+    : `NULL::${nullCast} as "${alias}"`
+}
+
+function sqlBigIntCountOrZero(expression: string, alias: string, isAvailable: boolean) {
+  return isAvailable
+    ? `${expression}::bigint as ${alias}`
+    : `0::bigint as ${alias}`
 }
 
 function matchesEnrichedStringFilter(actualValue: string | null | undefined, filter: CohortFilter) {
@@ -949,36 +996,36 @@ function buildCohortFilterClause(f: CohortFilter): string {
         return f.op === 'contains' ? `u.city ILIKE '%' || ${val} || '%'` : `u.city = ${val}`
       case 'sessionFormat':
         // Players who have played in a specific session format
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND ps.format = ${val} AND psb.status = 'CONFIRMED')`
+        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId"::text = $1 AND ps.format = ${val} AND psb.status = 'CONFIRMED')`
       case 'dayOfWeek': {
         // Players who play on a specific day of week (Monday=1, Sunday=0)
         const dayMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 }
         const dayNum = dayMap[String(f.value)] ?? 0
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
+        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId"::text = $1 AND EXTRACT(DOW FROM ps.date) = ${dayNum} AND psb.status = 'CONFIRMED')`
       }
       case 'frequency': {
         // Sessions per month — players who play at least N times/month
         const freqVal = Number(f.value)
         if (!Number.isFinite(freqVal) || freqVal < 0 || freqVal > 10000) return 'TRUE'
         const freqOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
+        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId"::text = $1 AND psb.status = 'CONFIRMED' AND psb."bookedAt" >= CURRENT_DATE - INTERVAL '30 days' GROUP BY psb."userId" HAVING COUNT(*) ${freqOp} ${freqVal})`
       }
       case 'recency': {
         // Days since last visit — players who visited within/after N days
         const recVal = Number(f.value)
         if (!Number.isFinite(recVal) || recVal < 0 || recVal > 36500) return 'TRUE'
         const recOp = f.op === 'lte' ? '>=' : f.op === 'gte' ? '<=' : f.op === 'lt' ? '>' : f.op === 'gt' ? '<' : '='
-        return `u.id IN (SELECT psb."userId" FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
+        return `u.id::text IN (SELECT psb."userId"::text FROM play_session_bookings psb JOIN play_sessions ps ON ps.id = psb."sessionId" WHERE ps."clubId"::text = $1 AND psb.status = 'CONFIRMED' GROUP BY psb."userId" HAVING MAX(ps.date) ${recOp} CURRENT_DATE - INTERVAL '${recVal} days')`
       }
       case 'userId':
         // Direct user ID filter (used for "cohort from session" and bulk-select
-        // "Add to existing"). users.id is TEXT in DB (not uuid — see CLAUDE.md
-        // DB type notes), so the previous ::uuid cast on each id produced
-        // `text = uuid` → ERROR: operator does not exist. Compare as text.
+        // "Add to existing"). Deployments have drifted between TEXT and UUID
+        // user identifier columns, so compare via ::text on the DB column and
+        // leave the inlined literals as plain strings.
         if (f.op === 'in' && Array.isArray(f.value)) {
           const ids = f.value.map((v: string) => `'${v.replace(/'/g, "''")}'`).join(',')
           if (ids.length === 0) return 'FALSE'
-          return `u.id IN (${ids})`
+          return `u.id::text IN (${ids})`
         }
         return 'TRUE'
       // ── P3-T3 D7 additions ──
@@ -987,7 +1034,7 @@ function buildCohortFilterClause(f: CohortFilter): string {
         const hsVal = Number(f.value)
         if (!Number.isFinite(hsVal) || hsVal < 0 || hsVal > 100) return 'TRUE'
         const hsOp = f.op === 'gte' ? '>=' : f.op === 'lte' ? '<=' : f.op === 'gt' ? '>' : f.op === 'lt' ? '<' : '='
-        return `u.id IN (SELECT DISTINCT ON (mhs.user_id) mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1 ORDER BY mhs.user_id, mhs.date DESC) AND u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1 AND mhs.health_score ${hsOp} ${hsVal} AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+        return `u.id::text IN (SELECT DISTINCT ON (mhs.user_id) mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id::text = $1 ORDER BY mhs.user_id, mhs.date DESC) AND u.id::text IN (SELECT mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id::text = $1 AND mhs.health_score ${hsOp} ${hsVal} AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
       }
       case 'riskLevel': {
         // Latest snapshot per user where risk_level = (string|in array).
@@ -997,11 +1044,11 @@ function buildCohortFilterClause(f: CohortFilter): string {
             .filter((v) => ['healthy', 'watch', 'at_risk', 'critical'].includes(v))
           if (safe.length === 0) return 'TRUE'
           const list = safe.map((v) => `'${v}'`).join(',')
-          return `u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1 AND mhs.risk_level IN (${list}) AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+          return `u.id::text IN (SELECT mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id::text = $1 AND mhs.risk_level IN (${list}) AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
         }
         const safeVal = String(f.value).replace(/'/g, "''")
         if (!['healthy', 'watch', 'at_risk', 'critical'].includes(safeVal)) return 'TRUE'
-        return `u.id IN (SELECT mhs.user_id FROM member_health_snapshots mhs WHERE mhs.club_id = $1 AND mhs.risk_level = '${safeVal}' AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
+        return `u.id::text IN (SELECT mhs.user_id::text FROM member_health_snapshots mhs WHERE mhs.club_id::text = $1 AND mhs.risk_level = '${safeVal}' AND mhs.date = (SELECT MAX(date) FROM member_health_snapshots mhs2 WHERE mhs2.club_id = mhs.club_id AND mhs2.user_id = mhs.user_id))`
       }
       case 'joinedDaysAgo': {
         // Days since user joined this club (club_followers.created_at).
@@ -1054,8 +1101,19 @@ const ACTIVE_MEMBER_JOIN = `
     SELECT DISTINCT psb."userId"
     FROM play_session_bookings psb
     JOIN play_sessions ps ON ps.id = psb."sessionId"
-    WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED'
-  ) active ON active."userId" = u.id
+    WHERE ps."clubId"::text = $1 AND psb.status = 'CONFIRMED'
+  ) active ON active."userId"::text = u.id::text
+`
+
+const EMPTY_RECENT_ACTIVITY_JOIN = `
+  LEFT JOIN LATERAL (
+    SELECT
+      0::int as sessions_last_30,
+      0::int as previous_sessions_30,
+      NULL::int as days_since_last_visit,
+      0::int as total_confirmed_sessions,
+      0::int as total_revenue
+  ) recent_activity ON TRUE
 `
 
 async function fetchCohortBaseMembers(
@@ -1064,45 +1122,47 @@ async function fetchCohortBaseMembers(
   filters: CohortFilter[],
   limit: number | null = 500,
 ): Promise<any[]> {
-  const where = buildCohortWhereClause(filters)
+  const normalizedFilters = normalizeStoredCohortFilters(filters)
+  const capabilities = await getCohortSchemaCapabilities(prisma)
+  const supportedFilters = filterCohortFiltersByCapabilities(normalizedFilters, capabilities)
+  const where = buildCohortWhereClause(supportedFilters)
   const limitClause = typeof limit === 'number' && limit > 0
     ? `LIMIT ${Math.floor(limit)}`
     : ''
-
-  return prisma.$queryRawUnsafe(`
-    SELECT u.id, u.name, u.email, u.gender, u.city, u.phone,
-           u.sms_opt_in as "smsOptIn",
-           u.date_of_birth as "dateOfBirth",
-           CASE WHEN u.date_of_birth IS NOT NULL
-             THEN EXTRACT(YEAR FROM age(CURRENT_DATE, u.date_of_birth))::int
-             ELSE NULL END as age,
-           u.membership_type as "membershipType",
-           u.membership_status as "membershipStatus",
-           u.skill_level as "skillLevel",
-           u.zip_code as "zipCode",
-           COALESCE(u.dupr_rating_doubles, 0) as "duprRating",
-           u.image,
-           latest_health.health_score as "healthScore",
-           latest_health.risk_level as "riskLevel",
-           (CURRENT_DATE - cf.created_at::date)::int as "joinedDaysAgo",
-           recent_activity.sessions_last_30 as "sessionsLast30",
-           recent_activity.previous_sessions_30 as "previousSessions30",
-           recent_activity.days_since_last_visit as "daysSinceLastVisit",
-           recent_activity.total_confirmed_sessions as "totalConfirmedSessions",
-           recent_activity.total_revenue as "totalRevenue"
-    FROM club_followers cf
-    JOIN users u ON u.id = cf.user_id
-    ${ACTIVE_MEMBER_JOIN}
+  const hasMemberHealth = hasMemberHealthSnapshotSupport(capabilities)
+  const hasPlaySessions = hasPlaySessionSupport(capabilities)
+  const hasDateOfBirth = capabilities.userColumns.has('date_of_birth')
+  const hasCreatedAt = capabilities.clubFollowerColumns.has('created_at')
+  const hasDuprDoubles = capabilities.userColumns.has('dupr_rating_doubles')
+  const hasDuprSingles = capabilities.userColumns.has('dupr_rating_singles')
+  const duprExpression = hasDuprDoubles && hasDuprSingles
+    ? 'COALESCE(u.dupr_rating_doubles, u.dupr_rating_singles, 0)'
+    : hasDuprDoubles
+      ? 'COALESCE(u.dupr_rating_doubles, 0)'
+      : hasDuprSingles
+        ? 'COALESCE(u.dupr_rating_singles, 0)'
+        : '0'
+  const latestHealthJoin = hasMemberHealth
+    ? `
     LEFT JOIN LATERAL (
       SELECT
         mhs.health_score,
         mhs.risk_level
       FROM member_health_snapshots mhs
-      WHERE mhs.club_id = $1
-        AND mhs.user_id = u.id
+      WHERE mhs.club_id::text = $1
+        AND mhs.user_id::text = u.id::text
       ORDER BY mhs.date DESC
       LIMIT 1
-    ) latest_health ON TRUE
+    ) latest_health ON TRUE`
+    : `
+    LEFT JOIN LATERAL (
+      SELECT
+        NULL::int as health_score,
+        NULL::text as risk_level
+    ) latest_health ON TRUE`
+  const activeMemberJoin = hasPlaySessions ? ACTIVE_MEMBER_JOIN : ''
+  const recentActivityJoin = hasPlaySessions
+    ? `
     LEFT JOIN LATERAL (
       SELECT
         COUNT(*) FILTER (
@@ -1132,10 +1192,46 @@ async function fetchCohortBaseMembers(
         )::int as total_revenue
       FROM play_session_bookings psb
       JOIN play_sessions ps ON ps.id = psb."sessionId"
-      WHERE psb."userId" = u.id
-        AND ps."clubId" = $1
-    ) recent_activity ON TRUE
-    WHERE cf.club_id = $1 AND ${where}
+      WHERE psb."userId"::text = u.id::text
+        AND ps."clubId"::text = $1
+    ) recent_activity ON TRUE`
+    : EMPTY_RECENT_ACTIVITY_JOIN
+
+  return prisma.$queryRawUnsafe(`
+    SELECT u.id, u.name, u.email,
+           ${sqlColumnOrNull('u', 'gender', 'gender', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'city', 'city', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'phone', 'phone', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'sms_opt_in', 'smsOptIn', capabilities.userColumns, 'boolean')},
+           ${sqlColumnOrNull('u', 'date_of_birth', 'dateOfBirth', capabilities.userColumns, 'date')},
+           ${sqlExpressionOrNull(
+             `CASE WHEN u.date_of_birth IS NOT NULL
+               THEN EXTRACT(YEAR FROM age(CURRENT_DATE, u.date_of_birth))::int
+               ELSE NULL END`,
+             'age',
+             hasDateOfBirth,
+             'int',
+           )},
+           ${sqlColumnOrNull('u', 'membership_type', 'membershipType', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'membership_status', 'membershipStatus', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'skill_level', 'skillLevel', capabilities.userColumns, 'text')},
+           ${sqlColumnOrNull('u', 'zip_code', 'zipCode', capabilities.userColumns, 'text')},
+           ${duprExpression} as "duprRating",
+           ${sqlColumnOrNull('u', 'image', 'image', capabilities.userColumns, 'text')},
+           latest_health.health_score as "healthScore",
+           latest_health.risk_level as "riskLevel",
+           ${sqlExpressionOrNull('(CURRENT_DATE - cf.created_at::date)::int', 'joinedDaysAgo', hasCreatedAt, 'int')},
+           recent_activity.sessions_last_30 as "sessionsLast30",
+           recent_activity.previous_sessions_30 as "previousSessions30",
+           recent_activity.days_since_last_visit as "daysSinceLastVisit",
+           recent_activity.total_confirmed_sessions as "totalConfirmedSessions",
+           recent_activity.total_revenue as "totalRevenue"
+    FROM club_followers cf
+    JOIN users u ON u.id::text = cf.user_id::text
+    ${activeMemberJoin}
+    ${latestHealthJoin}
+    ${recentActivityJoin}
+    WHERE cf.club_id::text = $1 AND ${where}
     ORDER BY u.name ASC
     ${limitClause}
   `, clubId)
@@ -1147,7 +1243,10 @@ async function resolveCohortMembers(
   filters: CohortFilter[],
   limit: number | null = 500,
 ): Promise<any[]> {
-  const { sqlFilters, enrichedFilters, attendanceFilters } = splitCohortFilters(filters)
+  const normalizedFilters = normalizeStoredCohortFilters(filters)
+  const capabilities = await getCohortSchemaCapabilities(prisma)
+  const supportedFilters = filterCohortFiltersByCapabilities(normalizedFilters, capabilities)
+  const { sqlFilters, enrichedFilters, attendanceFilters } = splitCohortFilters(supportedFilters)
 
   // Fast path — no enriched + no attendance filters: just SQL.
   if (enrichedFilters.length === 0 && attendanceFilters.length === 0) {
@@ -1177,17 +1276,21 @@ async function resolveCohortMembers(
 }
 
 async function countCohortMembers(prisma: any, clubId: string, filters: CohortFilter[]): Promise<number> {
-  const { sqlFilters, enrichedFilters, attendanceFilters } = splitCohortFilters(filters)
+  const normalizedFilters = normalizeStoredCohortFilters(filters)
+  const capabilities = await getCohortSchemaCapabilities(prisma)
+  const supportedFilters = filterCohortFiltersByCapabilities(normalizedFilters, capabilities)
+  const { sqlFilters, enrichedFilters, attendanceFilters } = splitCohortFilters(supportedFilters)
 
   // Fast path: no post-SQL filters → exact COUNT() in DB.
   if (enrichedFilters.length === 0 && attendanceFilters.length === 0) {
     const where = buildCohortWhereClause(sqlFilters)
+    const activeMemberJoin = hasPlaySessionSupport(capabilities) ? ACTIVE_MEMBER_JOIN : ''
     const result: [{ count: bigint }] = await prisma.$queryRawUnsafe(`
       SELECT COUNT(DISTINCT cf.user_id) as count
       FROM club_followers cf
-      JOIN users u ON u.id = cf.user_id
-      ${ACTIVE_MEMBER_JOIN}
-      WHERE cf.club_id = $1 AND ${where}
+      JOIN users u ON u.id::text = cf.user_id::text
+      ${activeMemberJoin}
+      WHERE cf.club_id::text = $1 AND ${where}
     `, clubId)
     return Number(result[0]?.count ?? 0)
   }
@@ -1205,39 +1308,6 @@ async function queryCohortMembers(
   limit: number | null = 500,
 ): Promise<any[]> {
   return resolveCohortMembers(prisma, clubId, filters, limit)
-}
-
-/** Human-readable description of a Wizard-generated cron expression.
- *  MVP supports daily / weekly+dow / monthly+dom only; anything else
- *  falls through to "Custom schedule" so the UI doesn't lie. */
-function describeRecurringCron(expr: string, tz: string): string {
-  const parts = expr.trim().split(/\s+/)
-  if (parts.length !== 5) return 'Custom schedule'
-  const [m, h, dom, mon, dow] = parts
-  if (m !== '0') return 'Custom schedule'
-  const hour = parseInt(h, 10)
-  if (Number.isNaN(hour) || hour < 0 || hour > 23) return 'Custom schedule'
-  const hh = String(hour).padStart(2, '0')
-  const tzSuffix = ` ${tz}`
-  // Daily
-  if (dom === '*' && mon === '*' && dow === '*') {
-    return `Every day at ${hh}:00${tzSuffix}`
-  }
-  // Weekly
-  if (dow !== '*' && dom === '*' && mon === '*') {
-    const dayIdx = parseInt(dow, 10)
-    if (Number.isNaN(dayIdx) || dayIdx < 0 || dayIdx > 6) return 'Custom schedule'
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-    return `Every ${days[dayIdx]} at ${hh}:00${tzSuffix}`
-  }
-  // Monthly
-  if (dom !== '*' && dow === '*' && mon === '*') {
-    const day = parseInt(dom, 10)
-    if (Number.isNaN(day) || day < 1 || day > 31) return 'Custom schedule'
-    const ord = day === 1 ? '1st' : day === 2 ? '2nd' : day === 3 ? '3rd' : `${day}th`
-    return `${ord} of each month at ${hh}:00${tzSuffix}`
-  }
-  return 'Custom schedule'
 }
 
 /** Public alias of queryCohortMembers for use outside the router (e.g.
@@ -7944,22 +8014,39 @@ Spirit: ${guidance.spirit}`
     .input(z.object({ clubId: z.string().uuid() }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const rows: [{ total: bigint; has_gender: bigint; has_dob: bigint; has_skill: bigint; has_membership: bigint; has_city: bigint }] = await ctx.prisma.$queryRawUnsafe(`
+      const capabilities = await getCohortSchemaCapabilities(ctx.prisma)
+      const coverageBase = hasPlaySessionSupport(capabilities)
+        ? `
         WITH active AS (
           SELECT DISTINCT psb."userId"
           FROM play_session_bookings psb
           JOIN play_sessions ps ON ps.id = psb."sessionId"
-          WHERE ps."clubId" = $1 AND psb.status = 'CONFIRMED'
+          WHERE ps."clubId"::text = $1 AND psb.status = 'CONFIRMED'
         )
         SELECT
           COUNT(*)::bigint as total,
-          SUM(CASE WHEN u.gender IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_gender,
-          SUM(CASE WHEN u.date_of_birth IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_dob,
-          SUM(CASE WHEN u.skill_level IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_skill,
-          SUM(CASE WHEN u.membership_type IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_membership,
-          SUM(CASE WHEN u.city IS NOT NULL THEN 1 ELSE 0 END)::bigint as has_city
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.gender IS NOT NULL THEN 1 ELSE 0 END)', 'has_gender', capabilities.userColumns.has('gender'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.date_of_birth IS NOT NULL THEN 1 ELSE 0 END)', 'has_dob', capabilities.userColumns.has('date_of_birth'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.skill_level IS NOT NULL THEN 1 ELSE 0 END)', 'has_skill', capabilities.userColumns.has('skill_level'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.membership_type IS NOT NULL THEN 1 ELSE 0 END)', 'has_membership', capabilities.userColumns.has('membership_type'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.city IS NOT NULL THEN 1 ELSE 0 END)', 'has_city', capabilities.userColumns.has('city'))}
         FROM active a
-        JOIN users u ON u.id = a."userId"
+        JOIN users u ON u.id::text = a."userId"::text
+      `
+        : `
+        SELECT
+          COUNT(*)::bigint as total,
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.gender IS NOT NULL THEN 1 ELSE 0 END)', 'has_gender', capabilities.userColumns.has('gender'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.date_of_birth IS NOT NULL THEN 1 ELSE 0 END)', 'has_dob', capabilities.userColumns.has('date_of_birth'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.skill_level IS NOT NULL THEN 1 ELSE 0 END)', 'has_skill', capabilities.userColumns.has('skill_level'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.membership_type IS NOT NULL THEN 1 ELSE 0 END)', 'has_membership', capabilities.userColumns.has('membership_type'))},
+          ${sqlBigIntCountOrZero('SUM(CASE WHEN u.city IS NOT NULL THEN 1 ELSE 0 END)', 'has_city', capabilities.userColumns.has('city'))}
+        FROM club_followers cf
+        JOIN users u ON u.id::text = cf.user_id::text
+        WHERE cf.club_id::text = $1
+      `
+      const rows: [{ total: bigint; has_gender: bigint; has_dob: bigint; has_skill: bigint; has_membership: bigint; has_city: bigint }] = await ctx.prisma.$queryRawUnsafe(`
+        ${coverageBase}
       `, input.clubId)
       const r = rows[0]
       const total = Number(r.total) || 1
@@ -8132,7 +8219,7 @@ Spirit: ${guidance.spirit}`
       }
 
       // Resolve current member set. Empty filters → empty current set.
-      const existingFilters = (cohort.filters as unknown as CohortFilter[]) || []
+      const existingFilters = normalizeStoredCohortFilters(cohort.filters)
       let currentIds = new Set<string>()
       if (existingFilters.length > 0) {
         try {
@@ -8180,7 +8267,7 @@ Spirit: ${guidance.spirit}`
       const cohort = await ctx.prisma.clubCohort.findUnique({ where: { id: input.cohortId } })
       if (!cohort) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cohort not found' })
 
-      const filters = (cohort.filters as any[]) || []
+      const filters = normalizeStoredCohortFilters(cohort.filters)
       const members = await queryCohortMembers(ctx.prisma, input.clubId, filters)
 
       // Refresh count
@@ -8286,7 +8373,7 @@ Spirit: ${guidance.spirit}`
         where: { id: input.clubId },
         select: { name: true, voiceSettings: true },
       })
-      const filters = (cohort.filters as any[]) || []
+      const filters = normalizeStoredCohortFilters(cohort.filters)
       const filterDesc = filters.map((f: any) => `${f.field} ${f.op} ${f.value}`).join(', ')
       const cohortMembers = await resolveCohortMembers(ctx.prisma, input.clubId, filters, null)
       const cohortUserIds = cohortMembers
@@ -11533,12 +11620,12 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       ctaLabel: z.string().min(1).max(100).optional(),
       ctaUrl: z.string().url().max(500).optional(),
       // Sequence track. Required when format='sequence'. MVP cap is 5 steps.
-      // step[0].delayDays must be 0 (sent at launch); step[N].delayDays for
-      // N≥1 means "wait this many days after step N-1 was sent for the
-      // recipient before sending step N".
+      // Step 0 sends immediately. Later steps keep the legacy delayDays
+      // field, with optional delayMinutes for faster QA loops.
       steps: z.array(z.object({
         stepIndex: z.number().int().min(0).max(4),
         delayDays: z.number().int().min(0).max(60),
+        delayMinutes: z.number().int().min(1).max(1440).optional(),
         subject: z.string().min(1).max(200),
         body: z.string().min(1).max(5000),
         ctaLabel: z.string().min(1).max(100).optional(),
@@ -11590,10 +11677,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
             message: 'Sequence campaigns require at least one step.',
           })
         }
-        if (input.steps[0].stepIndex !== 0 || input.steps[0].delayDays !== 0) {
+        if (input.steps[0].stepIndex !== 0 || resolveSequenceDelay(input.steps[0]).amount !== 0) {
           throw new TRPCError({
             code: 'BAD_REQUEST',
-            message: 'Step 1 must have stepIndex 0 and delayDays 0 (sent at launch).',
+            message: 'Step 1 must have stepIndex 0 and no delay (sent at launch).',
           })
         }
         // Verify stepIndexes are 0-based contiguous.
@@ -11604,10 +11691,10 @@ Generate 3 campaign strategies with different goals and timings based on the dat
               message: `Step indexes must be contiguous starting at 0 (got ${input.steps[i].stepIndex} at position ${i}).`,
             })
           }
-          if (i > 0 && input.steps[i].delayDays < 1) {
+          if (i > 0 && resolveSequenceDelay(input.steps[i]).amount < 1) {
             throw new TRPCError({
               code: 'BAD_REQUEST',
-              message: `Step ${i + 1} must have a delay ≥ 1 day after the previous step.`,
+              message: `Step ${i + 1} must have a delay of at least 1 minute after the previous step.`,
             })
           }
         }
@@ -11626,7 +11713,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
         if (cohort.clubId !== input.clubId) {
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Cohort does not belong to this club' })
         }
-        const filters = (cohort.filters as unknown as CohortFilter[]) || []
+        const filters = normalizeStoredCohortFilters(cohort.filters)
         const rows = await queryCohortMembers(ctx.prisma, input.clubId, filters)
         recipientIds = (rows as any[]).map((r) => r.id).filter((id): id is string => typeof id === 'string')
         resolvedCohortId = cohort.id
@@ -11696,19 +11783,25 @@ Generate 3 campaign strategies with different goals and timings based on the dat
       // wizard reflects the real status. Future sends stay queued for cron.
       let finalStatus = campaign.status
       if (input.format === 'one_time' && !isFuture) {
-        const queueResult = await processCampaignSendQueue(ctx.prisma, { campaignId: campaign.id })
-        const processedCampaign = queueResult.campaigns.find((entry) => entry.id === campaign.id)
-        if (processedCampaign?.status) {
-          finalStatus = processedCampaign.status
-        }
-      } else if (input.format === 'sequence' && !isFuture) {
-        await dispatchSequenceStepZeroNow(ctx.prisma, {
+        await runCampaignSendTick(ctx.prisma, {
           campaignId: campaign.id,
-          clubId: input.clubId,
-          campaignName: input.name,
-          recipientIds,
-          steps: input.steps ?? [],
+          now,
         })
+        const refreshed = await ctx.prisma.campaign.findUnique({
+          where: { id: campaign.id },
+          select: { status: true },
+        })
+        finalStatus = refreshed?.status ?? finalStatus
+      } else if (input.format === 'sequence' && !isFuture) {
+        await runCampaignSendTick(ctx.prisma, {
+          campaignId: campaign.id,
+          now,
+        })
+        const refreshed = await ctx.prisma.campaign.findUnique({
+          where: { id: campaign.id },
+          select: { status: true },
+        })
+        finalStatus = refreshed?.status ?? finalStatus
       }
 
       return {
