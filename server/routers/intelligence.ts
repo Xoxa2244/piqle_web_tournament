@@ -23,6 +23,7 @@ import {
 import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 import { generateClubInsights } from '@/lib/ai/insights-engine'
+import { runBusinessInsights } from '@/lib/ai/business-insights-engine'
 import { intelligenceLogger as log } from '@/lib/logger'
 import { pushToUser } from '@/lib/realtime'
 import { advisorActionSchema, extractAdvisorAction, getAdvisorActionFromMetadata } from '@/lib/ai/advisor-actions'
@@ -6054,6 +6055,107 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const insights = await generateClubInsights(ctx.prisma, input.clubId)
       return insights
+    }),
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Business Insights — canon-driven Dashboard insights
+  // (DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.6 + §6.2 + §7.2)
+  // ─────────────────────────────────────────────────────────────────────
+
+  // Read active + snoozed insights for the club. Sorted by severity then
+  // recency. Resolved/dismissed rows stay out of this list (they live in
+  // history; future Phase 2 advisory tab will read them separately).
+  getBusinessInsights: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `
+        SELECT id,
+               dedupe_key  AS "dedupeKey",
+               category,
+               severity,
+               analysis,
+               metrics,
+               insight,
+               action,
+               status,
+               created_at  AS "createdAt",
+               last_seen_at AS "lastSeenAt",
+               resolved_at  AS "resolvedAt",
+               snooze_until AS "snoozeUntil"
+        FROM business_insight
+        WHERE club_id = $1::uuid
+          AND status IN ('active', 'snoozed')
+        ORDER BY
+          CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
+          last_seen_at DESC
+        `,
+        input.clubId,
+      )) as Array<Record<string, any>>
+
+      return { insights: rows }
+    }),
+
+  // Manual resolution from the BusinessInsightCard. Three reasons map to
+  // three terminal states (Spec §3.6 status enum):
+  //   'manual'    → 'resolved'  + resolvedAt = now
+  //   'dismissed' → 'dismissed' + resolvedAt = now
+  //   'snoozed'   → 'snoozed'   + snoozeUntil = caller-provided
+  resolveBusinessInsight: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        insightId: z.string(),
+        reason: z.enum(['manual', 'dismissed', 'snoozed']),
+        snoozeUntil: z.string().datetime().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      if (input.reason === 'snoozed') {
+        if (!input.snoozeUntil) {
+          throw new Error("snoozeUntil is required when reason === 'snoozed'")
+        }
+        await ctx.prisma.$executeRawUnsafe(
+          `
+          UPDATE business_insight
+          SET status = 'snoozed', snooze_until = $1
+          WHERE id = $2 AND club_id = $3::uuid
+          `,
+          new Date(input.snoozeUntil),
+          input.insightId,
+          input.clubId,
+        )
+        return { status: 'snoozed' as const }
+      }
+
+      const newStatus = input.reason === 'manual' ? 'resolved' : 'dismissed'
+      await ctx.prisma.$executeRawUnsafe(
+        `
+        UPDATE business_insight
+        SET status = $1, resolved_at = $2
+        WHERE id = $3 AND club_id = $4::uuid
+        `,
+        newStatus,
+        new Date(),
+        input.insightId,
+        input.clubId,
+      )
+      return { status: newStatus }
+    }),
+
+  // On-demand re-generate insights for a club. Used by manual "Refresh"
+  // button on the Dashboard and by the daily Vercel Cron (Step 10).
+  // Returns the small audit report so the UI can toast "Found N new".
+  refreshBusinessInsights: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const report = await runBusinessInsights(ctx.prisma as any, input.clubId)
+      return report
     }),
 
   // ── Session players: load registered players for a session ──
