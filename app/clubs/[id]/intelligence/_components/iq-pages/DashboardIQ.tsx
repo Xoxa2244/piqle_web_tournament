@@ -22,8 +22,10 @@ import { X, Check, ChevronRight, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { CourtReserveConnector } from "./shared/CourtReserveConnector";
 import { AIRevenueTile } from "../ai-revenue-tile";
-import { IntroFunnelTile } from "../intro-funnel-tile";
+// IntroFunnelTile (Pickleball 101 funnel) removed per
+// DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.1 Step 5.
 import { TierBreakdownTile } from "../tier-breakdown-tile";
+import { BusinessInsightCard, type BusinessInsightRow } from "./dashboard/BusinessInsightCard";
 
 type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
 
@@ -322,32 +324,29 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
           sparkData: m.bookings.trend.sparkline || [],
           tooltip: 'Total confirmed bookings in the dashboard period (one row per player per session). Counts all sessions, not just sessions that ran.',
         },
-        isMembership
-        ? (() => {
-            const mb = dashboardData?.players?.membershipBreakdown;
-            const notActive = (mb?.suspended || 0) + (mb?.expired || 0) + (mb?.noMembership || 0);
-            return {
-              label: "Not Active",
-              value: notActive || dashboardData?.players?.inactiveCount || 0,
-              change: "",
-              up: false,
-              icon: UserPlus,
-              gradient: "from-amber-500 to-orange-500",
-              sparkData: [],
-              tooltip: 'Followers whose CR subscription is Suspended, Expired, or set to "No Membership". These are recovery candidates for win-back campaigns.',
-            };
-          })()
-        : {
-            label: "Lost Revenue",
-            value: m.lostRevenue.value,
-            change: `${m.lostRevenue.trend.direction === 'up' ? '+' : '-'}${Math.abs(m.lostRevenue.trend.changePercent)}%`,
-            up: m.lostRevenue.trend.direction === 'down',
-            tooltip: 'Estimated revenue lost to empty slots — empty slot count × average session price across the period. Shrinking this number is exactly what Slot Filler is for.',
-            icon: AlertTriangle,
-            gradient: "from-red-500 to-orange-500",
-            sparkData: m.lostRevenue.trend.sparkline || [],
-          },
-      ];
+        // 4th KPI was the "Not Active / Lost Revenue" conditional.
+        // Per DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.1 Step 5 the
+        // Lost Revenue branch is removed; Step 6 will replace this slot
+        // with a unified "Inactive Players" metric (30-day no-booking
+        // rule). For now, fall back to the membership-based "Not Active"
+        // KPI when available and drop the slot for non-membership clubs
+        // — keeps 3 cards visible until Inactive Players ships.
+        (() => {
+          if (!isMembership) return null;
+          const mb = dashboardData?.players?.membershipBreakdown;
+          const notActive = (mb?.suspended || 0) + (mb?.expired || 0) + (mb?.noMembership || 0);
+          return {
+            label: "Not Active",
+            value: String(notActive || dashboardData?.players?.inactiveCount || 0),
+            change: "",
+            up: false,
+            icon: UserPlus,
+            gradient: "from-amber-500 to-orange-500",
+            sparkData: [],
+            tooltip: 'Followers whose CR subscription is Suspended, Expired, or set to "No Membership". These are recovery candidates for win-back campaigns.',
+          };
+        })(),
+      ].filter(Boolean) as KpiItem[];
     })(),
     health: hs ? [
       { level: "Healthy", count: hs.healthy, pct: Math.round(hs.healthy / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#10B981" },
@@ -628,6 +627,19 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     { clubId: clubId! },
     { enabled: !!clubId && !isDemo },
   );
+
+  // Canon-driven business insights (pilot — Step 3/4 of
+  // DASHBOARD_AND_ACTION_CENTER_SPEC.md). Coexists with the legacy
+  // `getClubInsights` panel above for the duration of the pilot; Step 9
+  // migrates the remaining 9 generators and removes the legacy block.
+  const businessInsightsQuery = trpc.intelligence.getBusinessInsights.useQuery(
+    { clubId: clubId! },
+    { enabled: !!clubId && !isDemo },
+  );
+  const refreshBusinessInsights =
+    trpc.intelligence.refreshBusinessInsights.useMutation();
+  const resolveBusinessInsight =
+    trpc.intelligence.resolveBusinessInsight.useMutation();
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");
@@ -1020,11 +1032,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         <AIRevenueTile clubId={clubId} />
       </motion.div>
 
-      {/* P1.3 (Sprint 1) — Pickleball 101 → Membership conversion funnel.
-          Sits between AI Revenue and Player Health so club owners see
-          their top-of-funnel acquisition story before churn analytics.
-          Tier 1.3 of IPC's Programming OS. */}
-      <IntroFunnelTile clubId={clubId} />
+      {/* Pickleball 101 → Membership conversion funnel (IntroFunnelTile)
+          removed per DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.1 Step 5.
+          Top-of-funnel acquisition story moves to canon-driven
+          newMemberOnboarding insight in Business Insights block. */}
 
       {/* P1.4 (Sprint 1) — 7-tier programming breakdown across IPC's
           Programming OS taxonomy (T1 Core → T7 Youth). Lets the
@@ -1151,6 +1162,99 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               )}
             </div>
           </div>
+        </Card>
+
+        {/* Business Insights (canon-driven pilot — Step 4 of
+            DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.6). Sits side-by-side
+            with the legacy AI Insights card above for the duration of
+            the migration; Step 9 swaps legacy for canon outright. */}
+        <Card className="relative overflow-hidden">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center"
+                style={{ background: "linear-gradient(135deg, #10B981, #06B6D4)" }}
+              >
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>
+                  Business Insights
+                  <span
+                    className="ml-2 text-[10px] px-1.5 py-0.5 rounded-md align-middle"
+                    style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}
+                  >
+                    PILOT
+                  </span>
+                </h3>
+                <p className="text-[10px]" style={{ color: "var(--t4)" }}>
+                  Canon-driven · action-first · persisted
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                if (!clubId) return;
+                await refreshBusinessInsights.mutateAsync({ clubId });
+                businessInsightsQuery.refetch();
+              }}
+              disabled={refreshBusinessInsights.isPending}
+              className="text-[11px] px-2.5 py-1 rounded-md transition-opacity hover:opacity-80 disabled:opacity-50"
+              style={{
+                background: "rgba(16,185,129,0.10)",
+                color: "#10B981",
+                border: "1px solid rgba(16,185,129,0.20)",
+                fontWeight: 600,
+              }}
+            >
+              {refreshBusinessInsights.isPending ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+
+          {businessInsightsQuery.isLoading ? (
+            <div className="space-y-2">
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className="h-24 rounded-xl animate-pulse"
+                  style={{ background: "var(--subtle)" }}
+                />
+              ))}
+            </div>
+          ) : ((businessInsightsQuery.data?.insights ?? []) as BusinessInsightRow[]).length === 0 ? (
+            <div
+              className="flex flex-col items-center justify-center py-8 gap-2"
+              style={{ color: "var(--t4)" }}
+            >
+              <Sparkles className="w-8 h-8 opacity-30" />
+              <p className="text-sm">No active insights right now</p>
+              <p className="text-[11px]">
+                Click <span style={{ color: "#10B981", fontWeight: 600 }}>Refresh</span> to run
+                the engine for this club.
+              </p>
+            </div>
+          ) : (
+            <div>
+              {((businessInsightsQuery.data?.insights ?? []) as BusinessInsightRow[]).map((bi) => (
+                <BusinessInsightCard
+                  key={bi.id}
+                  insight={bi}
+                  clubId={clubId!}
+                  onResolve={async (reason, snoozeUntil) => {
+                    if (!clubId) return;
+                    await resolveBusinessInsight.mutateAsync({
+                      clubId,
+                      insightId: bi.id,
+                      reason,
+                      snoozeUntil: snoozeUntil?.toISOString(),
+                    });
+                    businessInsightsQuery.refetch();
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </Card>
       </div>
 
