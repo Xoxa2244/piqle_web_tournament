@@ -656,6 +656,15 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       { clubId: clubId! },
       { enabled: !!clubId && !isDemo },
     );
+
+  // % VIP at risk — Step 7 of DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.4.
+  // Aggregated over the broader VIP definition (membership_type
+  // contains VIP / Premium / Unlimited, case-insensitive — §6.3) — wider
+  // than the legacy membership_type='unlimited' check in getMemberHealthDeltas.
+  const vipAtRiskQuery = trpc.intelligence.getVipAtRiskPercent.useQuery(
+    { clubId: clubId! },
+    { enabled: !!clubId && !isDemo },
+  );
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");
@@ -1064,18 +1073,41 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           this week?" without scanning the schedule. */}
       <TierBreakdownTile clubId={clubId} />
 
-      {/* Player Health Overview */}
+      {/* Customer Health Overview (renamed from "Player Health Overview"
+          per DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.4 — Step 7). */}
       <div className="space-y-4">
         <Card>
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <Heart className="w-4 h-4 text-emerald-400" />
-              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Player Health Overview</h3>
+              <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>Customer Health Overview</h3>
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.15)" }}>
-              <span className="text-[11px]" style={{ color: "var(--t3)" }}>Avg:</span>
-              <span className="text-xs text-emerald-400" style={{ fontWeight: 700 }}>{data.healthMetrics.avgScore}</span>
-              <span className="text-[10px] text-emerald-400" style={{ fontWeight: 600 }}>(+{data.healthMetrics.avgScore - data.healthMetrics.avgScorePrev})</span>
+            <div className="flex items-center gap-2">
+              {/* % VIP at risk chip — Step 7 §3.4. VIP = membership_type
+                  contains VIP / Premium / Unlimited (case-insensitive,
+                  per §6.3). At-risk = latest snapshot risk_level ∈
+                  watch/at_risk/critical. Shown alongside avg score. */}
+              {(() => {
+                const v = vipAtRiskQuery.data;
+                if (!v || v.totalVip === 0) return null;
+                const tint = v.percent >= 25 ? "#F87171" : v.percent >= 10 ? "#FBBF24" : "#10B981";
+                return (
+                  <div
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
+                    style={{ background: `${tint}1A`, border: `1px solid ${tint}26` }}
+                    title={`${v.atRiskVip} of ${v.totalVip} VIP members are at risk`}
+                  >
+                    <span className="text-[11px]" style={{ color: "var(--t3)" }}>VIP at risk:</span>
+                    <span className="text-xs" style={{ color: tint, fontWeight: 700 }}>{v.percent}%</span>
+                    <span className="text-[10px]" style={{ color: tint, fontWeight: 600 }}>({v.atRiskVip}/{v.totalVip})</span>
+                  </div>
+                );
+              })()}
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg" style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.15)" }}>
+                <span className="text-[11px]" style={{ color: "var(--t3)" }}>Avg:</span>
+                <span className="text-xs text-emerald-400" style={{ fontWeight: 700 }}>{data.healthMetrics.avgScore}</span>
+                <span className="text-[10px] text-emerald-400" style={{ fontWeight: 600 }}>(+{data.healthMetrics.avgScore - data.healthMetrics.avgScorePrev})</span>
+              </div>
             </div>
           </div>
 

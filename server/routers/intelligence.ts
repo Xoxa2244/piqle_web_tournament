@@ -6159,6 +6159,66 @@ export const intelligenceRouter = createTRPCRouter({
     }),
 
   // ─────────────────────────────────────────────────────────────────────
+  // VIP-at-risk aggregation — Step 7 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
+  // §3.4 + §6.3 + §6.4.
+  // ─────────────────────────────────────────────────────────────────────
+  //
+  // VIP definition (spec §6.3, fixed):
+  //   membership_type contains 'VIP' OR 'Premium' OR 'Unlimited'
+  //   (case-insensitive)
+  //
+  // At-risk definition: latest member_health_snapshots.risk_level ∈
+  //   ('watch', 'at_risk', 'critical')
+  //
+  // We surface this as a single number on Customer Health Overview
+  // (per-member sigals for the same VIPs land in Action Center —
+  // Step 18). Distinct from getMemberHealthDeltas.vipCount which
+  // uses too-narrow ('unlimited' === membership_type) VIP definition.
+  getVipAtRiskPercent: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `
+        WITH vip_members AS (
+          SELECT u.id AS user_id
+          FROM users u
+          JOIN club_followers cf
+            ON cf.user_id::text = u.id::text AND cf.club_id = $1::uuid
+          WHERE
+            LOWER(COALESCE(u.membership_type, '')) LIKE '%vip%' OR
+            LOWER(COALESCE(u.membership_type, '')) LIKE '%premium%' OR
+            LOWER(COALESCE(u.membership_type, '')) LIKE '%unlimited%'
+        ),
+        latest_health AS (
+          SELECT DISTINCT ON (user_id) user_id, risk_level
+          FROM member_health_snapshots
+          WHERE club_id = $1::uuid
+          ORDER BY user_id, date DESC
+        )
+        SELECT
+          (SELECT COUNT(*) FROM vip_members)::int AS total_vip,
+          (SELECT COUNT(*)
+             FROM vip_members v
+             JOIN latest_health h ON h.user_id::text = v.user_id::text
+             WHERE h.risk_level IN ('watch', 'at_risk', 'critical')
+          )::int AS at_risk_vip
+        `,
+        input.clubId,
+      )) as Array<{ total_vip: number; at_risk_vip: number }>
+
+      const r = rows[0] ?? { total_vip: 0, at_risk_vip: 0 }
+      const percent =
+        r.total_vip > 0 ? Math.round((r.at_risk_vip / r.total_vip) * 100) : 0
+      return {
+        totalVip: r.total_vip,
+        atRiskVip: r.at_risk_vip,
+        percent,
+      }
+    }),
+
+  // ─────────────────────────────────────────────────────────────────────
   // Inactive Players KPI — Step 6 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
   // §3.2. Replaces the removed "Lost Revenue" KPI in the 4th slot.
   // ─────────────────────────────────────────────────────────────────────
