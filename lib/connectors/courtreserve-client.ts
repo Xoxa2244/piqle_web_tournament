@@ -308,6 +308,229 @@ export class CourtReserveClient {
     const data = await this.request<any[]>('/api/v1/membershiptype/get')
     return Array.isArray(data) ? data : []
   }
+
+  // ── Waitlist (read) ──────────────────────────────────────────────────
+  //
+  // Used by Sprint 9 waitlist count (T2_LEAGUE success metric — see
+  // DASHBOARD_AND_ACTION_CENTER_SPEC.md §7.4) and by League gap detection
+  // (waitlist size hints at demand even when a league is on hiatus).
+
+  /** Get waitlist registrations for a date range (filtered by eventId optional). */
+  async getWaitlist(
+    from: Date,
+    to: Date,
+    eventId?: number | string,
+  ): Promise<any[]> {
+    const all: any[] = []
+    for (const window of this.dateWindows(from, to)) {
+      const params: Record<string, string> = {
+        startDate: window.from,
+        endDate: window.to,
+      }
+      if (eventId !== undefined) params.eventId = String(eventId)
+      const data = await this.request<any[]>(
+        '/api/v1/eventregistrationreport/listwaitlist',
+        params,
+      )
+      if (Array.isArray(data)) all.push(...data)
+    }
+    return all
+  }
+
+  // ── Write operations (DDL-side of CR) ────────────────────────────────
+  //
+  // Called by Action Center signal handlers (cr_api_direct UnifiedAction —
+  // see DASHBOARD_AND_ACTION_CENTER_SPEC.md §7.2 + §8.2).
+  //
+  // Idempotency contract: caller is responsible for de-duplicating retries
+  // (e.g. `operational_signal.id` as a logical key). CR itself does not
+  // support an idempotency-key header on these endpoints, so a double-call
+  // can legitimately produce a duplicate side-effect. Always check
+  // `operational_signal.status` before invoking — only fire on
+  // 'active' rows that haven't already been resolved by a previous attempt.
+
+  /**
+   * Reactivate a suspended family membership.
+   *
+   * Use case: "Suspended 14+ days" operational_signal where the operator
+   * decides to bring the family back online. After 200 from CR, the next
+   * CR sync will reflect the reactivation in `familymembership.status`.
+   */
+  async reactivateFamilyMembership(
+    familyId: number,
+    membershipTypeId: number,
+  ): Promise<void> {
+    await this.writeRequest<unknown>(
+      '/api/v1/familymembership/reactivate',
+      'PUT',
+      {
+        FamilyId: familyId,
+        MembershipTypeId: membershipTypeId,
+      },
+    )
+  }
+
+  /**
+   * Suspend a family membership.
+   *
+   * Use case: administrative pauses (delinquency, member request, etc.).
+   * The optional `reason` is stored in CR notes for the family; not all
+   * deployments surface it back through GET endpoints.
+   */
+  async suspendFamilyMembership(
+    familyId: number,
+    reason?: string,
+  ): Promise<void> {
+    await this.writeRequest<unknown>(
+      '/api/v1/familymembership/suspend',
+      'PUT',
+      {
+        FamilyId: familyId,
+        Reason: reason ?? '',
+      },
+    )
+  }
+
+  /**
+   * Assign a custom rating (skill level, DUPR snapshot, internal grade)
+   * to a member.
+   *
+   * Use case: "Skill progression" insight where the AI has high
+   * confidence the member moved to intermediate / advanced, and the
+   * operator approves the rating update. After 200 from CR, the next
+   * sync will reflect it on `users.skill_level` via mapCRMember.
+   */
+  async assignCustomRating(
+    memberId: number,
+    ratingCategoryId: number,
+    value: number,
+  ): Promise<void> {
+    await this.writeRequest<unknown>(
+      '/api/v1/customrating/assign',
+      'POST',
+      {
+        OrganizationMemberId: memberId,
+        CategoryId: ratingCategoryId,
+        Value: value,
+      },
+    )
+  }
+
+  /**
+   * Create a court block (admin reservation that takes courts offline).
+   *
+   * Use case: "Underutilized court" insight → operator blocks the slot
+   * out to free up staff or run maintenance. Returns the new
+   * reservation ID so the caller can store it on the operational_signal
+   * audit trail (and undo via cancelReservation if CR exposes that
+   * endpoint in future).
+   *
+   * Dates are sent as ISO strings (CR expects UTC).
+   */
+  async createCourtBlock(params: {
+    reservationTypeId: number
+    courtIds: number[]
+    start: Date
+    end: Date
+    notes?: string
+  }): Promise<{ reservationId: number }> {
+    const data = await this.writeRequest<{ Id?: number; id?: number }>(
+      '/api/v1/reservation/createcourtblock',
+      'POST',
+      {
+        ReservationTypeId: params.reservationTypeId,
+        CourtIds: params.courtIds,
+        StartTime: params.start.toISOString(),
+        EndTime: params.end.toISOString(),
+        Notes: params.notes ?? '',
+      },
+    )
+    const id = (data as any)?.Id ?? (data as any)?.id
+    if (!id) {
+      throw new CourtReserveError(
+        'createCourtBlock: CR did not return a reservation id',
+        500,
+      )
+    }
+    return { reservationId: Number(id) }
+  }
+
+  // ── Private: write-side HTTP helper ──────────────────────────────────
+  //
+  // Mirrors `request<T>` but for POST/PUT/DELETE with a JSON body. Reuses
+  // the same throttle window, rate-limit retry, and CR-envelope unwrapping
+  // logic so behaviour is identical from the caller's perspective.
+
+  private async writeRequest<T>(
+    path: string,
+    method: 'POST' | 'PUT' | 'DELETE',
+    body?: Record<string, unknown>,
+  ): Promise<T> {
+    const fullUrl = this.baseUrl + (path.startsWith('/') ? path : '/' + path)
+    const url = new URL(fullUrl)
+
+    // Throttle between requests to avoid rate limiting (matches request<T>).
+    await sleep(THROTTLE_MS)
+
+    for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt++) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+      try {
+        const res = await fetch(url.toString(), {
+          method,
+          headers: {
+            Authorization: this.authHeader,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+        })
+
+        if (res.status === 429) {
+          const retryAfter = parseInt(res.headers.get('Retry-After') || '30', 10)
+          if (attempt < MAX_RATE_LIMIT_RETRIES && retryAfter <= 10) {
+            console.log(
+              `[CR API] Write rate limited, waiting ${retryAfter}s ` +
+              `(attempt ${attempt + 1}/${MAX_RATE_LIMIT_RETRIES})`,
+            )
+            await sleep(retryAfter * 1000)
+            continue
+          }
+          throw new CourtReserveError(`Rate limited. Retry after ${retryAfter}s`, 429)
+        }
+
+        if (res.status === 401) {
+          throw new CourtReserveError('Invalid API credentials', 401)
+        }
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => '')
+          throw new CourtReserveError(
+            `CR write error (${method} ${path}): ${res.status} ${text}`,
+            res.status,
+          )
+        }
+
+        // Empty 200/204 bodies are common for PUT/DELETE — unwrap defensively.
+        const text = await res.text()
+        if (!text) return undefined as unknown as T
+
+        const json = JSON.parse(text)
+        if (json && typeof json === 'object' && 'Data' in json) {
+          if (json.ErrorMessage) {
+            throw new CourtReserveError(`CR API: ${json.ErrorMessage}`, 400)
+          }
+          return json.Data as T
+        }
+        return json as T
+      } finally {
+        clearTimeout(timeout)
+      }
+    }
+    throw new CourtReserveError('Rate limit retries exhausted', 429)
+  }
 }
 
 // ── Field mappers (CR PascalCase → our camelCase) ──
