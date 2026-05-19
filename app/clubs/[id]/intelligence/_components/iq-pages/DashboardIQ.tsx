@@ -284,7 +284,12 @@ type PeriodData = {
   comparison: { metric: string; current: number; previous: number; format: "currency" | "number" | "percent" }[];
 };
 
-function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?: string): PeriodData | null {
+function mapRealDataToPeriod(
+  dashboardData: any,
+  healthData: any,
+  pricingModel?: string,
+  inactivePlayers30d?: number,
+): PeriodData | null {
   if (!dashboardData) return null;
   const m = dashboardData.metrics;
   const hs = healthData?.summary;
@@ -324,28 +329,29 @@ function mapRealDataToPeriod(dashboardData: any, healthData: any, pricingModel?:
           sparkData: m.bookings.trend.sparkline || [],
           tooltip: 'Total confirmed bookings in the dashboard period (one row per player per session). Counts all sessions, not just sessions that ran.',
         },
-        // 4th KPI was the "Not Active / Lost Revenue" conditional.
-        // Per DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.1 Step 5 the
-        // Lost Revenue branch is removed; Step 6 will replace this slot
-        // with a unified "Inactive Players" metric (30-day no-booking
-        // rule). For now, fall back to the membership-based "Not Active"
-        // KPI when available and drop the slot for non-membership clubs
-        // — keeps 3 cards visible until Inactive Players ships.
-        (() => {
-          if (!isMembership) return null;
-          const mb = dashboardData?.players?.membershipBreakdown;
-          const notActive = (mb?.suspended || 0) + (mb?.expired || 0) + (mb?.noMembership || 0);
-          return {
-            label: "Not Active",
-            value: String(notActive || dashboardData?.players?.inactiveCount || 0),
-            change: "",
-            up: false,
-            icon: UserPlus,
-            gradient: "from-amber-500 to-orange-500",
-            sparkData: [],
-            tooltip: 'Followers whose CR subscription is Suspended, Expired, or set to "No Membership". These are recovery candidates for win-back campaigns.',
-          };
-        })(),
+        // 4th KPI — "Inactive Players" per DASHBOARD_AND_ACTION_CENTER_SPEC.md
+        // §3.2 (Step 6). Definition: users with ≥1 historical CONFIRMED
+        // booking who haven't booked in the last 30 days.
+        //
+        // Distinct from the legacy `getDashboardV2.players.inactiveCount`
+        // which lumps never-played users in too — this metric is the
+        // "lapsed" cohort (win-back surface), not the "never engaged"
+        // cohort.
+        //
+        // While the dedicated endpoint is still loading we render zero
+        // rather than skipping the slot — keeps the 4-card grid layout
+        // stable for the operator.
+        {
+          label: "Inactive Players",
+          value: String(inactivePlayers30d ?? 0),
+          change: "",
+          up: false,
+          icon: UserPlus,
+          gradient: "from-amber-500 to-orange-500",
+          sparkData: [],
+          tooltip:
+            "Players with ≥1 historical booking who haven't booked in the last 30 days. The win-back surface — these are people who used to engage and now don't. Excludes never-played users.",
+        },
       ].filter(Boolean) as KpiItem[];
     })(),
     health: hs ? [
@@ -640,6 +646,16 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     trpc.intelligence.refreshBusinessInsights.useMutation();
   const resolveBusinessInsight =
     trpc.intelligence.resolveBusinessInsight.useMutation();
+
+  // Inactive Players KPI — Step 6 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
+  // §3.2. Lapsed users (≥1 historical CONFIRMED booking, none in last 30
+  // days). Distinct from getDashboardV2.players.inactiveCount which
+  // includes never-played users.
+  const inactivePlayersQuery =
+    trpc.intelligence.getInactivePlayersCount.useQuery(
+      { clubId: clubId! },
+      { enabled: !!clubId && !isDemo },
+    );
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");
@@ -744,7 +760,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
   let realData: ReturnType<typeof mapRealDataToPeriod> = null;
   try {
-    realData = mapRealDataToPeriod(activeDashboardData, healthData, pricingModel);
+    realData = mapRealDataToPeriod(
+      activeDashboardData,
+      healthData,
+      pricingModel,
+      inactivePlayersQuery.data?.inactive30d,
+    );
   } catch (err) {
     console.error('[DashboardIQ] mapRealDataToPeriod crashed:', err, { activeDashboardData, healthData });
   }

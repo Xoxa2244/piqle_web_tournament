@@ -6158,6 +6158,67 @@ export const intelligenceRouter = createTRPCRouter({
       return report
     }),
 
+  // ─────────────────────────────────────────────────────────────────────
+  // Inactive Players KPI — Step 6 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
+  // §3.2. Replaces the removed "Lost Revenue" KPI in the 4th slot.
+  // ─────────────────────────────────────────────────────────────────────
+  //
+  // Definition (spec §3.2, zafiksirovano):
+  //   - Threshold: 30 days without a CONFIRMED booking
+  //   - Base: users who have ≥1 historical CONFIRMED booking at this club
+  //   - Excludes never-played users (different from existing
+  //     `getDashboardV2.players.inactiveCount`, which counts
+  //     all-non-active including never-played)
+  //
+  // Why we don't extend getDashboardV2: existing consumers depend on
+  // its exact response shape, and the canon's "lapsed" definition is
+  // narrower than the legacy "anyone not active in period". Keep this
+  // as a dedicated, cheap endpoint and let the legacy field continue
+  // to mean what it has always meant.
+  getInactivePlayersCount: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `
+        WITH bookers AS (
+          SELECT
+            b."userId",
+            MAX(b."bookedAt") AS last_booked_at
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          WHERE ps."clubId" = $1
+            AND b.status::text = 'CONFIRMED'
+          GROUP BY b."userId"
+        )
+        SELECT
+          COUNT(*) FILTER (WHERE last_booked_at < NOW() - INTERVAL '30 days')::int
+            AS inactive_30d,
+          COUNT(*) FILTER (WHERE last_booked_at >= NOW() - INTERVAL '30 days')::int
+            AS active_30d,
+          COUNT(*)::int AS total_ever_booked
+        FROM bookers
+        `,
+        input.clubId,
+      )) as Array<{
+        inactive_30d: number
+        active_30d: number
+        total_ever_booked: number
+      }>
+
+      const r = rows[0] ?? {
+        inactive_30d: 0,
+        active_30d: 0,
+        total_ever_booked: 0,
+      }
+      return {
+        inactive30d: r.inactive_30d,
+        active30d: r.active_30d,
+        totalEverBooked: r.total_ever_booked,
+      }
+    }),
+
   // ── Session players: load registered players for a session ──
   getSessionPlayers: protectedProcedure
     .input(z.object({ sessionId: z.string(), clubId: z.string().uuid() }))
