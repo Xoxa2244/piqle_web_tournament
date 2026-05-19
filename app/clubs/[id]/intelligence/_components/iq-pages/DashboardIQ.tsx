@@ -26,6 +26,10 @@ import { AIRevenueTile } from "../ai-revenue-tile";
 // DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.1 Step 5.
 import { TierBreakdownTile } from "../tier-breakdown-tile";
 import { BusinessInsightCard, type BusinessInsightRow } from "./dashboard/BusinessInsightCard";
+import {
+  PeriodComparisonDrawer,
+  type DrawerMetric,
+} from "./dashboard/PeriodComparisonDrawer";
 
 type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
 
@@ -665,6 +669,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     { clubId: clubId! },
     { enabled: !!clubId && !isDemo },
   );
+
+  // Period Comparison drawer state — Step 8 of
+  // DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.3. Each Period Comparison
+  // card opens this drawer for the selected metric, scoped to the
+  // current period window.
+  const [drawerMetric, setDrawerMetric] = useState<DrawerMetric | null>(null);
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");
@@ -1552,6 +1562,16 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             <div className="py-6 text-center text-xs" style={{ color: "var(--t4)" }}>No data for current period</div>
           );
 
+          // Map card label → canon metric key the drawer endpoint expects.
+          // Step 8 of DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.3 — each
+          // card click opens the drill-down drawer for that metric.
+          const labelToMetric: Record<string, DrawerMetric> = {
+            "Player Registrations": 'player_registrations',
+            "Court Occupancy": 'court_occupancy',
+            "Active Players": 'active_players',
+            "Avg Sessions/Player": 'avg_sessions_per_player',
+          };
+
           return (
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {metrics.map((row) => {
@@ -1560,8 +1580,15 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 const isPositive = row.invert ? delta < 0 : delta > 0;
                 const dispCur = row.format === 'percent' ? `${row.cur}%` : row.cur.toLocaleString();
                 const dispPrev = row.format === 'percent' ? `${row.prev}%` : row.prev.toLocaleString();
+                const metricKey = labelToMetric[row.label];
                 return (
-                  <div key={row.label} className="rounded-xl p-4 relative overflow-hidden" style={{ background: "var(--subtle)" }}>
+                  <button
+                    type="button"
+                    key={row.label}
+                    onClick={() => metricKey && setDrawerMetric(metricKey)}
+                    className="text-left rounded-xl p-4 relative overflow-hidden transition-transform hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-purple-500/40"
+                    style={{ background: "var(--subtle)" }}
+                  >
                     {isLoading && <div className="absolute inset-0 rounded-xl animate-pulse" style={{ background: "rgba(139,92,246,0.04)" }} />}
                     <div className="text-[11px] mb-2" style={{ color: "var(--t3)", fontWeight: 500 }}>{row.label}</div>
                     <div className="flex items-end justify-between">
@@ -1591,7 +1618,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                         </div>
                       )}
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -1600,6 +1627,42 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       </Card>
 
       </>}
+
+      {/* Period Comparison drawer (Step 8 of
+          DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.3). Bucket choice:
+          'week' for ≤90-day windows, 'month' for wider. Range comes
+          from the current Dashboard period selector — if no explicit
+          dates (e.g. 'today' shortcut), we fall back to last 90 days. */}
+      {(() => {
+        // Determine window dates as ISO datetime strings. Backend Zod
+        // validation requires .datetime() so naked YYYY-MM-DD fails.
+        const toIsoDt = (s: string | undefined, fallback: Date): string => {
+          if (!s) return fallback.toISOString();
+          // periodDates uses YYYY-MM-DD; append start-of-day UTC.
+          return new Date(`${s}T00:00:00.000Z`).toISOString();
+        };
+        const now = new Date();
+        const start = toIsoDt(
+          periodDates.dateFrom,
+          new Date(now.getTime() - 90 * 86400000),
+        );
+        const end = toIsoDt(periodDates.dateTo, now);
+        const windowDays =
+          (new Date(end).getTime() - new Date(start).getTime()) /
+          86400000;
+        const bucket: 'week' | 'month' = windowDays > 90 ? 'month' : 'week';
+        return (
+          <PeriodComparisonDrawer
+            open={drawerMetric !== null}
+            metric={drawerMetric}
+            clubId={clubId!}
+            startDate={start}
+            endDate={end}
+            bucket={bucket}
+            onClose={() => setDrawerMetric(null)}
+          />
+        );
+      })()}
 
       {/* Import Modal */}
       <AnimatePresence>

@@ -6159,6 +6159,204 @@ export const intelligenceRouter = createTRPCRouter({
     }),
 
   // ─────────────────────────────────────────────────────────────────────
+  // Period Comparison drawer — Step 8 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
+  // §3.3.
+  // ─────────────────────────────────────────────────────────────────────
+  //
+  // Time-series for 4 dashboard metrics, bucketed weekly or monthly, with
+  // an optional overlay period for side-by-side comparison.
+  //
+  // Trend line: simple linear regression on (bucketIndex, value) pairs,
+  // computed in JS after the SQL aggregation — N is small (≤26 weeks per
+  // 6-month window) so we don't push regression to PostgreSQL.
+  //
+  // Bucketing leans on PostgreSQL `date_trunc()` which natively understands
+  // 'week' (ISO week, Monday-start) and 'month'. We do not expose 'day' or
+  // 'quarter' here — the drawer should never need that resolution for a
+  // 1m / 3m / 6m preset window.
+  getMetricTimeSeries: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        metric: z.enum([
+          'player_registrations',
+          'court_occupancy',
+          'active_players',
+          'avg_sessions_per_player',
+        ]),
+        startDate: z.string().datetime(),
+        endDate: z.string().datetime(),
+        bucket: z.enum(['week', 'month']),
+        overlay: z
+          .object({
+            startDate: z.string().datetime(),
+            endDate: z.string().datetime(),
+          })
+          .optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const fetchSeries = async (
+        startDate: Date,
+        endDate: Date,
+      ): Promise<Array<{ bucketStart: Date; value: number }>> => {
+        const trunc = input.bucket // 'week' | 'month' — validated by Zod
+
+        switch (input.metric) {
+          case 'player_registrations': {
+            // One row per CONFIRMED booking in window, grouped by bucket.
+            const rows = (await ctx.prisma.$queryRawUnsafe(
+              `
+              SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
+                     COUNT(*)::int AS value
+              FROM play_session_bookings b
+              JOIN play_sessions ps ON ps.id = b."sessionId"
+              WHERE ps."clubId" = $1::uuid
+                AND b.status::text = 'CONFIRMED'
+                AND ps.date >= $2 AND ps.date < $3
+              GROUP BY bucket_start
+              ORDER BY bucket_start
+              `,
+              input.clubId,
+              startDate,
+              endDate,
+            )) as Array<{ bucket_start: Date; value: number }>
+            return rows.map(r => ({ bucketStart: r.bucket_start, value: r.value }))
+          }
+
+          case 'court_occupancy': {
+            // Average per-session fill across the bucket. Same formula
+            // the Schedule page uses (registered_count / maxPlayers).
+            const rows = (await ctx.prisma.$queryRawUnsafe(
+              `
+              SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
+                     AVG(
+                       CASE WHEN ps."maxPlayers" > 0
+                            THEN (ps.registered_count::float / ps."maxPlayers") * 100
+                            ELSE 0
+                       END
+                     )::float AS value
+              FROM play_sessions ps
+              WHERE ps."clubId" = $1::uuid
+                AND ps.date >= $2 AND ps.date < $3
+                AND ps."maxPlayers" > 0
+              GROUP BY bucket_start
+              ORDER BY bucket_start
+              `,
+              input.clubId,
+              startDate,
+              endDate,
+            )) as Array<{ bucket_start: Date; value: number }>
+            return rows.map(r => ({
+              bucketStart: r.bucket_start,
+              value: Math.round(r.value * 10) / 10,
+            }))
+          }
+
+          case 'active_players': {
+            // Distinct users with ≥1 CONFIRMED booking inside the bucket.
+            const rows = (await ctx.prisma.$queryRawUnsafe(
+              `
+              SELECT bucket_start, COUNT(DISTINCT user_id)::int AS value
+              FROM (
+                SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
+                       b."userId" AS user_id
+                FROM play_session_bookings b
+                JOIN play_sessions ps ON ps.id = b."sessionId"
+                WHERE ps."clubId" = $1::uuid
+                  AND b.status::text = 'CONFIRMED'
+                  AND ps.date >= $2 AND ps.date < $3
+                GROUP BY 1, 2
+              ) sub
+              GROUP BY bucket_start
+              ORDER BY bucket_start
+              `,
+              input.clubId,
+              startDate,
+              endDate,
+            )) as Array<{ bucket_start: Date; value: number }>
+            return rows.map(r => ({ bucketStart: r.bucket_start, value: r.value }))
+          }
+
+          case 'avg_sessions_per_player': {
+            // Average bookings per active player in each bucket.
+            const rows = (await ctx.prisma.$queryRawUnsafe(
+              `
+              WITH bucket_counts AS (
+                SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
+                       b."userId" AS user_id,
+                       COUNT(*) AS cnt
+                FROM play_session_bookings b
+                JOIN play_sessions ps ON ps.id = b."sessionId"
+                WHERE ps."clubId" = $1::uuid
+                  AND b.status::text = 'CONFIRMED'
+                  AND ps.date >= $2 AND ps.date < $3
+                GROUP BY 1, 2
+              )
+              SELECT bucket_start, AVG(cnt)::float AS value
+              FROM bucket_counts
+              GROUP BY bucket_start
+              ORDER BY bucket_start
+              `,
+              input.clubId,
+              startDate,
+              endDate,
+            )) as Array<{ bucket_start: Date; value: number }>
+            return rows.map(r => ({
+              bucketStart: r.bucket_start,
+              value: Math.round(r.value * 10) / 10,
+            }))
+          }
+        }
+      }
+
+      // Simple linear regression on (i, value) pairs — slope + intercept
+      // computed in JS. N is small (max ~26 buckets) so no need to push to
+      // SQL. Slope sign is the trend signal the UI renders as up/down arrow.
+      const linearTrend = (
+        bars: Array<{ bucketStart: Date; value: number }>,
+      ): { slope: number; intercept: number } => {
+        const n = bars.length
+        if (n < 2) return { slope: 0, intercept: bars[0]?.value ?? 0 }
+        const xs = bars.map((_, i) => i)
+        const ys = bars.map(b => b.value)
+        const meanX = xs.reduce((a, b) => a + b, 0) / n
+        const meanY = ys.reduce((a, b) => a + b, 0) / n
+        let num = 0
+        let den = 0
+        for (let i = 0; i < n; i++) {
+          num += (xs[i] - meanX) * (ys[i] - meanY)
+          den += (xs[i] - meanX) ** 2
+        }
+        const slope = den === 0 ? 0 : num / den
+        const intercept = meanY - slope * meanX
+        return {
+          slope: Math.round(slope * 1000) / 1000,
+          intercept: Math.round(intercept * 1000) / 1000,
+        }
+      }
+
+      const bars = await fetchSeries(
+        new Date(input.startDate),
+        new Date(input.endDate),
+      )
+      const trend = linearTrend(bars)
+
+      let overlay: { bars: typeof bars } | undefined
+      if (input.overlay) {
+        const overlayBars = await fetchSeries(
+          new Date(input.overlay.startDate),
+          new Date(input.overlay.endDate),
+        )
+        overlay = { bars: overlayBars }
+      }
+
+      return { bars, trend, overlay }
+    }),
+
+  // ─────────────────────────────────────────────────────────────────────
   // VIP-at-risk aggregation — Step 7 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
   // §3.4 + §6.3 + §6.4.
   // ─────────────────────────────────────────────────────────────────────
