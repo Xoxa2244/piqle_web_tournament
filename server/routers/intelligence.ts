@@ -26,6 +26,14 @@ import { generateClubInsights } from '@/lib/ai/insights-engine'
 import { runBusinessInsights } from '@/lib/ai/business-insights-engine'
 import { runOperationalSignals } from '@/lib/ai/operational-signals-engine'
 import {
+  ALL_TIER_KEYS,
+  classifyProgrammingTierWithRules,
+  type ClassifierRule,
+  type TierConfig,
+  type TierOverride,
+} from '@/lib/ai/tier-classifier-extended'
+import { SOLOMON_PRESET, SOLOMON_PRESET_VERSION } from '@/lib/ai/tier-preset'
+import {
   createCohortDraft,
   getCohortDraft,
   createCampaignDraft,
@@ -6385,6 +6393,394 @@ export const intelligenceRouter = createTRPCRouter({
       if (!row) return { found: false as const }
       await requireClubAdmin(ctx.prisma, row.clubId, ctx.session.user.id)
       return { found: true as const, draft: row }
+    }),
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Tier Constructor — Steps 19-20 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
+  // §4.4 + Appendix D.
+  // ─────────────────────────────────────────────────────────────────────
+  //
+  // 6 endpoints back the Action Center > Tier Constructor pane:
+  //   - getTierConfig       — current overrides + custom_rules row
+  //   - getTierDistribution — sessions per tier (last 30d) for the table
+  //   - updateTierOverride  — patch a single TierOverride entry
+  //   - applyTierPreset     — bulk-set overrides to the Solomon Preset
+  //   - addClassifierRule   — append a ClassifierRule
+  //   - removeClassifierRule — drop by id
+  //   - resetTierConfig     — empty overrides + custom_rules
+  //
+  // Schema lives on `tier_config` (PK=club_id, 1 row per club). All
+  // writes go through $executeRawUnsafe since Prisma still doesn't have
+  // a generated model for this table (idempotent SQL migration only —
+  // see CLAUDE.md "NEVER prisma db push").
+
+  getTierConfig: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }): Promise<{ config: TierConfig }> => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `
+        SELECT club_id      AS "clubId",
+               overrides,
+               custom_rules AS "customRules",
+               updated_at   AS "updatedAt",
+               updated_by   AS "updatedBy"
+        FROM tier_config
+        WHERE club_id = $1::uuid
+        `,
+        input.clubId,
+      )) as Array<{
+        clubId: string
+        overrides: unknown
+        customRules: unknown
+        updatedAt: Date
+        updatedBy: string | null
+      }>
+      if (rows.length === 0) {
+        return {
+          config: {
+            clubId: input.clubId,
+            overrides: [],
+            customRules: [],
+            updatedAt: new Date(0),
+            updatedBy: null,
+          },
+        }
+      }
+      const r = rows[0]
+      return {
+        config: {
+          clubId: r.clubId,
+          overrides: Array.isArray(r.overrides)
+            ? (r.overrides as TierOverride[])
+            : [],
+          customRules: Array.isArray(r.customRules)
+            ? (r.customRules as ClassifierRule[])
+            : [],
+          updatedAt: r.updatedAt,
+          updatedBy: r.updatedBy,
+        },
+      }
+    }),
+
+  // Returns per-tier counts for the most recent 30-day window. Uses the
+  // extended classifier so the table reflects what the club actually
+  // sees with their custom_rules applied (not just the default regex).
+  getTierDistribution: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const cfgRows = (await ctx.prisma.$queryRawUnsafe(
+        `SELECT custom_rules FROM tier_config WHERE club_id = $1::uuid`,
+        input.clubId,
+      )) as Array<{ custom_rules: unknown }>
+      const customRules: ClassifierRule[] = Array.isArray(cfgRows[0]?.custom_rules)
+        ? (cfgRows[0].custom_rules as ClassifierRule[])
+        : []
+
+      const sessions = (await ctx.prisma.$queryRawUnsafe(
+        `
+        SELECT id,
+               title,
+               format::text AS format,
+               category
+        FROM play_sessions
+        WHERE "clubId" = $1::uuid
+          AND date >= NOW() - INTERVAL '30 days'
+          AND date <= NOW()
+        `,
+        input.clubId,
+      )) as Array<{
+        id: string
+        title: string | null
+        format: string | null
+        category: string | null
+      }>
+
+      const counts: Record<string, number> = {}
+      for (const k of ALL_TIER_KEYS) counts[k] = 0
+      for (const s of sessions) {
+        const tier = classifyProgrammingTierWithRules(
+          { title: s.title, format: s.format, category: s.category },
+          customRules,
+        )
+        counts[tier] = (counts[tier] ?? 0) + 1
+      }
+      return {
+        totalSessions: sessions.length,
+        windowDays: 30,
+        countsByTier: counts,
+      }
+    }),
+
+  // Patch a single TierOverride (identified by tierKey). If a row
+  // doesn't exist yet for the club we INSERT a fresh tier_config with
+  // just this override, otherwise we splice it into the overrides
+  // array.
+  updateTierOverride: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        tierKey: z.enum([
+          'T1_CORE',
+          'T2_LEAGUE',
+          'T3_SIGNATURE',
+          'T4_SOCIAL',
+          'T5_TOURNAMENT',
+          'T6_PREMIUM',
+          'T7_YOUTH',
+        ]),
+        // Loose JSON shape — the runtime stores whatever the UI sends.
+        // The Tier Constructor enforces schema at edit time.
+        override: z.record(z.string(), z.unknown()),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const userId = ctx.session.user.id
+      const now = new Date()
+      const incoming = {
+        ...(input.override as object),
+        tierKey: input.tierKey,
+      } as TierOverride
+
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `SELECT overrides FROM tier_config WHERE club_id = $1::uuid`,
+        input.clubId,
+      )) as Array<{ overrides: unknown }>
+
+      const current: TierOverride[] = Array.isArray(rows[0]?.overrides)
+        ? (rows[0].overrides as TierOverride[])
+        : []
+      const next = current.filter(o => o.tierKey !== input.tierKey)
+      next.push(incoming)
+
+      if (rows.length === 0) {
+        await ctx.prisma.$executeRawUnsafe(
+          `
+          INSERT INTO tier_config (club_id, overrides, custom_rules, updated_at, updated_by)
+          VALUES ($1::uuid, $2::jsonb, '[]'::jsonb, $3, $4)
+          `,
+          input.clubId,
+          JSON.stringify(next),
+          now,
+          userId,
+        )
+      } else {
+        await ctx.prisma.$executeRawUnsafe(
+          `
+          UPDATE tier_config
+          SET overrides  = $1::jsonb,
+              updated_at = $2,
+              updated_by = $3
+          WHERE club_id = $4::uuid
+          `,
+          JSON.stringify(next),
+          now,
+          userId,
+          input.clubId,
+        )
+      }
+      return { ok: true as const, overrides: next }
+    }),
+
+  // Bulk replace overrides with the Solomon Preset (Appendix D).
+  // Custom rules are preserved — the preset is overrides-only by design.
+  applyTierPreset: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const userId = ctx.session.user.id
+      const now = new Date()
+      const presetJson = JSON.stringify(SOLOMON_PRESET)
+
+      const exists = (await ctx.prisma.$queryRawUnsafe(
+        `SELECT 1 AS one FROM tier_config WHERE club_id = $1::uuid`,
+        input.clubId,
+      )) as Array<{ one: number }>
+
+      if (exists.length === 0) {
+        await ctx.prisma.$executeRawUnsafe(
+          `
+          INSERT INTO tier_config (club_id, overrides, custom_rules, updated_at, updated_by)
+          VALUES ($1::uuid, $2::jsonb, '[]'::jsonb, $3, $4)
+          `,
+          input.clubId,
+          presetJson,
+          now,
+          userId,
+        )
+      } else {
+        await ctx.prisma.$executeRawUnsafe(
+          `
+          UPDATE tier_config
+          SET overrides  = $1::jsonb,
+              updated_at = $2,
+              updated_by = $3
+          WHERE club_id = $4::uuid
+          `,
+          presetJson,
+          now,
+          userId,
+          input.clubId,
+        )
+      }
+      return {
+        ok: true as const,
+        version: SOLOMON_PRESET_VERSION,
+        count: SOLOMON_PRESET.length,
+      }
+    }),
+
+  // Append a ClassifierRule. The router generates the rule id so the
+  // UI doesn't have to coordinate one — same pattern as the draft store.
+  addClassifierRule: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        rule: z.object({
+          match: z.union([
+            z.object({
+              kind: z.literal('name_pattern'),
+              regex: z.string().min(1).max(500),
+            }),
+            z.object({
+              kind: z.literal('cr_reservation_type_id'),
+              id: z.number().int(),
+            }),
+            z.object({
+              kind: z.literal('cr_event_category_id'),
+              id: z.number().int(),
+            }),
+          ]),
+          targetTier: z.enum([
+            'T1_CORE',
+            'T2_LEAGUE',
+            'T3_SIGNATURE',
+            'T4_SOCIAL',
+            'T5_TOURNAMENT',
+            'T6_PREMIUM',
+            'T7_YOUTH',
+          ]),
+          priority: z.number().int().min(0).max(1000).default(100),
+        }),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const userId = ctx.session.user.id
+      const now = new Date()
+      const rule: ClassifierRule = {
+        id: `cr_${now.getTime()}_${Math.random().toString(36).slice(2, 8)}`,
+        match: input.rule.match,
+        targetTier: input.rule.targetTier,
+        priority: input.rule.priority,
+      }
+
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `SELECT custom_rules FROM tier_config WHERE club_id = $1::uuid`,
+        input.clubId,
+      )) as Array<{ custom_rules: unknown }>
+
+      const current: ClassifierRule[] = Array.isArray(rows[0]?.custom_rules)
+        ? (rows[0].custom_rules as ClassifierRule[])
+        : []
+      const next = [...current, rule]
+
+      if (rows.length === 0) {
+        await ctx.prisma.$executeRawUnsafe(
+          `
+          INSERT INTO tier_config (club_id, overrides, custom_rules, updated_at, updated_by)
+          VALUES ($1::uuid, '[]'::jsonb, $2::jsonb, $3, $4)
+          `,
+          input.clubId,
+          JSON.stringify(next),
+          now,
+          userId,
+        )
+      } else {
+        await ctx.prisma.$executeRawUnsafe(
+          `
+          UPDATE tier_config
+          SET custom_rules = $1::jsonb,
+              updated_at   = $2,
+              updated_by   = $3
+          WHERE club_id = $4::uuid
+          `,
+          JSON.stringify(next),
+          now,
+          userId,
+          input.clubId,
+        )
+      }
+      return { ok: true as const, rule }
+    }),
+
+  removeClassifierRule: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        ruleId: z.string().min(1).max(120),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const userId = ctx.session.user.id
+      const now = new Date()
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `SELECT custom_rules FROM tier_config WHERE club_id = $1::uuid`,
+        input.clubId,
+      )) as Array<{ custom_rules: unknown }>
+
+      const current: ClassifierRule[] = Array.isArray(rows[0]?.custom_rules)
+        ? (rows[0].custom_rules as ClassifierRule[])
+        : []
+      const next = current.filter(r => r.id !== input.ruleId)
+
+      await ctx.prisma.$executeRawUnsafe(
+        `
+        UPDATE tier_config
+        SET custom_rules = $1::jsonb,
+            updated_at   = $2,
+            updated_by   = $3
+        WHERE club_id = $4::uuid
+        `,
+        JSON.stringify(next),
+        now,
+        userId,
+        input.clubId,
+      )
+      return { ok: true as const, removed: current.length - next.length }
+    }),
+
+  // Wipe overrides + custom_rules but keep the row (so updatedAt/updatedBy
+  // remain auditable). UI displays empty state.
+  resetTierConfig: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const userId = ctx.session.user.id
+      const now = new Date()
+      await ctx.prisma.$executeRawUnsafe(
+        `
+        INSERT INTO tier_config (club_id, overrides, custom_rules, updated_at, updated_by)
+        VALUES ($1::uuid, '[]'::jsonb, '[]'::jsonb, $2, $3)
+        ON CONFLICT (club_id)
+        DO UPDATE SET
+          overrides    = '[]'::jsonb,
+          custom_rules = '[]'::jsonb,
+          updated_at   = EXCLUDED.updated_at,
+          updated_by   = EXCLUDED.updated_by
+        `,
+        input.clubId,
+        now,
+        userId,
+      )
+      return { ok: true as const }
     }),
 
   // ─────────────────────────────────────────────────────────────────────
