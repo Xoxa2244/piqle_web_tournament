@@ -259,7 +259,7 @@ export function TierBreakdownTile({ clubId }: Props) {
                 className="text-[11px] uppercase tracking-wider"
                 style={{ color: 'var(--t4)', fontWeight: 600 }}
               >
-                This week's execution check
+                This week&apos;s execution check
               </span>
               {weekStartLabel && (
                 <span className="text-[10px]" style={{ color: 'var(--t4)' }}>
