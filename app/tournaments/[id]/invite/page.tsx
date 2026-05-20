@@ -33,6 +33,10 @@ export default function TournamentInviteRegistrationPage() {
   const [clubName, setClubName] = useState('')
   const [showThanksModal, setShowThanksModal] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
+  // Honor-system Spring League discount — 20% off when ticked.
+  // Server-side enforcement happens in the create-checkout-session route;
+  // we only mirror the intent here for live price preview.
+  const [springLeagueDiscount, setSpringLeagueDiscount] = useState(false)
   const handledPaymentResultRef = useRef<string | null>(null)
   const passivePaymentCheckRef = useRef<string | null>(null)
 
@@ -153,7 +157,13 @@ export default function TournamentInviteRegistrationPage() {
   const tournament = data?.tournament
   const player = data?.player
   const isPaidTournament = (tournament?.entryFeeCents ?? 0) > 0
-  const feeLabel = tournament ? `$${fromCents(tournament.entryFeeCents).toFixed(2)}` : ''
+  const baseFeeCents = tournament?.entryFeeCents ?? 0
+  // Mirror the server's applySpringLeagueDiscount: 20% off, round to cent.
+  const discountedFeeCents = Math.max(0, baseFeeCents - Math.round(baseFeeCents * 0.2))
+  const effectiveFeeCents = springLeagueDiscount ? discountedFeeCents : baseFeeCents
+  const feeLabel = tournament ? `$${fromCents(baseFeeCents).toFixed(2)}` : ''
+  const effectiveFeeLabel = tournament ? `$${fromCents(effectiveFeeCents).toFixed(2)}` : ''
+  const discountedFeeLabel = tournament ? `$${fromCents(discountedFeeCents).toFixed(2)}` : ''
   const paymentPending = Boolean(player && isPaidTournament && !player.isPaid)
 
   useEffect(() => {
@@ -214,7 +224,11 @@ export default function TournamentInviteRegistrationPage() {
       setPayLoading(true)
       const response = await fetch(
         `/api/tournaments/${tournamentId}/invite-registration/create-checkout-session`,
-        { method: 'POST' }
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ springLeagueDiscount }),
+        }
       )
       const raw = await response.text()
       const payload = raw ? JSON.parse(raw) : null
@@ -309,14 +323,36 @@ export default function TournamentInviteRegistrationPage() {
                 ) : (
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
                     <div className="text-sm font-medium text-amber-900">Payment pending</div>
-                    <div className="text-sm text-amber-800">Please pay the {feeLabel} entry fee.</div>
+                    <div className="text-sm text-amber-800">
+                      Please pay the{' '}
+                      {springLeagueDiscount ? (
+                        <>
+                          <span className="line-through text-amber-700/70">{feeLabel}</span>{' '}
+                          <span className="font-semibold text-amber-900">{discountedFeeLabel}</span>
+                        </>
+                      ) : (
+                        feeLabel
+                      )}{' '}
+                      entry fee.
+                    </div>
+                    <label className="flex items-start gap-2 text-sm text-amber-900 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 cursor-pointer"
+                        checked={springLeagueDiscount}
+                        onChange={(event) => setSpringLeagueDiscount(event.target.checked)}
+                      />
+                      <span>
+                        I played in the Spring league — apply <strong>20% discount</strong>
+                      </span>
+                    </label>
                     <Button
                       onClick={handlePay}
                       disabled={payLoading || !tournament.payoutsActive}
                       className="gap-2"
                     >
                       {payLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                      Pay {feeLabel}
+                      Pay {effectiveFeeLabel}
                     </Button>
                     {!tournament.payoutsActive && (
                       <div className="text-xs text-amber-800">
@@ -459,7 +495,16 @@ export default function TournamentInviteRegistrationPage() {
                 <h2 className="text-xl font-semibold text-gray-900">Thank you for registering</h2>
                 {isPaidTournament ? (
                   <p className="mt-2 text-sm text-gray-600">
-                    Please pay the {feeLabel} entry fee to complete payment.
+                    Please pay the{' '}
+                    {springLeagueDiscount ? (
+                      <>
+                        <span className="line-through text-gray-400">{feeLabel}</span>{' '}
+                        <span className="font-semibold text-gray-900">{discountedFeeLabel}</span>
+                      </>
+                    ) : (
+                      feeLabel
+                    )}{' '}
+                    entry fee to complete payment.
                   </p>
                 ) : (
                   <p className="mt-2 text-sm text-gray-600">Your registration has been added.</p>
@@ -467,14 +512,27 @@ export default function TournamentInviteRegistrationPage() {
               </div>
               <div className="flex flex-col gap-2">
                 {isPaidTournament && (
-                  <Button
-                    onClick={handlePay}
-                    disabled={payLoading || !tournament.payoutsActive}
-                    className="gap-2"
-                  >
-                    {payLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-                    Pay {feeLabel}
-                  </Button>
+                  <>
+                    <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer select-none text-left">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5 h-4 w-4 cursor-pointer"
+                        checked={springLeagueDiscount}
+                        onChange={(event) => setSpringLeagueDiscount(event.target.checked)}
+                      />
+                      <span>
+                        I played in the Spring league — apply <strong>20% discount</strong>
+                      </span>
+                    </label>
+                    <Button
+                      onClick={handlePay}
+                      disabled={payLoading || !tournament.payoutsActive}
+                      className="gap-2"
+                    >
+                      {payLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                      Pay {effectiveFeeLabel}
+                    </Button>
+                  </>
                 )}
                 <Button variant="outline" onClick={() => setShowThanksModal(false)}>
                   Close
