@@ -1,20 +1,33 @@
 'use client'
 
 /**
- * Programming Tier breakdown tile.
+ * Programming Health Overview tile.
  *
- * Sprint 1 P1.4 — surfaces the 7-tier session distribution from IPC's
- * Programming OS so admins can answer "what kind of programming did
- * we run this week?" at a glance, instead of scanning the schedule.
+ * Originally landed as "Programming tier breakdown" in Sprint 1 P1.4 to
+ * surface the 7-tier session distribution. Per
+ * DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.2 §3.5 — Dashboard block,
+ * symmetric with Customer Health Overview ("здоровье клиентов" vs
+ * "здоровье программ").
  *
- * Driven by intelligence.getProgrammingTierBreakdown which classifies
- * sessions via lib/ai/programming-tier-classifier (regex on title +
- * format-aware shortcuts).
+ * Two views on the same week of programming data:
+ *
+ *   1. Tier distribution — count + fill rate per tier 1-7 over the
+ *      selected window (7/30/90d), classified via
+ *      lib/ai/programming-tier-classifier.
+ *
+ *   2. Execution check — the 4 Y/N indicators from Solomon's IPC
+ *      Weekly Scorecard (core daily? leagues active? signature event
+ *      this week? monthly social/tournament cadence?). Always scoped
+ *      to the current ISO week, regardless of the breakdown window.
+ *
+ * "Open Programming Health →" cross-link drops the operator straight
+ * into the full weekly view (/scorecard route, renamed page).
  */
 
 import { useState } from 'react'
+import { useRouter, useSearchParams, useParams } from 'next/navigation'
 import { motion } from 'motion/react'
-import { Layers } from 'lucide-react'
+import { Layers, CheckCircle2, XCircle, ChevronRight, MinusCircle } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 
 interface Props {
@@ -27,13 +40,75 @@ const WINDOW_OPTIONS = [
   { days: 90, label: '90d' },
 ]
 
+type CheckStatus = 'pass' | 'fail' | 'unknown'
+
+function statusFromBool(v: boolean | null | undefined): CheckStatus {
+  if (v === true) return 'pass'
+  if (v === false) return 'fail'
+  return 'unknown'
+}
+
+function CheckRow({ label, status }: { label: string; status: CheckStatus }) {
+  const color =
+    status === 'pass' ? '#10B981' : status === 'fail' ? '#EF4444' : 'var(--t4)'
+  const bg =
+    status === 'pass'
+      ? 'rgba(16,185,129,0.08)'
+      : status === 'fail'
+      ? 'rgba(239,68,68,0.08)'
+      : 'var(--subtle)'
+  const Icon =
+    status === 'pass' ? CheckCircle2 : status === 'fail' ? XCircle : MinusCircle
+  const valueLabel =
+    status === 'pass' ? 'Yes' : status === 'fail' ? 'No' : '—'
+
+  return (
+    <div
+      className="flex items-center justify-between px-3 py-2 rounded-lg"
+      style={{ background: bg, border: `1px solid ${color}26` }}
+    >
+      <div className="flex items-center gap-2">
+        <Icon className="w-3.5 h-3.5 shrink-0" style={{ color }} />
+        <span className="text-[11px]" style={{ color: 'var(--t2)' }}>
+          {label}
+        </span>
+      </div>
+      <span className="text-[11px]" style={{ color, fontWeight: 700 }}>
+        {valueLabel}
+      </span>
+    </div>
+  )
+}
+
 export function TierBreakdownTile({ clubId }: Props) {
   const [windowDays, setWindowDays] = useState(7)
-  const query = trpc.intelligence.getProgrammingTierBreakdown.useQuery(
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const params = useParams()
+  const routeClubId = (params?.id as string | undefined) ?? clubId
+  const demoParam = searchParams?.get('demo') === 'true' ? '?demo=true' : ''
+
+  const breakdownQuery = trpc.intelligence.getProgrammingTierBreakdown.useQuery(
     { clubId, windowDays },
     { enabled: !!clubId, staleTime: 5 * 60_000 },
   )
-  const data = query.data
+  const data = breakdownQuery.data
+
+  // Execution Check — most recently completed Mon-Sun week (server
+  // default). Fixed weekly cadence, independent of the breakdown
+  // window above; weekStart string comes back in the response so we
+  // don't recompute it client-side.
+  const scorecardQuery = trpc.intelligence.getWeeklyScorecard.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 5 * 60_000 },
+  )
+  const exec = scorecardQuery.data?.executionCheck
+  const weekStartIso = scorecardQuery.data?.weekStart
+  const weekStartLabel = weekStartIso ? weekStartIso.slice(0, 10) : null
+
+  const goToProgrammingHealth = () => {
+    router.push(`/clubs/${routeClubId}/intelligence/scorecard${demoParam}`)
+  }
 
   return (
     <motion.div
@@ -61,9 +136,9 @@ export function TierBreakdownTile({ clubId }: Props) {
               <h3
                 className="flex items-center gap-1.5"
                 style={{ fontSize: 14, fontWeight: 700, color: 'var(--heading)' }}
-                title="Sessions classified into IPC's 7-tier Programming OS taxonomy. T1 Core (daily) → T2 Leagues → T3 Signature events → T4 Social → T5 Tournaments → T6 Premium → T7 Youth. Auto-classified from session name + format; admins can override patterns in Settings (coming in Sprint 2 polish)."
+                title="Health of the programming side of the club, symmetric with Customer Health Overview. Tier distribution from IPC's 7-tier Programming OS plus Solomon's weekly Execution Check (core daily? leagues active? signature event? monthly cadence?). Open Programming Health for the full weekly report."
               >
-                Programming tier breakdown
+                Programming Health Overview
                 <span
                   className="inline-flex items-center justify-center w-3.5 h-3.5 rounded-full text-[9px] cursor-help"
                   style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}
@@ -73,12 +148,12 @@ export function TierBreakdownTile({ clubId }: Props) {
                 </span>
               </h3>
               <p style={{ fontSize: 11, color: 'var(--t4)' }}>
-                Sessions classified into IPC&apos;s 7 programming tiers
+                Tier distribution + weekly execution check
               </p>
             </div>
           </div>
-          {/* Window selector */}
-          <div className="flex gap-1 shrink-0">
+          {/* Right side: window selector + cross-link */}
+          <div className="flex items-center gap-1.5 shrink-0">
             {WINDOW_OPTIONS.map((opt) => (
               <button
                 key={opt.days}
@@ -94,11 +169,24 @@ export function TierBreakdownTile({ clubId }: Props) {
                 {opt.label}
               </button>
             ))}
+            <button
+              onClick={goToProgrammingHealth}
+              className="ml-1 px-2.5 py-1 rounded-lg text-[11px] flex items-center gap-1 transition-opacity hover:opacity-80"
+              style={{
+                background: 'rgba(168,85,247,0.1)',
+                color: '#A855F7',
+                border: '1px solid rgba(168,85,247,0.25)',
+                fontWeight: 600,
+              }}
+              title="Open the full Programming Health weekly report"
+            >
+              Open <ChevronRight className="w-3 h-3" />
+            </button>
           </div>
         </div>
 
-        {/* Body */}
-        {query.isLoading ? (
+        {/* Tier breakdown body */}
+        {breakdownQuery.isLoading ? (
           <div className="text-sm" style={{ color: 'var(--t3)' }}>Loading…</div>
         ) : !data || data.totalSessions === 0 ? (
           <div
@@ -158,6 +246,46 @@ export function TierBreakdownTile({ clubId }: Props) {
               ))}
             </div>
           </>
+        )}
+
+        {/* Execution Check — current ISO week. Only render once the
+            scorecard query resolves; we deliberately don't show a
+            "Loading…" skeleton here because the tier breakdown above
+            is the primary content. */}
+        {exec && (
+          <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--card-border)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <span
+                className="text-[11px] uppercase tracking-wider"
+                style={{ color: 'var(--t4)', fontWeight: 600 }}
+              >
+                This week's execution check
+              </span>
+              {weekStartLabel && (
+                <span className="text-[10px]" style={{ color: 'var(--t4)' }}>
+                  Week of {weekStartLabel}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <CheckRow
+                label="Core programming delivered daily?"
+                status={statusFromBool(exec.coreProgrammingDaily)}
+              />
+              <CheckRow
+                label="Leagues continuous (no gaps)?"
+                status={statusFromBool(exec.leaguesContinuous)}
+              />
+              <CheckRow
+                label="At least 1 signature event run?"
+                status={statusFromBool(exec.signatureEventRun)}
+              />
+              <CheckRow
+                label="Monthly social / tournament cadence?"
+                status={statusFromBool(exec.socialTournamentOnTrack)}
+              />
+            </div>
+          </div>
         )}
       </div>
     </motion.div>
