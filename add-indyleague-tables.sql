@@ -117,7 +117,12 @@ CREATE TABLE IF NOT EXISTS indy_games (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT indy_games_matchup_order_unique UNIQUE (matchup_id, "order"),
-    CONSTRAINT indy_games_no_tie CHECK (home_score IS NULL OR away_score IS NULL OR home_score != away_score)
+    CONSTRAINT indy_games_no_tie CHECK (
+      home_score IS NULL
+      OR away_score IS NULL
+      OR home_score != away_score
+      OR (home_score = 0 AND away_score = 0)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_indy_games_matchup_id ON indy_games(matchup_id);

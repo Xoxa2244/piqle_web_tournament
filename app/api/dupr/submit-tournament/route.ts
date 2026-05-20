@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { tournamentId, matchId } = await req.json()
+    const { tournamentId, matchId, matchDayId, divisionId } = await req.json()
     if (!tournamentId) {
       return NextResponse.json({ error: 'Tournament ID is required' }, { status: 400 })
     }
@@ -243,6 +243,339 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ 
         error: 'DUPR client credentials not available and tournament owner does not have DUPR account linked. Please configure DUPR_CLIENT_KEY/DUPR_CLIENT_SECRET or link DUPR account.' 
       }, { status: 400 })
+    }
+
+    const isIndyLeague = tournament.format === 'INDY_LEAGUE'
+    const indyGameRetryId =
+      typeof matchId === 'string' && matchId.startsWith('indy:')
+        ? matchId.slice('indy:'.length)
+        : null
+
+    // Indy League path: submit each completed Indy game as a DUPR doubles match.
+    if (isIndyLeague) {
+      const location = tournament.venueName || tournament.venueAddress || 'Unknown Location'
+      const eventName = tournament.title
+      const matchSource = 'CLUB' as const
+      const clubId = 4465399627
+
+      const matchupWhere: any = {
+        status: 'COMPLETED',
+        matchDay: { tournamentId },
+      }
+
+      if (matchDayId) {
+        matchupWhere.matchDayId = matchDayId
+      }
+      if (divisionId) {
+        matchupWhere.divisionId = divisionId
+      }
+      if (matchId && !indyGameRetryId) {
+        matchupWhere.id = matchId
+      }
+
+      const indyMatchups = await prisma.indyMatchup.findMany({
+        where: matchupWhere,
+        include: {
+          division: { select: { id: true, name: true } },
+          matchDay: { select: { id: true, date: true } },
+          homeTeam: { select: { id: true, name: true } },
+          awayTeam: { select: { id: true, name: true } },
+          games: {
+            orderBy: { order: 'asc' },
+            include: {
+              homePlayer1: { select: { id: true, firstName: true, lastName: true, dupr: true } },
+              homePlayer2: { select: { id: true, firstName: true, lastName: true, dupr: true } },
+              awayPlayer1: { select: { id: true, firstName: true, lastName: true, dupr: true } },
+              awayPlayer2: { select: { id: true, firstName: true, lastName: true, dupr: true } },
+            },
+          },
+        },
+      })
+
+      const alreadySubmittedIndyGameIds = new Set<string>()
+      if (!indyGameRetryId) {
+        const submittedLogs = await prisma.auditLog.findMany({
+          where: {
+            tournamentId,
+            action: 'DUPR_SUBMIT_INDY_GAME',
+            entityType: 'IndyGame',
+          },
+          select: { entityId: true },
+        })
+        submittedLogs.forEach((row) => {
+          if (row.entityId) {
+            alreadySubmittedIndyGameIds.add(row.entityId)
+          }
+        })
+      }
+
+      const duprMatches: DuprMatchData[] = []
+      const submissionLog: DuprMatchSubmission[] = []
+      const indyMappings: Array<{
+        logId: string
+        gameId: string
+        matchupId: string
+        teamAName: string
+        teamBName: string
+      }> = []
+
+      for (const matchup of indyMatchups) {
+        for (const game of matchup.games) {
+          if (indyGameRetryId && game.id !== indyGameRetryId) continue
+          if (alreadySubmittedIndyGameIds.has(game.id)) continue
+
+          const logId = `indy:${game.id}`
+          const teamAName = matchup.homeTeam.name
+          const teamBName = matchup.awayTeam.name
+
+          // Not played yet - keep skipped (not an error).
+          if (game.homeScore === null || game.awayScore === null) {
+            continue
+          }
+
+          // 0-0 is a "No score" marker and should not be sent to DUPR.
+          if (game.homeScore === 0 && game.awayScore === 0) {
+            continue
+          }
+
+          if (game.homeScore < 0 || game.awayScore < 0) {
+            submissionLog.push({
+              matchId: logId,
+              teamAName,
+              teamBName,
+              status: 'FAILED',
+              error: `Invalid Indy score ${game.homeScore}-${game.awayScore}`,
+            })
+            continue
+          }
+
+          if (game.homeScore === game.awayScore) {
+            submissionLog.push({
+              matchId: logId,
+              teamAName,
+              teamBName,
+              status: 'FAILED',
+              error: `Tied game not allowed (score: ${game.homeScore}-${game.awayScore})`,
+            })
+            continue
+          }
+
+          const teamAPlayer1 = game.homePlayer1?.dupr || null
+          const teamAPlayer2 = game.homePlayer2?.dupr || null
+          const teamBPlayer1 = game.awayPlayer1?.dupr || null
+          const teamBPlayer2 = game.awayPlayer2?.dupr || null
+
+          if (!teamAPlayer1 || !teamAPlayer2 || !teamBPlayer1 || !teamBPlayer2) {
+            const missingNames = [
+              game.homePlayer1 && !teamAPlayer1 ? `${game.homePlayer1.firstName} ${game.homePlayer1.lastName}` : null,
+              game.homePlayer2 && !teamAPlayer2 ? `${game.homePlayer2.firstName} ${game.homePlayer2.lastName}` : null,
+              game.awayPlayer1 && !teamBPlayer1 ? `${game.awayPlayer1.firstName} ${game.awayPlayer1.lastName}` : null,
+              game.awayPlayer2 && !teamBPlayer2 ? `${game.awayPlayer2.firstName} ${game.awayPlayer2.lastName}` : null,
+            ].filter(Boolean)
+
+            submissionLog.push({
+              matchId: logId,
+              teamAName,
+              teamBName,
+              status: 'FAILED',
+              error:
+                missingNames.length > 0
+                  ? `Missing DUPR ID for players: ${missingNames.join(', ')}`
+                  : 'Missing DUPR IDs for one or more players in this Indy game',
+            })
+            continue
+          }
+
+          const allPlayers = [teamAPlayer1, teamAPlayer2, teamBPlayer1, teamBPlayer2]
+          if (new Set(allPlayers).size !== allPlayers.length) {
+            submissionLog.push({
+              matchId: logId,
+              teamAName,
+              teamBName,
+              status: 'FAILED',
+              error: 'Duplicate player found in match (same player in both teams)',
+            })
+            continue
+          }
+
+          const matchDate = matchup.matchDay.date.toISOString().split('T')[0]
+          const identifier = `indy-${game.id}`
+
+          duprMatches.push({
+            location,
+            matchDate,
+            teamA: {
+              player1: teamAPlayer1,
+              player2: teamAPlayer2,
+              game1: game.homeScore,
+              game2: 0,
+              game3: 0,
+              game4: 0,
+              game5: 0,
+            },
+            teamB: {
+              player1: teamBPlayer1,
+              player2: teamBPlayer2,
+              game1: game.awayScore,
+              game2: 0,
+              game3: 0,
+              game4: 0,
+              game5: 0,
+            },
+            format: 'DOUBLES',
+            event: eventName,
+            bracket: matchup.division.name || null,
+            matchType: 'SIDEOUT',
+            identifier,
+            clubId,
+            extras: {},
+            matchSource,
+          })
+
+          indyMappings.push({
+            logId,
+            gameId: game.id,
+            matchupId: matchup.id,
+            teamAName,
+            teamBName,
+          })
+        }
+      }
+
+      if (duprMatches.length === 0) {
+        const failed = submissionLog.filter((entry) => entry.status === 'FAILED').length
+        return NextResponse.json({
+          success: failed === 0,
+          log: submissionLog,
+          totalMatches: submissionLog.length,
+          successful: 0,
+          failed,
+          message: failed === 0
+            ? 'No Indy games to submit (all unplayed/no-score/already submitted)'
+            : 'Indy games validation failed. See upload log.',
+        })
+      }
+
+      const baseUrls = ['https://prod.mydupr.com', 'https://api.dupr.gg']
+      const getEndpointPath = (baseUrl: string) =>
+        baseUrl.includes('mydupr.com') ? '/api/match/1.0/create' : '/match/1.0/create'
+
+      const individualResults: Array<{ success: boolean; matchId?: string; error?: string; index: number }> = []
+
+      for (let i = 0; i < duprMatches.length; i++) {
+        const match = duprMatches[i]
+        let matchResponse: Response | null = null
+        let matchError = ''
+
+        createLoop: for (const baseUrl of baseUrls) {
+          const endpointPath = getEndpointPath(baseUrl)
+          const url = `${baseUrl}${endpointPath}`
+          const alternativeUrls = baseUrl.includes('api.dupr.gg')
+            ? [`${baseUrl}/api/match/1.0/create`, url]
+            : [url]
+
+          for (const tryUrl of alternativeUrls) {
+            try {
+              const requestBody = JSON.stringify(match)
+              matchResponse = await fetch(tryUrl, {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${duprAccessToken}`,
+                  'Content-Type': 'application/json',
+                  Accept: 'application/json',
+                },
+                body: requestBody,
+              })
+
+              if (matchResponse.ok) {
+                break createLoop
+              }
+
+              const responseClone = matchResponse.clone()
+              const errorText = await responseClone.text()
+              matchError = `${matchResponse.status}: ${errorText.substring(0, 200)}`
+            } catch (error: any) {
+              matchError = error.message
+              continue
+            }
+          }
+
+          if (matchResponse && matchResponse.ok) {
+            break createLoop
+          }
+        }
+
+        if (matchResponse && matchResponse.ok) {
+          try {
+            const responseData = await matchResponse.json()
+            const createdMatchId =
+              responseData.result || responseData.matchId || responseData.id || null
+            individualResults.push({
+              success: true,
+              matchId: createdMatchId ? String(createdMatchId) : undefined,
+              index: i,
+            })
+          } catch {
+            individualResults.push({ success: false, error: 'Failed to parse response', index: i })
+          }
+        } else {
+          individualResults.push({ success: false, error: matchError || 'Unknown error', index: i })
+        }
+      }
+
+      let successCount = 0
+      let failCount = submissionLog.filter((entry) => entry.status === 'FAILED').length
+
+      for (let i = 0; i < indyMappings.length; i++) {
+        const mapping = indyMappings[i]
+        const result = individualResults[i]
+        if (!mapping || !result) continue
+
+        if (result.success && result.matchId) {
+          submissionLog.push({
+            matchId: mapping.logId,
+            teamAName: mapping.teamAName,
+            teamBName: mapping.teamBName,
+            status: 'SUCCESS',
+            error: null,
+            duprMatchId: result.matchId,
+          })
+          successCount++
+
+          await prisma.auditLog.create({
+            data: {
+              actorUserId: session.user.id,
+              tournamentId,
+              action: 'DUPR_SUBMIT_INDY_GAME',
+              entityType: 'IndyGame',
+              entityId: mapping.gameId,
+              payload: {
+                matchupId: mapping.matchupId,
+                duprMatchId: result.matchId,
+                source: 'submit-tournament',
+              },
+            },
+          })
+        } else {
+          submissionLog.push({
+            matchId: mapping.logId,
+            teamAName: mapping.teamAName,
+            teamBName: mapping.teamBName,
+            status: 'FAILED',
+            error: result.error || 'DUPR API did not return match ID',
+          })
+          failCount++
+        }
+      }
+
+      const allSuccessful = failCount === 0
+      return NextResponse.json({
+        success: allSuccessful,
+        log: submissionLog,
+        totalMatches: submissionLog.length,
+        successful: successCount,
+        failed: failCount,
+      })
     }
 
     // Prepare matches for DUPR submission
