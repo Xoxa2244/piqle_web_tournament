@@ -62,9 +62,13 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             <FileBarChart className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--heading)' }}>Weekly Programming Scorecard</h1>
+            {/* Title renamed Scorecard → Programming Health per
+                DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.2 §5.1 — symmetric with
+                Customer Health, plainer than the spreadsheet metaphor. URL
+                stays /scorecard for backwards compatibility. */}
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--heading)' }}>Programming Health</h1>
             <p style={{ fontSize: 13, color: 'var(--t3)' }}>
-              IPC Programming OS rollup — one report per location per week
+              Weekly rollup of IPC Programming OS — one report per location per week
             </p>
           </div>
         </div>
@@ -95,7 +99,7 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
       </div>
 
       {query.isLoading || !data ? (
-        <div className="text-sm" style={{ color: 'var(--t3)' }}>Loading scorecard…</div>
+        <div className="text-sm" style={{ color: 'var(--t3)' }}>Loading Programming Health…</div>
       ) : (
         <>
           {/* KPI Summary */}
@@ -259,14 +263,13 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             subtitle="Monthly local + 4 system-wide per year"
             footer={<RevenueRow value={data.tier5.revenueCents} />}
           >
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {/* Profit / profitability hidden per DASHBOARD_AND_ACTION_CENTER_SPEC.md
+                v1.3 §5.4 — no cost data source, so we don't render a placeholder.
+                Backend still returns profitabilityCents (currently null) but
+                frontend deliberately skips the tile until a cost model lands. */}
+            <div className="grid grid-cols-2 gap-3">
               <Stat label="Held this week" value={data.tier5.held ? 'Yes' : 'No'} />
               <Stat label="Total players" value={String(data.tier5.totalPlayers)} />
-              <Stat
-                label="Profit"
-                value={data.tier5.profitabilityCents != null ? `$${(data.tier5.profitabilityCents / 100).toFixed(0)}` : '—'}
-                hint="Requires cost model — coming in Sprint 9 P5.2"
-              />
             </div>
           </SectionCard>
 
@@ -293,14 +296,13 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             subtitle="Intro / Development / Academy"
             footer={<RevenueRow value={data.tier7.revenueCents} />}
           >
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {/* School partners hidden per DASHBOARD_AND_ACTION_CENTER_SPEC.md
+                v1.3 §5.4 — partnership data lives outside CR (no source), so
+                we don't render a placeholder. Backend keeps schoolPartnersActive
+                as null until a partnership entity / manual entry lands. */}
+            <div className="grid grid-cols-2 gap-3">
               <Stat label="Youth sessions" value={String(data.tier7.youthSessions)} />
               <Stat label="Participants" value={String(data.tier7.participants)} />
-              <Stat
-                label="School partners"
-                value={data.tier7.schoolPartnersActive != null ? String(data.tier7.schoolPartnersActive) : '—'}
-                hint="Requires SchoolPartnership entity — coming in Sprint 9 P5.3"
-              />
             </div>
           </SectionCard>
         </>
