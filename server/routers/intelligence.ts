@@ -6167,6 +6167,126 @@ export const intelligenceRouter = createTRPCRouter({
     }),
 
   // ─────────────────────────────────────────────────────────────────────
+  // Operational signals — Step 15+ of DASHBOARD_AND_ACTION_CENTER_SPEC.md
+  // §4.3. Endpoints land here in Step 15 (foundation) so the
+  // Action Center UI doesn't 404. Generator engine populates rows
+  // starting in Step 16 (member_health + membership_lifecycle).
+  // ─────────────────────────────────────────────────────────────────────
+
+  getOperationalSignals: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        severity: z.enum(['critical', 'warning', 'nudge']).optional(),
+        source: z
+          .enum([
+            'member_health',
+            'membership_lifecycle',
+            'scorecard_execution',
+            'league_gap',
+            'vip_at_risk',
+          ])
+          .optional(),
+        locationId: z.string().uuid().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Build the WHERE clause incrementally. Always anchor on
+      // active+snoozed; resolved/dismissed accumulate for audit.
+      const where: string[] = [
+        `club_id = $1::uuid`,
+        `status IN ('active', 'snoozed')`,
+      ]
+      const params: any[] = [input.clubId]
+      if (input.severity) {
+        params.push(input.severity)
+        where.push(`severity = $${params.length}`)
+      }
+      if (input.source) {
+        params.push(input.source)
+        where.push(`source = $${params.length}`)
+      }
+      if (input.locationId) {
+        params.push(input.locationId)
+        where.push(`location_id = $${params.length}::uuid`)
+      }
+
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `
+        SELECT id,
+               dedupe_key        AS "dedupeKey",
+               source,
+               rule_key          AS "ruleKey",
+               subject_entity_id AS "subjectEntityId",
+               severity,
+               subject,
+               context,
+               action,
+               status,
+               location_id       AS "locationId",
+               created_at        AS "createdAt",
+               last_seen_at      AS "lastSeenAt",
+               resolved_at       AS "resolvedAt",
+               snooze_until      AS "snoozeUntil"
+        FROM operational_signal
+        WHERE ${where.join(' AND ')}
+        ORDER BY
+          CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+          last_seen_at DESC
+        `,
+        ...params,
+      )) as Array<Record<string, any>>
+
+      return { signals: rows }
+    }),
+
+  resolveSignal: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        signalId: z.string(),
+        reason: z.enum(['manual', 'dismissed', 'snoozed']),
+        snoozeUntil: z.string().datetime().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      if (input.reason === 'snoozed') {
+        if (!input.snoozeUntil) {
+          throw new Error("snoozeUntil is required when reason === 'snoozed'")
+        }
+        await ctx.prisma.$executeRawUnsafe(
+          `
+          UPDATE operational_signal
+          SET status = 'snoozed', snooze_until = $1
+          WHERE id = $2 AND club_id = $3::uuid
+          `,
+          new Date(input.snoozeUntil),
+          input.signalId,
+          input.clubId,
+        )
+        return { status: 'snoozed' as const }
+      }
+
+      const newStatus = input.reason === 'manual' ? 'resolved' : 'dismissed'
+      await ctx.prisma.$executeRawUnsafe(
+        `
+        UPDATE operational_signal
+        SET status = $1, resolved_at = $2
+        WHERE id = $3 AND club_id = $4::uuid
+        `,
+        newStatus,
+        new Date(),
+        input.signalId,
+        input.clubId,
+      )
+      return { status: newStatus }
+    }),
+
+  // ─────────────────────────────────────────────────────────────────────
   // Draft store — Step 11 of DASHBOARD_AND_ACTION_CENTER_SPEC.md §8.1.
   // Six endpoints (create + get for each of cohort/campaign/programming
   // drafts). Cards on Dashboard/Action Center call the matching `create`

@@ -9,7 +9,7 @@ import {
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
   Menu, X, CreditCard, Plug, Activity, Bot, Mail, Rocket, Sparkles,
-  Trophy, FileBarChart,
+  Trophy, FileBarChart, Inbox,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -58,10 +58,14 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
     ],
   },
   {
-    id: "ai-tools",
-    title: "AI TOOLS",
+    // Renamed "AI TOOLS" → "OPERATIONS" per DASHBOARD_AND_ACTION_CENTER_SPEC.md
+    // §4.1 Step 15. Action Center is the first item — it's the operator's
+    // daily landing page once it's live.
+    id: "operations",
+    title: "OPERATIONS",
     icon: Cpu,
     items: [
+      { icon: Inbox, label: "Action Center", path: "/action-center", isAI: true },
       // AI Agent tab retired 2026-04-24 — Advisor itself is the agent now.
       // The `/intelligence/agent` route still exists as a redirect so old
       // reminder/preflight URLs don't 404 (see agent/page.tsx).
