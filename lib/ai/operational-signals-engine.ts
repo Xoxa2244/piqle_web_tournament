@@ -865,6 +865,146 @@ export async function leagueGapAlerts(
   return out
 }
 
+// ─── Generator 5 — VIP at-risk per-member (Spec §6.5) ──────────────────
+
+/**
+ * Per-VIP "at risk" alerts. Aggregated metric (% of VIPs at risk) is
+ * already on the Dashboard via `getVipAtRiskPercent` (Step 7). This
+ * generator is the per-member half of the same signal — one row per VIP
+ * who hasn't played in 14+ days so the operator can act case-by-case.
+ *
+ * VIP definition (Spec §6.3, mirrors `insights-engine.ts:164`):
+ *   membership_type ILIKE '%VIP%' OR '%Premium%' OR '%Unlimited%'
+ *   AND membership_status = 'Active'
+ *
+ * Severity:
+ *   - critical — never played, OR 30+ days since last play
+ *   - warning  — 14-30 days since last play
+ *
+ * Action shape (Spec §6.5):
+ *   primary   = create_campaign (`vip_winback`)
+ *   secondary = create_cohort (single-member) + programming hint
+ *
+ * Monthly dues parsed out of the membership label (e.g.
+ * "VIP Pass - $129.99/Month") so the SignalCard context can show
+ * the revenue at risk per row.
+ */
+export async function vipAtRiskAlerts(
+  prisma: PrismaClient,
+  clubId: string,
+): Promise<OperationalSignal[]> {
+  const rows = (await prisma.$queryRawUnsafe(
+    `
+    WITH vip_members AS (
+      SELECT
+        u.id                                                                 AS "userId",
+        u.name                                                               AS "memberName",
+        u.email                                                              AS "memberEmail",
+        u.membership_type                                                    AS "membershipType",
+        NULLIF(
+          SUBSTRING(u.membership_type FROM '\\$([0-9]+(?:\\.[0-9]+)?)\\s*/\\s*(?:Month|mo|month)'),
+          ''
+        )::numeric                                                           AS "monthlyDues"
+      FROM users u
+      JOIN club_followers cf ON cf.user_id = u.id
+      WHERE cf.club_id = $1::uuid
+        AND u.membership_status = 'Active'
+        AND (
+          u.membership_type ILIKE '%VIP%'
+          OR u.membership_type ILIKE '%Premium%'
+          OR u.membership_type ILIKE '%Unlimited%'
+        )
+        AND u.email NOT LIKE '%placeholder%'
+        AND u.email NOT LIKE '%demo%'
+    ),
+    last_play AS (
+      SELECT b."userId", MAX(ps.date) AS "lastPlayed"
+      FROM play_session_bookings b
+      JOIN play_sessions ps ON ps.id = b."sessionId"
+      WHERE ps."clubId" = $1::uuid
+        AND b.status::text = 'CONFIRMED'
+      GROUP BY b."userId"
+    )
+    SELECT v."userId", v."memberName", v."memberEmail", v."membershipType",
+           v."monthlyDues",
+           lp."lastPlayed"
+    FROM vip_members v
+    LEFT JOIN last_play lp ON lp."userId" = v."userId"
+    WHERE lp."lastPlayed" IS NULL
+       OR lp."lastPlayed" < NOW() - INTERVAL '14 days'
+    `,
+    clubId,
+  )) as Array<{
+    userId: string
+    memberName: string | null
+    memberEmail: string | null
+    membershipType: string | null
+    monthlyDues: string | number | null
+    lastPlayed: Date | null
+  }>
+
+  if (!rows || rows.length === 0) return []
+
+  const now = Date.now()
+  const DAY = 86400_000
+  const out: OperationalSignal[] = []
+
+  for (const r of rows) {
+    const name = r.memberName?.trim() || r.memberEmail?.trim() || 'VIP member'
+    const lastPlayedAt = r.lastPlayed ? new Date(r.lastPlayed) : null
+    const daysSincePlayed = lastPlayedAt
+      ? Math.floor((now - lastPlayedAt.getTime()) / DAY)
+      : null
+    const dues = r.monthlyDues != null ? Number(r.monthlyDues) : null
+
+    // Severity: never-played OR 30+ days → critical; 14-30 → warning.
+    const severity: SignalSeverity =
+      daysSincePlayed === null || daysSincePlayed >= 30 ? 'critical' : 'warning'
+
+    const subjectTail =
+      daysSincePlayed === null
+        ? 'has never played'
+        : `last played ${daysSincePlayed}d ago`
+    const tierLabel = r.membershipType?.trim() || 'VIP'
+
+    out.push({
+      dedupeKey: `vip_at_risk:global:${r.userId}`,
+      source: 'vip_at_risk',
+      ruleKey: 'vip_at_risk',
+      subjectEntityId: r.userId,
+      severity,
+      subject: `${name} (${tierLabel}) — ${subjectTail}`,
+      context: {
+        memberName: name,
+        membershipType: r.membershipType ?? 'VIP',
+        daysSincePlayed: daysSincePlayed ?? -1,
+        monthlyDues: dues ?? 0,
+      },
+      action: {
+        primary: {
+          type: 'create_campaign',
+          label: 'Send personal VIP outreach',
+          templateKey: 'vip_winback',
+        },
+        secondary: [
+          {
+            type: 'create_cohort',
+            label: 'Add to "VIP at risk" cohort',
+            cohortRules: [{ field: 'userId', op: 'eq', value: r.userId }],
+          },
+          {
+            type: 'programming',
+            label: 'Invite to a curated session',
+            params: { hint: 'vip_curated_invite', userId: r.userId },
+          },
+        ],
+      },
+    })
+  }
+
+  return out
+}
+
 // ─── Run + persist (upsert layer) ──────────────────────────────────────
 
 /**
@@ -884,7 +1024,8 @@ export async function runOperationalSignals(
   clubId: string,
 ): Promise<RunReport> {
   // Add new generators here. Each must return OperationalSignal[]
-  // (possibly empty). Step 18 will append vip_at_risk per-member.
+  // (possibly empty). Step 18 closes the MVP source set (5/5);
+  // additional sources land in Phase 2 (Tier Compliance, auto-suggest).
   const generators: Array<
     (p: PrismaClient, c: string) => Promise<OperationalSignal[]>
   > = [
@@ -892,6 +1033,7 @@ export async function runOperationalSignals(
     membershipLifecycleAlerts,
     scorecardExecutionSignals,
     leagueGapAlerts,
+    vipAtRiskAlerts,
   ]
 
   const produced: OperationalSignal[] = []
