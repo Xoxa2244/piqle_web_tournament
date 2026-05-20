@@ -24,6 +24,8 @@ import type { PrismaClient } from '@prisma/client'
 
 import { normalizeMembership } from './membership-intelligence'
 import type { UnifiedAction } from './business-insights-engine'
+import { classifyProgrammingTier } from './programming-tier-classifier'
+import { detectLeagueFamily } from './league-family-detector'
 
 // ─── Canon shape ────────────────────────────────────────────────────────
 
@@ -458,6 +460,411 @@ export async function membershipLifecycleAlerts(
   return out
 }
 
+// ─── Generator 3 — Scorecard Execution Check (Spec §4.3 row 3) ──────────
+
+/**
+ * 4 weekly Y/N signals derived from the same logic that powers the
+ * Weekly Scorecard's `executionCheck` block (see `getWeeklyScorecard`
+ * in `server/routers/intelligence.ts`):
+ *
+ *   - `scorecard_t1_daily_gap`           — T1 Core ran <7 days this week
+ *   - `scorecard_t2_league_gap_critical` — ≥1 league family in 14-60d gap
+ *   - `scorecard_t3_no_signature_event`  — 0 T3 sessions this week
+ *   - `scorecard_social_tournament_gap`  — 0 T4 & 0 T5 sessions this week
+ *
+ * Subject is the club-level execution miss (no per-member subject id).
+ * Severity is uniformly `warning` — these are operator-attention
+ * nudges, not member emergencies. The week window matches the Weekly
+ * Scorecard: most recently completed Monday → Sunday in UTC.
+ */
+export async function scorecardExecutionSignals(
+  prisma: PrismaClient,
+  clubId: string,
+): Promise<OperationalSignal[]> {
+  // Resolve most recently completed Mon→Sun window (matches getWeeklyScorecard).
+  const now = new Date()
+  const dayUtc = now.getUTCDay() // 0=Sun .. 6=Sat
+  const daysSinceLastMonday = dayUtc === 0 ? 13 : dayUtc + 6
+  const weekStart = new Date(now.getTime())
+  weekStart.setUTCHours(0, 0, 0, 0)
+  weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceLastMonday)
+  const weekEnd = new Date(weekStart.getTime() + 7 * 86400_000)
+  const weekLabel = weekStart.toISOString().slice(0, 10)
+
+  // Pull all sessions in the window — we need title / format / category
+  // for the tier classifier, and date so we can group T1 by day.
+  const rows = (await prisma.$queryRawUnsafe(
+    `
+    SELECT ps.id,
+           ps.title,
+           ps.format::text AS format,
+           ps.category,
+           ps.date
+    FROM play_sessions ps
+    WHERE ps."clubId" = $1::uuid
+      AND ps.date >= $2
+      AND ps.date <  $3
+    `,
+    clubId,
+    weekStart,
+    weekEnd,
+  )) as Array<{
+    id: string
+    title: string | null
+    format: string | null
+    category: string | null
+    date: Date
+  }>
+
+  // Bucket by tier using the shared classifier.
+  const buckets: Record<string, typeof rows> = {
+    T1_CORE: [],
+    T2_LEAGUE: [],
+    T3_SIGNATURE: [],
+    T4_SOCIAL: [],
+    T5_TOURNAMENT: [],
+    T6_PREMIUM: [],
+    T7_YOUTH: [],
+  }
+  for (const s of rows) {
+    const tier = classifyProgrammingTier({
+      title: s.title,
+      format: s.format,
+      category: s.category,
+    })
+    buckets[tier]?.push(s)
+  }
+
+  // Day-of-week coverage for T1.
+  const t1Days = new Set<string>()
+  for (const s of buckets.T1_CORE) {
+    t1Days.add(s.date.toISOString().slice(0, 10))
+  }
+
+  // League gap (matches getWeeklyScorecard logic — 180d window).
+  const leagueLookback = new Date(Date.now() - 180 * 86400_000)
+  const leagueRows = (await prisma.$queryRawUnsafe(
+    `
+    SELECT title, date
+    FROM play_sessions
+    WHERE "clubId" = $1::uuid
+      AND date >= $2
+      AND (format = 'LEAGUE_PLAY' OR LOWER(title) LIKE '%league%')
+    `,
+    clubId,
+    leagueLookback,
+  )) as Array<{ title: string | null; date: Date }>
+
+  const leagueFamilies = new Map<
+    string,
+    { lastPast: Date | null; nextFuture: Date | null }
+  >()
+  for (const ls of leagueRows) {
+    const det = detectLeagueFamily(ls.title)
+    if (!det.family) continue
+    let bucket = leagueFamilies.get(det.family)
+    if (!bucket) {
+      bucket = { lastPast: null, nextFuture: null }
+      leagueFamilies.set(det.family, bucket)
+    }
+    if (ls.date < now) {
+      if (!bucket.lastPast || ls.date > bucket.lastPast) bucket.lastPast = ls.date
+    } else {
+      if (!bucket.nextFuture || ls.date < bucket.nextFuture)
+        bucket.nextFuture = ls.date
+    }
+  }
+
+  let gapCriticalCount = 0
+  let activeLeagues = 0
+  for (const f of Array.from(leagueFamilies.values())) {
+    if (f.nextFuture) {
+      activeLeagues++
+      continue
+    }
+    if (f.lastPast) {
+      const days = Math.floor(
+        (now.getTime() - f.lastPast.getTime()) / 86400_000,
+      )
+      if (days < 7) activeLeagues++
+      else if (days < 60) gapCriticalCount++
+    }
+  }
+
+  const out: OperationalSignal[] = []
+
+  // ── Rule 1: T1 Core daily delivery — should run all 7 days. ────
+  if (t1Days.size < 7) {
+    const missingDays = 7 - t1Days.size
+    out.push({
+      dedupeKey: `scorecard_t1_daily_gap:global:${weekLabel}`,
+      source: 'scorecard_execution',
+      ruleKey: 'scorecard_t1_daily_gap',
+      subjectEntityId: null,
+      severity: missingDays >= 3 ? 'critical' : 'warning',
+      subject:
+        `T1 Core missed ${missingDays} day${missingDays > 1 ? 's' : ''} ` +
+        `last week (week of ${weekLabel})`,
+      context: {
+        weekStart: weekLabel,
+        daysCovered: t1Days.size,
+        daysMissed: missingDays,
+        coreSessions: buckets.T1_CORE.length,
+      },
+      action: {
+        primary: {
+          type: 'programming',
+          label: 'Schedule daily T1 Core slots',
+          params: {
+            hint: 'core_daily_fill',
+            weekStart: weekStart.toISOString(),
+          },
+        },
+      },
+    })
+  }
+
+  // ── Rule 2: T2 leagues continuity — 0 gap-critical families. ───
+  if (gapCriticalCount > 0) {
+    out.push({
+      dedupeKey: `scorecard_t2_league_gap_critical:global:${weekLabel}`,
+      source: 'scorecard_execution',
+      ruleKey: 'scorecard_t2_league_gap_critical',
+      subjectEntityId: null,
+      severity: gapCriticalCount >= 3 ? 'critical' : 'warning',
+      subject:
+        `${gapCriticalCount} league famil${gapCriticalCount > 1 ? 'ies are' : 'y is'} ` +
+        `in a critical gap (14-60d without a future session)`,
+      context: {
+        weekStart: weekLabel,
+        gapCriticalCount,
+        activeLeagues,
+      },
+      action: {
+        primary: {
+          type: 'programming',
+          label: 'Open league enrollment',
+          params: { hint: 'league_open_enrollment' },
+        },
+      },
+    })
+  }
+
+  // ── Rule 3: T3 Signature event ran this week. ──────────────────
+  if (buckets.T3_SIGNATURE.length === 0) {
+    out.push({
+      dedupeKey: `scorecard_t3_no_signature_event:global:${weekLabel}`,
+      source: 'scorecard_execution',
+      ruleKey: 'scorecard_t3_no_signature_event',
+      subjectEntityId: null,
+      severity: 'warning',
+      subject: `No T3 Signature event ran last week (week of ${weekLabel})`,
+      context: {
+        weekStart: weekLabel,
+        t3SessionCount: 0,
+      },
+      action: {
+        primary: {
+          type: 'programming',
+          label: 'Programme a signature event',
+          params: { hint: 'signature_event_weekly' },
+        },
+      },
+    })
+  }
+
+  // ── Rule 4: Social / Tournament cadence — ≥1 T4 OR T5 per week. ─
+  if (buckets.T4_SOCIAL.length === 0 && buckets.T5_TOURNAMENT.length === 0) {
+    out.push({
+      dedupeKey: `scorecard_social_tournament_gap:global:${weekLabel}`,
+      source: 'scorecard_execution',
+      ruleKey: 'scorecard_social_tournament_gap',
+      subjectEntityId: null,
+      severity: 'nudge',
+      subject:
+        `No T4 social or T5 tournament ran last week (week of ${weekLabel})`,
+      context: {
+        weekStart: weekLabel,
+        t4SessionCount: 0,
+        t5SessionCount: 0,
+      },
+      action: {
+        primary: {
+          type: 'programming',
+          label: 'Programme a social or tournament',
+          params: { hint: 'social_or_tournament_monthly' },
+        },
+      },
+    })
+  }
+
+  return out
+}
+
+// ─── Generator 4 — League gap detection (Spec §4.3 row 4) ──────────────
+
+/**
+ * Per-league-family signals when a family is in critical gap — last
+ * past session is 14-60 days ago AND no future session is scheduled.
+ * Logic mirrors `detectLeagueGapsForClub` in
+ * `lib/ai/league-gap-detector.ts` but persists into operational_signal
+ * instead of AgentDraft so a single SignalCard surfaces every stale
+ * family (the older detector raises one AgentDraft per family per
+ * 30-day cooldown — fine for an agent queue, but too noisy for the
+ * Action Center if a club has 4 stale families simultaneously).
+ *
+ * dedupe_key folds in the family slug so dedupe stays correct across
+ * runs: each family produces at most one active row.
+ */
+export async function leagueGapAlerts(
+  prisma: PrismaClient,
+  clubId: string,
+): Promise<OperationalSignal[]> {
+  const LOOKBACK_DAYS = 180
+  const GAP_MIN = 14
+  const GAP_MAX = 60
+  const lookbackStart = new Date(Date.now() - LOOKBACK_DAYS * 86400_000)
+
+  const rows = (await prisma.$queryRawUnsafe(
+    `
+    SELECT id, title, date, registered_count, "maxPlayers" AS max_players
+    FROM play_sessions
+    WHERE "clubId" = $1::uuid
+      AND date >= $2
+      AND (format = 'LEAGUE_PLAY' OR LOWER(title) LIKE '%league%')
+    `,
+    clubId,
+    lookbackStart,
+  )) as Array<{
+    id: string
+    title: string | null
+    date: Date
+    registered_count: number | null
+    max_players: number | null
+  }>
+
+  if (!rows || rows.length === 0) return []
+
+  interface FamilyAgg {
+    family: string
+    sponsors: string[]
+    lastPast: Date | null
+    nextFuture: Date | null
+    pastSessionCount: number
+    totalRegistered: number
+    totalCapacity: number
+  }
+
+  const families = new Map<string, FamilyAgg>()
+  const now = new Date()
+  for (const s of rows) {
+    const det = detectLeagueFamily(s.title)
+    if (!det.family) continue
+    let bucket = families.get(det.family)
+    if (!bucket) {
+      bucket = {
+        family: det.family,
+        sponsors: [],
+        lastPast: null,
+        nextFuture: null,
+        pastSessionCount: 0,
+        totalRegistered: 0,
+        totalCapacity: 0,
+      }
+      families.set(det.family, bucket)
+    }
+    if (det.sponsor && !bucket.sponsors.includes(det.sponsor)) {
+      bucket.sponsors.push(det.sponsor)
+    }
+    bucket.totalRegistered += s.registered_count ?? 0
+    bucket.totalCapacity += s.max_players ?? 0
+    if (s.date < now) {
+      bucket.pastSessionCount++
+      if (!bucket.lastPast || s.date > bucket.lastPast) bucket.lastPast = s.date
+    } else {
+      if (!bucket.nextFuture || s.date < bucket.nextFuture)
+        bucket.nextFuture = s.date
+    }
+  }
+
+  const out: OperationalSignal[] = []
+  for (const family of Array.from(families.values())) {
+    // Active families (have a future session OR very recent past) skip.
+    if (family.nextFuture) continue
+    if (!family.lastPast) continue
+    const daysSinceLast = Math.floor(
+      (now.getTime() - family.lastPast.getTime()) / 86400_000,
+    )
+    if (daysSinceLast < GAP_MIN || daysSinceLast > GAP_MAX) continue
+
+    const familySlug = family.family
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 60)
+    const sponsorClause =
+      family.sponsors.length > 0
+        ? ` (sponsored by ${family.sponsors.join(', ')})`
+        : ''
+    const lastDateLabel = family.lastPast.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    })
+
+    // Severity scales with the gap: 14-30d = warning, 30-60d = critical.
+    const severity: SignalSeverity =
+      daysSinceLast >= 30 ? 'critical' : 'warning'
+
+    out.push({
+      dedupeKey: `league_gap:global:${familySlug}`,
+      source: 'league_gap',
+      ruleKey: 'league_gap',
+      subjectEntityId: familySlug,
+      severity,
+      subject:
+        `${family.family}${sponsorClause} — ${daysSinceLast}d since last ` +
+        `session (${lastDateLabel}), no future session scheduled`,
+      context: {
+        leagueFamily: family.family,
+        sponsors: family.sponsors,
+        daysSinceLast,
+        lastSessionDate: family.lastPast.toISOString(),
+        pastSessionCount: family.pastSessionCount,
+        totalRegistered: family.totalRegistered,
+        totalCapacity: family.totalCapacity,
+      },
+      action: {
+        primary: {
+          type: 'create_campaign',
+          label: `Open enrollment — next ${family.family}`,
+          templateKey: 'league_open_enrollment',
+        },
+        secondary: [
+          {
+            type: 'create_cohort',
+            label: 'Add past attendees cohort',
+            cohortRules: [
+              {
+                field: 'attendedLeagueFamily',
+                op: 'eq',
+                value: family.family,
+              },
+            ],
+          },
+          {
+            type: 'programming',
+            label: 'Schedule next league session',
+            params: { hint: 'league_continue', leagueFamily: family.family },
+          },
+        ],
+      },
+    })
+  }
+
+  return out
+}
+
 // ─── Run + persist (upsert layer) ──────────────────────────────────────
 
 /**
@@ -477,11 +884,15 @@ export async function runOperationalSignals(
   clubId: string,
 ): Promise<RunReport> {
   // Add new generators here. Each must return OperationalSignal[]
-  // (possibly empty). Steps 17-18 will append scorecard_execution,
-  // league_gap, vip_at_risk.
+  // (possibly empty). Step 18 will append vip_at_risk per-member.
   const generators: Array<
     (p: PrismaClient, c: string) => Promise<OperationalSignal[]>
-  > = [memberHealthDeltas, membershipLifecycleAlerts]
+  > = [
+    memberHealthDeltas,
+    membershipLifecycleAlerts,
+    scorecardExecutionSignals,
+    leagueGapAlerts,
+  ]
 
   const produced: OperationalSignal[] = []
   for (const fn of generators) {
