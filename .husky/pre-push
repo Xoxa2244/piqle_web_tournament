@@ -1,0 +1,21 @@
+#!/usr/bin/env sh
+
+# Pre-push lint gate.
+#
+# Why this exists: `next build` runs ESLint as part of the pipeline and
+# fails on `Error:` level rules (e.g. react/no-unescaped-entities).
+# `tsc --noEmit` in pre-commit doesn't catch those — TS != ESLint.
+# A previous session pushed 5 consecutive commits that built locally
+# with tsc but failed Vercel because of an unescaped " in JSX text;
+# this gate prevents that class of bug from ever reaching origin.
+#
+# Cost: ~1.5s on warm cache. Acceptable for once-per-push.
+# Bypass: `git push --no-verify` (use sparingly; CI / Vercel will still
+# catch it on the deploy side).
+
+if [ -f "node_modules/next/dist/bin/next" ]; then
+  exec node node_modules/next/dist/bin/next lint
+fi
+
+echo "Next.js is not installed. Run npm install first."
+exit 1
