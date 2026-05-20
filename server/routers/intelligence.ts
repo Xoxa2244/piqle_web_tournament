@@ -24,6 +24,7 @@ import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 import { generateClubInsights } from '@/lib/ai/insights-engine'
 import { runBusinessInsights } from '@/lib/ai/business-insights-engine'
+import { runOperationalSignals } from '@/lib/ai/operational-signals-engine'
 import {
   createCohortDraft,
   getCohortDraft,
@@ -6284,6 +6285,18 @@ export const intelligenceRouter = createTRPCRouter({
         input.clubId,
       )
       return { status: newStatus }
+    }),
+
+  // On-demand re-generate operational signals for a club. Used by manual
+  // "Refresh" on the Action Center SignalFeed and by the hourly Vercel
+  // Cron (Step 16). Returns the audit report so the UI can toast
+  // "Found N new" / "Resolved N stale".
+  refreshOperationalSignals: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const report = await runOperationalSignals(ctx.prisma as any, input.clubId)
+      return report
     }),
 
   // ─────────────────────────────────────────────────────────────────────

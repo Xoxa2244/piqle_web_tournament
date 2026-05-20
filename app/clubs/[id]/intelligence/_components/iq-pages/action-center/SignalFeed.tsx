@@ -14,7 +14,7 @@
 
 import { useState } from 'react'
 import { trpc } from '@/lib/trpc'
-import { Filter, Inbox } from 'lucide-react'
+import { Filter, Inbox, RefreshCw } from 'lucide-react'
 import { SignalCard, type OperationalSignalRow } from './SignalCard'
 
 type SeverityFilter = 'all' | 'critical' | 'warning' | 'nudge'
@@ -44,6 +44,9 @@ export function SignalFeed({ clubId }: Props) {
   )
 
   const resolveMutation = trpc.intelligence.resolveSignal.useMutation()
+  const refreshMutation = trpc.intelligence.refreshOperationalSignals.useMutation({
+    onSuccess: () => signalsQuery.refetch(),
+  })
 
   const signals = (signalsQuery.data?.signals ?? []) as OperationalSignalRow[]
 
@@ -105,6 +108,27 @@ export function SignalFeed({ clubId }: Props) {
           <option value="league_gap">League gap</option>
           <option value="vip_at_risk">VIP at risk</option>
         </select>
+
+        {/* Spacer pushes Refresh to the far right */}
+        <div className="flex-1" />
+
+        <button
+          type="button"
+          onClick={() => refreshMutation.mutate({ clubId })}
+          disabled={refreshMutation.isPending}
+          className="flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md transition-colors disabled:opacity-50"
+          style={{
+            background: 'rgba(139,92,246,0.10)',
+            color: '#A78BFA',
+            border: '1px solid rgba(139,92,246,0.20)',
+            fontWeight: 600,
+          }}
+        >
+          <RefreshCw
+            className={`w-3 h-3 ${refreshMutation.isPending ? 'animate-spin' : ''}`}
+          />
+          {refreshMutation.isPending ? 'Refreshing…' : 'Refresh'}
+        </button>
       </div>
 
       {/* Body */}
