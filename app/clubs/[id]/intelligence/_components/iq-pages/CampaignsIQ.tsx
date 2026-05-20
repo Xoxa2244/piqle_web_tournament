@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { trpc } from '@/lib/trpc'
 import { motion } from 'motion/react'
 import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock3, Loader2, Plus, Radar, ShieldAlert, ShieldCheck, Sparkles, TestTube2, Users, X, BarChart3 } from 'lucide-react'
 import { CampaignKPIs } from './campaigns/CampaignKPIs'
@@ -329,6 +330,13 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
   const wizardRouter = useRouter()
   const wizardPathname = usePathname()
   const [wizardInitialCohortId, setWizardInitialCohortId] = useState<string | null>(null)
+  // Captured from a campaign_draft when the wizard is opened from a
+  // Business Insight or Operational Signal action (Step 11 of
+  // DASHBOARD_AND_ACTION_CENTER_SPEC.md §8.1). Currently surfaced as
+  // metadata only — the wizard's template/channel prefill wiring lands
+  // in a follow-up commit; for now we open the wizard and stash the
+  // payload so subsequent wizard steps can consume it.
+  const [wizardInitialTemplateKey, setWizardInitialTemplateKey] = useState<string | null>(null)
   useEffect(() => {
     const cohortIdFromUrl = wizardSearchParams?.get('cohortId') ?? null
     if (cohortIdFromUrl && !showWizard) {
@@ -344,6 +352,32 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wizardSearchParams])
+
+  // ?draftId prefill — Step 11 §8.1. Loads the campaign_draft row and
+  // opens the wizard with templateKey + cohortRef applied. cohortRef
+  // can be either a saved cohort id (preferred) or a cohort_draft id;
+  // we forward both onto the wizard which handles each accordingly
+  // once the draft-aware wizard prefill ships.
+  const draftIdFromUrl = wizardSearchParams?.get('draftId') ?? null
+  const campaignDraftQuery = trpc.intelligence.getCampaignDraft.useQuery(
+    { draftId: draftIdFromUrl ?? '' },
+    { enabled: !!draftIdFromUrl },
+  )
+  useEffect(() => {
+    if (!draftIdFromUrl) return
+    if (!campaignDraftQuery.data || !campaignDraftQuery.data.found) return
+    const draft = campaignDraftQuery.data.draft
+    setWizardInitialTemplateKey(draft.templateKey)
+    if (draft.cohortRef) setWizardInitialCohortId(draft.cohortRef)
+    setShowWizard(true)
+    if (wizardPathname) {
+      const next = new URLSearchParams(wizardSearchParams?.toString() || '')
+      next.delete('draftId')
+      const qs = next.toString()
+      wizardRouter.replace(qs ? `${wizardPathname}?${qs}` : wizardPathname, { scroll: false })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftIdFromUrl, campaignDraftQuery.data])
   const [selectedCampaign, setSelectedCampaign] = useState<{ id: string; type: string; date: string; name?: string | null } | null>(null)
   const [activityOfferFilter, setActivityOfferFilter] = useState<string>('all')
   const [activityRouteFilter, setActivityRouteFilter] = useState<string>('all')

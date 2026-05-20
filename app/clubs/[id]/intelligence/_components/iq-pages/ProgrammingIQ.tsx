@@ -19,6 +19,8 @@
  *   • AILoadingAnimation for the Generate progress UX
  */
 import React, { useEffect, useMemo, useState } from 'react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { trpc } from '@/lib/trpc'
 import {
   Brain, Calendar, Sparkles, Wand2, ChevronLeft, ChevronRight,
   ShieldAlert, TrendingUp, AlertTriangle,
@@ -137,6 +139,54 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
     activeCourts: number
   } | null>(null)
   const [generationOutcomeSummary, setGenerationOutcomeSummary] = useState<ProgrammingGenerationSummary | null>(null)
+
+  // ?draftId prefill — Step 11 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
+  // §8.1. When a Business Insight or Operational Signal card creates
+  // a programming draft and routes here, we fetch the draft and stash
+  // the hint payload in `programmingDraftHint` for downstream UI
+  // (current build surfaces it as a regenerate-prompt hint; richer
+  // prefill of strategy/court/day selection lands in a follow-up).
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const draftIdFromUrl = searchParams?.get('draftId') ?? null
+  const programmingDraftQuery = trpc.intelligence.getProgrammingDraft.useQuery(
+    { draftId: draftIdFromUrl ?? '' },
+    { enabled: !!draftIdFromUrl },
+  )
+  const [programmingDraftHint, setProgrammingDraftHint] = useState<
+    Record<string, unknown> | null
+  >(null)
+
+  useEffect(() => {
+    if (!draftIdFromUrl) return
+    if (!programmingDraftQuery.data || !programmingDraftQuery.data.found) return
+    const draft = programmingDraftQuery.data.draft
+    setProgrammingDraftHint(draft.prefill as Record<string, unknown>)
+    // Feed the prefill hint into the regenerate prompt so the existing
+    // Generate flow picks it up without a deeper UI change. Operator
+    // can edit before pressing Generate.
+    const hintLines: string[] = []
+    const p = draft.prefill as Record<string, any>
+    if (p?.startHour) hintLines.push(`Focus hour: ${p.startHour}:00`)
+    if (p?.dayOfWeek != null) hintLines.push(`Focus day-of-week: ${p.dayOfWeek}`)
+    if (p?.hint) hintLines.push(`Hint: ${p.hint}`)
+    if (p?.from && p?.to) {
+      const fromStr = JSON.stringify(p.from)
+      const toStr = JSON.stringify(p.to)
+      hintLines.push(`Convert ${fromStr} → ${toStr}`)
+    }
+    if (hintLines.length > 0) {
+      setRegeneratePrompt(hintLines.join(' · '))
+    }
+    if (pathname) {
+      const next = new URLSearchParams(searchParams?.toString() || '')
+      next.delete('draftId')
+      const qs = next.toString()
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftIdFromUrl, programmingDraftQuery.data])
 
   const gridQuery = useProgrammingScheduleGrid(clubId, weekStart)
   const generateMutation = useGenerateProgrammingSchedule()

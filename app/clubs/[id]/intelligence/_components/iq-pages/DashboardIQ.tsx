@@ -633,15 +633,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     { clubId, dateFrom: calAFrom, dateTo: calATo },
     { enabled: compMode === 'calendar' && !!calAFrom && !!calATo && !!clubId && !isDemo },
   );
-  const insightsQuery = trpc.intelligence.getClubInsights.useQuery(
-    { clubId: clubId! },
-    { enabled: !!clubId && !isDemo },
-  );
-
-  // Canon-driven business insights (pilot — Step 3/4 of
-  // DASHBOARD_AND_ACTION_CENTER_SPEC.md). Coexists with the legacy
-  // `getClubInsights` panel above for the duration of the pilot; Step 9
-  // migrates the remaining 9 generators and removes the legacy block.
+  // Canon-driven business insights (DASHBOARD_AND_ACTION_CENTER_SPEC.md
+  // §3.6). Replaced the legacy `getClubInsights` query in Step 9 of
+  // §7.5 — all 8 Dashboard insights now flow through this endpoint.
+  // The legacy `lib/ai/insights-engine.ts` still serves the two
+  // functions that route to Action Center (vipMembersAtRisk per-member
+  // + suspendedWinback) — see runBusinessInsights generators array
+  // comment for the migration scope.
   const businessInsightsQuery = trpc.intelligence.getBusinessInsights.useQuery(
     { clubId: clubId! },
     { enabled: !!clubId && !isDemo },
@@ -847,7 +845,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     { id: "settings", label: "Configure club settings", done: true, href: `/clubs/${clubId}/intelligence/settings`, icon: "⚙️" },
     { id: "connect", label: "Connect data source", done: !!isConnected || hasUploads || hasSessions || hasMembers, href: `/clubs/${clubId}/intelligence/integrations`, icon: "🔗" },
     { id: "members", label: "Members detected", done: hasMembers, href: `/clubs/${clubId}/intelligence/members`, icon: "👥" },
-    { id: "ai", label: "AI insights ready", done: hasSessions || !!insightsQuery.data?.length, href: `/clubs/${clubId}/intelligence/slot-filler`, icon: "🤖" },
+    { id: "ai", label: "AI insights ready", done: hasSessions || !!businessInsightsQuery.data?.insights?.length, href: `/clubs/${clubId}/intelligence/slot-filler`, icon: "🤖" },
   ];
   const quickStartProgress = quickStartSteps.filter(s => s.done).length;
   const isStillLoading = externalLoading || isPeriodLoading || periodQuery.isLoading;
@@ -1189,48 +1187,16 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           })()}
         </Card>
 
-        {/* AI Insights — powered by getClubInsights endpoint */}
-        <Card className="relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 pointer-events-none" style={{ background: "radial-gradient(circle, rgba(139,92,246,0.08), transparent 70%)" }} />
-          <div className="relative">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
-                <Sparkles className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>AI Insights</h3>
-                <p className="text-[10px]" style={{ color: "var(--t4)" }}>Prioritized recommendations</p>
-              </div>
-            </div>
+        {/* Legacy "AI Insights" card removed per DASHBOARD_AND_ACTION_CENTER_SPEC.md
+            §3.6 Step 9. All 8 Dashboard insight types now flow through the
+            canon (lib/ai/business-insights-engine.ts) and render via
+            BusinessInsightCard below. The two functions intentionally kept
+            in lib/ai/insights-engine.ts (vipMembersAtRisk per-member +
+            suspendedWinback) route to Action Center, not Dashboard — they
+            move to OperationalSignal in Steps 16/18. */}
 
-            <InsightsPanel insights={insightsQuery.data ?? []} isLoading={insightsQuery.isLoading} router={router} clubId={clubId!} />
-
-            <div className="mt-4 pt-4 flex flex-wrap gap-2" style={{ borderTop: "1px solid var(--divider)" }}>
-              {displayInsights.length > 0 ? displayInsights.map((insight) => (
-                <div
-                  key={insight.title}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] cursor-pointer transition-all hover:scale-105"
-                  style={{
-                    background: insight.priority === "high" ? "rgba(239,68,68,0.1)" : "rgba(139,92,246,0.1)",
-                    border: `1px solid ${insight.priority === "high" ? "rgba(239,68,68,0.15)" : "rgba(139,92,246,0.15)"}`,
-                    color: insight.priority === "high" ? "#F87171" : "#A78BFA",
-                    fontWeight: 500,
-                  }}
-                >
-                  <insight.icon className="w-3 h-3" />
-                  {insight.title}
-                </div>
-              )) : (
-                <span className="text-[11px]" style={{ color: "var(--t4)" }}>No insights available yet</span>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        {/* Business Insights (canon-driven pilot — Step 4 of
-            DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.6). Sits side-by-side
-            with the legacy AI Insights card above for the duration of
-            the migration; Step 9 swaps legacy for canon outright. */}
+        {/* Business Insights — canon-driven Dashboard insight feed
+            (DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.6). */}
         <Card className="relative overflow-hidden">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -1243,12 +1209,6 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               <div>
                 <h3 style={{ fontSize: "14px", fontWeight: 700, color: "var(--heading)" }}>
                   Business Insights
-                  <span
-                    className="ml-2 text-[10px] px-1.5 py-0.5 rounded-md align-middle"
-                    style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}
-                  >
-                    PILOT
-                  </span>
                 </h3>
                 <p className="text-[10px]" style={{ color: "var(--t4)" }}>
                   Canon-driven · action-first · persisted
