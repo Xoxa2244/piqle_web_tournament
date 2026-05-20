@@ -5,15 +5,15 @@
  *
  * Spec: DASHBOARD_AND_ACTION_CENTER_SPEC.md §4.4 + Appendix D.
  *
- * Step 19b ships:
- *   - Live 7-row table fed by `intelligence.getTierConfig` +
- *     `intelligence.getTierDistribution`
- *   - Per-tier active toggle (writes through `updateTierOverride`)
- *   - "Apply Solomon Preset" button (Appendix D bulk replace)
- *   - "Reset to defaults" button
- *
- * Step 20 will add the cadence / successMetric inline editor + the
- * Custom Rules section (Add / Remove ClassifierRule).
+ * Live UI:
+ *   - 7-row distribution table (Step 19b)
+ *     · per-tier active toggle (writes through `updateTierOverride`)
+ *     · cadence + success-metric editor modal (Step 20)
+ *   - "Apply Solomon Preset" / "Reset to defaults" buttons (Step 19b)
+ *   - Custom Rules section (Step 20)
+ *     · list rules with summary + delete
+ *     · "Add custom rule" modal — name_pattern / CR reservation type id /
+ *       CR event category id → targetTier, priority
  */
 
 import { useMemo, useState } from 'react'
@@ -21,8 +21,11 @@ import { trpc } from '@/lib/trpc'
 import {
   Check,
   Layers,
+  Pencil,
+  Plus,
   RotateCcw,
   Sparkles,
+  Trash2,
   X as XIcon,
   ChevronDown,
   ChevronUp,
@@ -60,6 +63,16 @@ interface OverrideRow {
   scope?: any
 }
 
+interface ClassifierRuleRow {
+  id: string
+  match:
+    | { kind: 'name_pattern'; regex: string }
+    | { kind: 'cr_reservation_type_id'; id: number }
+    | { kind: 'cr_event_category_id'; id: number }
+  targetTier: TierKey
+  priority: number
+}
+
 export function TierConstructor({ clubId }: Props) {
   const configQuery = trpc.intelligence.getTierConfig.useQuery(
     { clubId },
@@ -74,17 +87,42 @@ export function TierConstructor({ clubId }: Props) {
     onSuccess: () => configQuery.refetch(),
   })
   const applyPresetMutation = trpc.intelligence.applyTierPreset.useMutation({
-    onSuccess: () => configQuery.refetch(),
+    onSuccess: () => {
+      configQuery.refetch()
+      distributionQuery.refetch()
+    },
   })
   const resetMutation = trpc.intelligence.resetTierConfig.useMutation({
-    onSuccess: () => configQuery.refetch(),
+    onSuccess: () => {
+      configQuery.refetch()
+      distributionQuery.refetch()
+    },
   })
+  const addRuleMutation = trpc.intelligence.addClassifierRule.useMutation({
+    onSuccess: () => {
+      configQuery.refetch()
+      distributionQuery.refetch()
+    },
+  })
+  const removeRuleMutation = trpc.intelligence.removeClassifierRule.useMutation({
+    onSuccess: () => {
+      configQuery.refetch()
+      distributionQuery.refetch()
+    },
+  })
+
+  const [editingTier, setEditingTier] = useState<TierKey | null>(null)
+  const [showAddRule, setShowAddRule] = useState(false)
 
   const overrides = useMemo<OverrideRow[]>(
     () => (configQuery.data?.config.overrides ?? []) as OverrideRow[],
     [configQuery.data],
   )
-  const customRuleCount = configQuery.data?.config.customRules?.length ?? 0
+  const customRules = useMemo<ClassifierRuleRow[]>(
+    () =>
+      (configQuery.data?.config.customRules ?? []) as ClassifierRuleRow[],
+    [configQuery.data],
+  )
   const overridesByKey = useMemo(() => {
     const map = new Map<TierKey, OverrideRow>()
     for (const o of overrides) map.set(o.tierKey, o)
@@ -93,7 +131,8 @@ export function TierConstructor({ clubId }: Props) {
 
   const distribution = distributionQuery.data?.countsByTier ?? {}
   const totalSessions = distributionQuery.data?.totalSessions ?? 0
-  const hasAnyOverride = overrides.length > 0
+  const customRuleCount = customRules.length
+  const hasAnyOverride = overrides.length > 0 || customRuleCount > 0
 
   const handleToggle = (tierKey: TierKey, next: boolean) => {
     const existing = overridesByKey.get(tierKey)
@@ -236,46 +275,99 @@ export function TierConstructor({ clubId }: Props) {
               sessionCount={distribution[key] ?? 0}
               isLast={i === ALL_TIER_KEYS.length - 1}
               onToggle={next => handleToggle(key, next)}
+              onEdit={() => setEditingTier(key)}
               isPending={updateMutation.isPending}
             />
           ))}
         </div>
       )}
 
-      {/* Step 20 placeholder for Custom Rules */}
+      {/* Custom Rules section */}
       <div
-        className="rounded-xl p-4 flex items-center justify-between gap-3"
+        className="rounded-xl"
         style={{
           background: 'var(--card-bg)',
           border: '1px solid var(--card-border)',
         }}
       >
-        <div>
-          <p
-            className="text-sm"
-            style={{ color: 'var(--heading)', fontWeight: 600 }}
+        <div className="p-4 flex items-start justify-between gap-3">
+          <div>
+            <p
+              className="text-sm"
+              style={{ color: 'var(--heading)', fontWeight: 600 }}
+            >
+              Custom classifier rules
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>
+              Map sessions by name pattern or CR reservation/event id when
+              the regex layer misses them. Highest-priority match wins.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAddRule(true)}
+            className="flex items-center gap-1.5 text-[12px] px-2.5 py-1.5 rounded-lg transition-colors"
+            style={{
+              background: 'rgba(139,92,246,0.12)',
+              color: '#A78BFA',
+              border: '1px solid rgba(139,92,246,0.25)',
+              fontWeight: 600,
+            }}
           >
-            Custom rules
-          </p>
-          <p className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>
-            Add club-specific overrides for sessions the regex layer misses —
-            UI lands in the next commit (Step 20). Backend is live: see
-            <code className="mx-1">intelligence.addClassifierRule</code> /
-            <code className="mx-1">removeClassifierRule</code>.
-          </p>
+            <Plus className="w-3.5 h-3.5" />
+            Add custom rule
+          </button>
         </div>
-        <span
-          className="text-[10px] px-2 py-0.5 rounded-md"
-          style={{
-            background: 'rgba(139,92,246,0.10)',
-            color: '#A78BFA',
-            border: '1px solid rgba(139,92,246,0.20)',
-            fontWeight: 600,
-          }}
-        >
-          {customRuleCount} rule{customRuleCount === 1 ? '' : 's'}
-        </span>
+
+        {customRules.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--card-border)' }}>
+            {customRules.map((r, i) => (
+              <ClassifierRuleEntry
+                key={r.id}
+                rule={r}
+                isLast={i === customRules.length - 1}
+                onDelete={() =>
+                  removeRuleMutation.mutate({ clubId, ruleId: r.id })
+                }
+                isDeleting={
+                  removeRuleMutation.isPending &&
+                  removeRuleMutation.variables?.ruleId === r.id
+                }
+              />
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Add custom rule modal */}
+      {showAddRule && (
+        <AddRuleModal
+          onClose={() => setShowAddRule(false)}
+          onSubmit={payload => {
+            addRuleMutation.mutate(
+              { clubId, rule: payload },
+              { onSuccess: () => setShowAddRule(false) },
+            )
+          }}
+          isPending={addRuleMutation.isPending}
+        />
+      )}
+
+      {/* Per-tier cadence + metric editor modal */}
+      {editingTier && (
+        <TierEditModal
+          tierKey={editingTier}
+          current={overridesByKey.get(editingTier)}
+          onClose={() => setEditingTier(null)}
+          onSubmit={override => {
+            updateMutation.mutate(
+              { clubId, tierKey: editingTier, override },
+              { onSuccess: () => setEditingTier(null) },
+            )
+          }}
+          isPending={updateMutation.isPending}
+        />
+      )}
     </div>
   )
 }
@@ -288,6 +380,7 @@ function TierRow({
   sessionCount,
   isLast,
   onToggle,
+  onEdit,
   isPending,
 }: {
   tierKey: TierKey
@@ -295,6 +388,7 @@ function TierRow({
   sessionCount: number
   isLast: boolean
   onToggle: (next: boolean) => void
+  onEdit: () => void
   isPending: boolean
 }) {
   const [expanded, setExpanded] = useState(false)
@@ -405,6 +499,17 @@ function TierRow({
           </span>
         </button>
 
+        <button
+          type="button"
+          onClick={onEdit}
+          className="p-1 rounded hover:bg-white/5"
+          style={{ color: 'var(--t4)' }}
+          aria-label="Edit cadence + metric"
+          title="Edit cadence + metric"
+        >
+          <Pencil className="w-3 h-3" />
+        </button>
+
         {(override?.cadence || override?.successMetric) && (
           <button
             type="button"
@@ -505,4 +610,624 @@ function formatMetric(m: any): string {
     default:
       return String(m.kind ?? 'custom')
   }
+}
+
+// ─── Classifier rule list entry ────────────────────────────────────────
+
+function ClassifierRuleEntry({
+  rule,
+  isLast,
+  onDelete,
+  isDeleting,
+}: {
+  rule: ClassifierRuleRow
+  isLast: boolean
+  onDelete: () => void
+  isDeleting: boolean
+}) {
+  const matchLabel =
+    rule.match.kind === 'name_pattern'
+      ? `name matches /${rule.match.regex}/i`
+      : rule.match.kind === 'cr_reservation_type_id'
+        ? `CR reservation_type_id = ${rule.match.id}`
+        : `CR event_category_id = ${rule.match.id}`
+  const meta = PROGRAMMING_TIER_META[rule.targetTier]
+  return (
+    <div
+      className="grid grid-cols-12 gap-2 px-4 py-2.5 items-center text-[12px]"
+      style={{
+        borderBottom: isLast ? 'none' : '1px solid var(--card-border)',
+        opacity: isDeleting ? 0.5 : 1,
+      }}
+    >
+      <div className="col-span-7 truncate" title={matchLabel}>
+        <span style={{ color: 'var(--t4)' }}>match · </span>
+        <span style={{ color: 'var(--t2)', fontFamily: 'ui-monospace, monospace', fontSize: 11 }}>
+          {matchLabel}
+        </span>
+      </div>
+      <div className="col-span-3 flex items-center gap-1.5">
+        <span
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{ background: meta.color }}
+        />
+        <span style={{ color: 'var(--t2)' }}>{meta.shortLabel}</span>
+      </div>
+      <div
+        className="col-span-1 text-[11px] tabular-nums"
+        style={{ color: 'var(--t4)' }}
+      >
+        p{rule.priority}
+      </div>
+      <div className="col-span-1 flex justify-end">
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm('Delete this classifier rule?')) onDelete()
+          }}
+          disabled={isDeleting}
+          className="p-1 rounded hover:bg-white/5 disabled:opacity-50"
+          style={{ color: 'var(--t4)' }}
+          aria-label="Delete rule"
+          title="Delete rule"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Add custom rule modal ─────────────────────────────────────────────
+
+interface AddRulePayload {
+  match:
+    | { kind: 'name_pattern'; regex: string }
+    | { kind: 'cr_reservation_type_id'; id: number }
+    | { kind: 'cr_event_category_id'; id: number }
+  targetTier: TierKey
+  priority: number
+}
+
+function AddRuleModal({
+  onClose,
+  onSubmit,
+  isPending,
+}: {
+  onClose: () => void
+  onSubmit: (payload: AddRulePayload) => void
+  isPending: boolean
+}) {
+  const [matchKind, setMatchKind] = useState<
+    'name_pattern' | 'cr_reservation_type_id' | 'cr_event_category_id'
+  >('name_pattern')
+  const [regex, setRegex] = useState('')
+  const [crId, setCrId] = useState('')
+  const [targetTier, setTargetTier] = useState<TierKey>('T1_CORE')
+  const [priority, setPriority] = useState(100)
+  const [regexError, setRegexError] = useState<string | null>(null)
+
+  const handleSave = () => {
+    setRegexError(null)
+    let match: AddRulePayload['match']
+    if (matchKind === 'name_pattern') {
+      if (!regex.trim()) {
+        setRegexError('Pattern is required')
+        return
+      }
+      try {
+        // Validate regex compiles
+        new RegExp(regex, 'i')
+      } catch (err: any) {
+        setRegexError(`Invalid regex: ${err.message ?? 'unknown error'}`)
+        return
+      }
+      match = { kind: 'name_pattern', regex: regex.trim() }
+    } else {
+      const id = Number(crId)
+      if (!Number.isFinite(id) || id <= 0) {
+        setRegexError('Numeric id required')
+        return
+      }
+      match = { kind: matchKind, id }
+    }
+    onSubmit({ match, targetTier, priority })
+  }
+
+  return (
+    <ModalShell title="Add custom classifier rule" onClose={onClose}>
+      <div className="space-y-3 text-[12px]">
+        {/* Match kind */}
+        <div>
+          <label
+            className="text-[10px] uppercase tracking-wide"
+            style={{ color: 'var(--t4)' }}
+          >
+            Match by
+          </label>
+          <select
+            value={matchKind}
+            onChange={e => setMatchKind(e.target.value as typeof matchKind)}
+            className="w-full mt-1 rounded-md px-2 py-1.5 border"
+            style={{
+              background: 'var(--card-bg)',
+              color: 'var(--t2)',
+              borderColor: 'var(--card-border)',
+            }}
+          >
+            <option value="name_pattern">Session title regex</option>
+            <option value="cr_reservation_type_id">
+              CR reservation type id
+            </option>
+            <option value="cr_event_category_id">CR event category id</option>
+          </select>
+        </div>
+
+        {/* Match value */}
+        <div>
+          <label
+            className="text-[10px] uppercase tracking-wide"
+            style={{ color: 'var(--t4)' }}
+          >
+            {matchKind === 'name_pattern' ? 'Regex (case-insensitive)' : 'Id'}
+          </label>
+          {matchKind === 'name_pattern' ? (
+            <input
+              type="text"
+              value={regex}
+              onChange={e => setRegex(e.target.value)}
+              placeholder="^drill\\s+night$  or  cosmic|glow"
+              className="w-full mt-1 rounded-md px-2 py-1.5 border font-mono text-[11px]"
+              style={{
+                background: 'var(--card-bg)',
+                color: 'var(--t2)',
+                borderColor: regexError ? '#F87171' : 'var(--card-border)',
+              }}
+            />
+          ) : (
+            <input
+              type="number"
+              value={crId}
+              onChange={e => setCrId(e.target.value)}
+              placeholder="e.g. 12345"
+              className="w-full mt-1 rounded-md px-2 py-1.5 border tabular-nums"
+              style={{
+                background: 'var(--card-bg)',
+                color: 'var(--t2)',
+                borderColor: regexError ? '#F87171' : 'var(--card-border)',
+              }}
+            />
+          )}
+          {regexError && (
+            <p className="text-[10px] mt-1" style={{ color: '#F87171' }}>
+              {regexError}
+            </p>
+          )}
+        </div>
+
+        {/* Target tier */}
+        <div>
+          <label
+            className="text-[10px] uppercase tracking-wide"
+            style={{ color: 'var(--t4)' }}
+          >
+            Target tier
+          </label>
+          <select
+            value={targetTier}
+            onChange={e => setTargetTier(e.target.value as TierKey)}
+            className="w-full mt-1 rounded-md px-2 py-1.5 border"
+            style={{
+              background: 'var(--card-bg)',
+              color: 'var(--t2)',
+              borderColor: 'var(--card-border)',
+            }}
+          >
+            {ALL_TIER_KEYS.map(k => (
+              <option key={k} value={k}>
+                {PROGRAMMING_TIER_META[k].shortLabel} —{' '}
+                {PROGRAMMING_TIER_META[k].label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Priority */}
+        <div>
+          <label
+            className="text-[10px] uppercase tracking-wide"
+            style={{ color: 'var(--t4)' }}
+          >
+            Priority (0-1000; higher fires first)
+          </label>
+          <input
+            type="number"
+            min={0}
+            max={1000}
+            value={priority}
+            onChange={e => setPriority(Number(e.target.value))}
+            className="w-full mt-1 rounded-md px-2 py-1.5 border tabular-nums"
+            style={{
+              background: 'var(--card-bg)',
+              color: 'var(--t2)',
+              borderColor: 'var(--card-border)',
+            }}
+          />
+        </div>
+      </div>
+
+      <ModalFooter
+        onCancel={onClose}
+        onConfirm={handleSave}
+        confirmLabel={isPending ? 'Saving…' : 'Add rule'}
+        confirmDisabled={isPending}
+      />
+    </ModalShell>
+  )
+}
+
+// ─── Tier cadence + metric editor modal ────────────────────────────────
+
+type CadenceKind = 'daily' | 'weekly' | 'monthly' | 'gap_max_days'
+type MetricKind =
+  | 'session_count'
+  | 'avg_fill_rate'
+  | 'peak_utilization'
+  | 'avg_players_per_session'
+  | 'p101_to_member_conversion'
+  | 'continuity'
+  | 'revenue'
+  | 'non_member_share'
+  | 'participant_count'
+  | 'manual_y_n'
+
+function TierEditModal({
+  tierKey,
+  current,
+  onClose,
+  onSubmit,
+  isPending,
+}: {
+  tierKey: TierKey
+  current?: OverrideRow
+  onClose: () => void
+  onSubmit: (override: Record<string, any>) => void
+  isPending: boolean
+}) {
+  const meta = PROGRAMMING_TIER_META[tierKey]
+  const [isActive, setIsActive] = useState<boolean>(current?.isActive ?? true)
+  const [scope, setScope] = useState<'global' | 'per_location'>(
+    typeof current?.scope === 'string' && current.scope === 'per_location'
+      ? 'per_location'
+      : 'global',
+  )
+  const [cadenceKind, setCadenceKind] = useState<CadenceKind | 'unset'>(
+    (current?.cadence?.kind as CadenceKind | undefined) ?? 'unset',
+  )
+  const [cadenceN, setCadenceN] = useState<number>(
+    current?.cadence?.minSessions ??
+      current?.cadence?.maxGapDays ??
+      1,
+  )
+  const [metricKind, setMetricKind] = useState<MetricKind | 'unset'>(
+    (current?.successMetric?.kind as MetricKind | undefined) ?? 'unset',
+  )
+  const [metricN, setMetricN] = useState<number>(
+    current?.successMetric?.min ??
+      current?.successMetric?.minPct ??
+      current?.successMetric?.maxGapDays ??
+      current?.successMetric?.minAmount ??
+      0,
+  )
+  const [metricLabel, setMetricLabel] = useState<string>(
+    current?.successMetric?.label ?? '',
+  )
+
+  const buildCadence = (): any => {
+    if (cadenceKind === 'unset') return undefined
+    if (cadenceKind === 'gap_max_days') {
+      return { kind: 'gap_max_days', maxGapDays: cadenceN }
+    }
+    return { kind: cadenceKind, minSessions: cadenceN }
+  }
+  const buildMetric = (): any => {
+    if (metricKind === 'unset') return undefined
+    switch (metricKind) {
+      case 'session_count':
+      case 'avg_players_per_session':
+      case 'participant_count':
+        return { kind: metricKind, min: metricN }
+      case 'avg_fill_rate':
+      case 'peak_utilization':
+      case 'p101_to_member_conversion':
+      case 'non_member_share':
+        return { kind: metricKind, minPct: metricN }
+      case 'continuity':
+        return { kind: metricKind, maxGapDays: metricN }
+      case 'revenue':
+        return { kind: metricKind, minAmount: metricN }
+      case 'manual_y_n':
+        return { kind: metricKind, label: metricLabel || 'manual Y/N' }
+    }
+  }
+
+  const handleSave = () => {
+    const override: Record<string, any> = {
+      tierKey,
+      isActive,
+      scope,
+    }
+    const cadence = buildCadence()
+    if (cadence) override.cadence = cadence
+    const metric = buildMetric()
+    if (metric) override.successMetric = metric
+    onSubmit(override)
+  }
+
+  return (
+    <ModalShell
+      title={
+        <span className="flex items-center gap-2">
+          <span
+            className="w-2 h-2 rounded-full"
+            style={{ background: meta.color }}
+          />
+          Edit {meta.shortLabel}
+        </span>
+      }
+      onClose={onClose}
+    >
+      <div className="space-y-3 text-[12px]">
+        {/* Active toggle */}
+        <label className="flex items-center justify-between gap-3">
+          <span style={{ color: 'var(--t3)' }}>Tier is active</span>
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={e => setIsActive(e.target.checked)}
+            style={{ accentColor: '#A78BFA' }}
+          />
+        </label>
+
+        {/* Scope */}
+        <div>
+          <label
+            className="text-[10px] uppercase tracking-wide"
+            style={{ color: 'var(--t4)' }}
+          >
+            Scope
+          </label>
+          <select
+            value={scope}
+            onChange={e =>
+              setScope(e.target.value as 'global' | 'per_location')
+            }
+            className="w-full mt-1 rounded-md px-2 py-1.5 border"
+            style={{
+              background: 'var(--card-bg)',
+              color: 'var(--t2)',
+              borderColor: 'var(--card-border)',
+            }}
+          >
+            <option value="global">global (one rule for the whole club)</option>
+            <option value="per_location">
+              per location (each location independently)
+            </option>
+          </select>
+        </div>
+
+        {/* Cadence */}
+        <div>
+          <label
+            className="text-[10px] uppercase tracking-wide"
+            style={{ color: 'var(--t4)' }}
+          >
+            Cadence
+          </label>
+          <div className="flex gap-2 mt-1">
+            <select
+              value={cadenceKind}
+              onChange={e =>
+                setCadenceKind(e.target.value as CadenceKind | 'unset')
+              }
+              className="flex-1 rounded-md px-2 py-1.5 border"
+              style={{
+                background: 'var(--card-bg)',
+                color: 'var(--t2)',
+                borderColor: 'var(--card-border)',
+              }}
+            >
+              <option value="unset">— use default</option>
+              <option value="daily">daily · N sessions/day</option>
+              <option value="weekly">weekly · N sessions/wk</option>
+              <option value="monthly">monthly · N sessions/mo</option>
+              <option value="gap_max_days">max gap · N days</option>
+            </select>
+            {cadenceKind !== 'unset' && (
+              <input
+                type="number"
+                min={1}
+                value={cadenceN}
+                onChange={e => setCadenceN(Number(e.target.value))}
+                className="w-20 rounded-md px-2 py-1.5 border tabular-nums"
+                style={{
+                  background: 'var(--card-bg)',
+                  color: 'var(--t2)',
+                  borderColor: 'var(--card-border)',
+                }}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Success metric */}
+        <div>
+          <label
+            className="text-[10px] uppercase tracking-wide"
+            style={{ color: 'var(--t4)' }}
+          >
+            Success metric
+          </label>
+          <div className="flex gap-2 mt-1">
+            <select
+              value={metricKind}
+              onChange={e =>
+                setMetricKind(e.target.value as MetricKind | 'unset')
+              }
+              className="flex-1 rounded-md px-2 py-1.5 border"
+              style={{
+                background: 'var(--card-bg)',
+                color: 'var(--t2)',
+                borderColor: 'var(--card-border)',
+              }}
+            >
+              <option value="unset">— use default</option>
+              <option value="session_count">≥ N sessions</option>
+              <option value="avg_fill_rate">avg fill ≥ N%</option>
+              <option value="peak_utilization">peak utilization ≥ N%</option>
+              <option value="avg_players_per_session">
+                ≥ N players/session
+              </option>
+              <option value="p101_to_member_conversion">
+                P101 → member ≥ N%
+              </option>
+              <option value="continuity">gap ≤ N days</option>
+              <option value="revenue">revenue ≥ $N</option>
+              <option value="non_member_share">non-member ≥ N%</option>
+              <option value="participant_count">≥ N participants</option>
+              <option value="manual_y_n">manual Y/N (custom label)</option>
+            </select>
+            {metricKind === 'manual_y_n' ? (
+              <input
+                type="text"
+                value={metricLabel}
+                onChange={e => setMetricLabel(e.target.value)}
+                placeholder="label"
+                className="w-32 rounded-md px-2 py-1.5 border text-[11px]"
+                style={{
+                  background: 'var(--card-bg)',
+                  color: 'var(--t2)',
+                  borderColor: 'var(--card-border)',
+                }}
+              />
+            ) : metricKind !== 'unset' ? (
+              <input
+                type="number"
+                min={0}
+                value={metricN}
+                onChange={e => setMetricN(Number(e.target.value))}
+                className="w-20 rounded-md px-2 py-1.5 border tabular-nums"
+                style={{
+                  background: 'var(--card-bg)',
+                  color: 'var(--t2)',
+                  borderColor: 'var(--card-border)',
+                }}
+              />
+            ) : null}
+          </div>
+        </div>
+      </div>
+
+      <ModalFooter
+        onCancel={onClose}
+        onConfirm={handleSave}
+        confirmLabel={isPending ? 'Saving…' : 'Save'}
+        confirmDisabled={isPending}
+      />
+    </ModalShell>
+  )
+}
+
+// ─── Modal shell shared by Add Rule + Tier Edit ────────────────────────
+
+function ModalShell({
+  title,
+  children,
+  onClose,
+}: {
+  title: React.ReactNode
+  children: React.ReactNode
+  onClose: () => void
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.55)' }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-2xl w-full max-w-md p-5"
+        style={{
+          background: 'var(--card-bg)',
+          border: '1px solid var(--card-border)',
+          boxShadow: '0 8px 28px rgba(0,0,0,0.35)',
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <h3
+            className="text-sm"
+            style={{ color: 'var(--heading)', fontWeight: 600 }}
+          >
+            {title}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 rounded hover:bg-white/5"
+            style={{ color: 'var(--t4)' }}
+            aria-label="Close"
+          >
+            <XIcon className="w-4 h-4" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ModalFooter({
+  onCancel,
+  onConfirm,
+  confirmLabel,
+  confirmDisabled,
+}: {
+  onCancel: () => void
+  onConfirm: () => void
+  confirmLabel: string
+  confirmDisabled: boolean
+}) {
+  return (
+    <div className="flex justify-end gap-2 mt-4">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="text-[12px] px-3 py-1.5 rounded-lg"
+        style={{
+          background: 'transparent',
+          color: 'var(--t3)',
+          border: '1px solid var(--card-border)',
+        }}
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        onClick={onConfirm}
+        disabled={confirmDisabled}
+        className="text-[12px] px-3 py-1.5 rounded-lg disabled:opacity-50"
+        style={{
+          background: 'rgba(139,92,246,0.18)',
+          color: '#A78BFA',
+          border: '1px solid rgba(139,92,246,0.32)',
+          fontWeight: 600,
+        }}
+      >
+        {confirmLabel}
+      </button>
+    </div>
+  )
 }
