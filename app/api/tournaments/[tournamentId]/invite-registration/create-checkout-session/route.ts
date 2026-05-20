@@ -63,16 +63,6 @@ const isSavedCardSchemaError = (error: any) => {
   )
 }
 
-// Discount applied to the entry fee for admin-trusted promo selections
-// (e.g. "I played in the Spring league" checkbox on the invite page).
-// Honor-system — we don't verify against past registrations in v1.
-const SPRING_LEAGUE_DISCOUNT_RATE = 0.2 // 20% off
-
-const applySpringLeagueDiscount = (entryFeeCents: number) => {
-  const discount = Math.round(entryFeeCents * SPRING_LEAGUE_DISCOUNT_RATE)
-  return Math.max(0, entryFeeCents - discount)
-}
-
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ tournamentId: string }> }
@@ -82,20 +72,6 @@ export async function POST(
     const session = await getServerSession(authOptions)
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Optional payload: { springLeagueDiscount?: boolean }. POSTs without a
-    // body still work (back-compat with the original no-body call).
-    let springLeagueDiscount = false
-    try {
-      const raw = await request.text()
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        springLeagueDiscount = parsed?.springLeagueDiscount === true
-      }
-    } catch {
-      // Malformed JSON body → treat as no discount, don't fail the request.
-      springLeagueDiscount = false
     }
 
     const tournament = await prisma.tournament.findUnique({
@@ -114,16 +90,10 @@ export async function POST(
       return NextResponse.json({ error: 'Tournament not found' }, { status: 404 })
     }
 
-    const baseEntryFeeCents = getEntryFeeCents(tournament)
-    if (baseEntryFeeCents <= 0) {
+    const entryFeeCents = getEntryFeeCents(tournament)
+    if (entryFeeCents <= 0) {
       return NextResponse.json({ error: 'Entry fee is not set' }, { status: 400 })
     }
-
-    // Server-side enforced discount — never trust the client's "discounted
-    // amount" directly; we always compute it here from the base entryFee.
-    const entryFeeCents = springLeagueDiscount
-      ? applySpringLeagueDiscount(baseEntryFeeCents)
-      : baseEntryFeeCents
 
     const player = await prisma.player.findUnique({
       where: {
@@ -246,8 +216,6 @@ export async function POST(
         playerId: player.id,
         userId: session.user.id,
         registrationType: 'invite',
-        springLeagueDiscount: String(springLeagueDiscount),
-        baseEntryFeeCents: String(baseEntryFeeCents),
       },
       payment_intent_data: {
         ...(destinationAccountId
@@ -264,8 +232,6 @@ export async function POST(
           playerId: player.id,
           userId: session.user.id,
           registrationType: 'invite',
-          springLeagueDiscount: String(springLeagueDiscount),
-          baseEntryFeeCents: String(baseEntryFeeCents),
         },
         ...(stripeCustomerId ? { setup_future_usage: 'off_session' as const } : {}),
       },
@@ -274,9 +240,7 @@ export async function POST(
           price_data: {
             currency: (tournament.currency ?? 'usd').toLowerCase(),
             product_data: {
-              name: springLeagueDiscount
-                ? `${tournament.title} Entry Fee (Spring League discount −20%)`
-                : `${tournament.title} Entry Fee`,
+              name: `${tournament.title} Entry Fee`,
             },
             unit_amount: entryFeeCents,
           },
