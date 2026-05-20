@@ -98,6 +98,10 @@
     {
       "path": "/api/cron/business-insights",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/draft-cleanup",
+      "schedule": "0 4 * * *"
     }
   ]
 }

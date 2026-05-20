@@ -32,6 +32,7 @@ import {
   Target,
   Shield,
 } from 'lucide-react'
+import { trpc } from '@/lib/trpc'
 
 // ── Canon types (subset shared with backend — see business-insights-engine.ts).
 // Duplicated here intentionally: the client bundle should not pull the
@@ -92,40 +93,68 @@ export function BusinessInsightCard({ insight, clubId, onResolve }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [secondaryOpen, setSecondaryOpen] = useState(false)
 
+  // Draft-creating mutations — Step 11 of
+  // DASHBOARD_AND_ACTION_CENTER_SPEC.md §8.1. Each action click first
+  // POSTs a draft row capturing the prefill, then routes to the page
+  // with ?draftId=<id>. The destination page reads the draft and
+  // applies the payload.
+  const cohortDraftM = trpc.intelligence.createCohortDraft.useMutation()
+  const campaignDraftM = trpc.intelligence.createCampaignDraft.useMutation()
+  const programmingDraftM = trpc.intelligence.createProgrammingDraft.useMutation()
+
   const meta = CATEGORY_META[insight.category]
   const Icon = meta.icon
 
-  const handlePrimary = () => {
-    const p = insight.action.primary
-    // Step 11 will wire up real draft-id deeplinks. For Step 4 we route to
-    // the right destination page without prefill — enough to verify the
-    // card shape and click flow end-to-end.
-    switch (p.type) {
-      case 'create_cohort':
-        router.push(`/clubs/${clubId}/intelligence/cohorts?fromInsight=${insight.id}`)
+  // Single dispatch for primary + secondary actions — they share the
+  // shape and the routing logic, just differ in where on the card the
+  // operator clicked.
+  const runAction = async (a: BusinessInsightRow['action']['primary']) => {
+    switch (a.type) {
+      case 'create_cohort': {
+        const { draftId } = await cohortDraftM.mutateAsync({
+          clubId,
+          filters: a.cohortRules as any,
+          sourceInsightId: insight.id,
+        })
+        router.push(`/clubs/${clubId}/intelligence/cohorts?draftId=${draftId}`)
         return
-      case 'create_campaign':
-        router.push(`/clubs/${clubId}/intelligence/campaigns?fromInsight=${insight.id}`)
+      }
+      case 'create_campaign': {
+        const { draftId } = await campaignDraftM.mutateAsync({
+          clubId,
+          templateKey: a.templateKey,
+          cohortRef: a.cohortRef,
+          sourceInsightId: insight.id,
+        })
+        router.push(`/clubs/${clubId}/intelligence/campaigns?draftId=${draftId}`)
         return
-      case 'programming':
-        router.push(`/clubs/${clubId}/intelligence/programming?fromInsight=${insight.id}`)
+      }
+      case 'programming': {
+        const { draftId } = await programmingDraftM.mutateAsync({
+          clubId,
+          prefill: a.params,
+          sourceInsightId: insight.id,
+        })
+        router.push(`/clubs/${clubId}/intelligence/programming?draftId=${draftId}`)
         return
+      }
       case 'cr_api_direct':
-        // Direct-write modal lands in Action Center (Step 15+). For now
-        // surface a stub so the operator gets feedback that the button
-        // is wired but the confirm modal is still to come.
+        // Direct-write modal lands in Action Center (Step 15+). Surface
+        // a stub for now so operators know the button is wired.
         // eslint-disable-next-line no-alert
         alert(
-          `Direct CR write: ${p.label}\n\nThis action will be available once the Action Center confirmation modal ships (Step 15+).`,
+          `Direct CR write: ${a.label}\n\nThis action will be available once the Action Center confirmation modal ships (Step 15+).`,
         )
         return
       case 'advice':
-        // Advice-only insights don't have an actionable destination —
-        // the button label is informational. Treat click as "got it"
-        // and mark as manually resolved.
+        // Advice-only insights — clicking "Got it" marks resolved.
         onResolve('manual')
         return
     }
+  }
+
+  const handlePrimary = () => {
+    void runAction(insight.action.primary)
   }
 
   const isAdvice = insight.action.primary.type === 'advice'
@@ -333,25 +362,7 @@ export function BusinessInsightCard({ insight, clubId, onResolve }: Props) {
                       style={{ color: 'var(--t3)' }}
                       onClick={() => {
                         setSecondaryOpen(false)
-                        // Same router behaviour as primary, distinct insight context.
-                        switch (a.type) {
-                          case 'create_cohort':
-                            router.push(`/clubs/${clubId}/intelligence/cohorts?fromInsight=${insight.id}`)
-                            return
-                          case 'create_campaign':
-                            router.push(`/clubs/${clubId}/intelligence/campaigns?fromInsight=${insight.id}`)
-                            return
-                          case 'programming':
-                            router.push(`/clubs/${clubId}/intelligence/programming?fromInsight=${insight.id}`)
-                            return
-                          case 'cr_api_direct':
-                            // eslint-disable-next-line no-alert
-                            alert(`Direct CR write: ${a.label} — Action Center modal ships in Step 15+.`)
-                            return
-                          case 'advice':
-                            onResolve('manual')
-                            return
-                        }
+                        void runAction(a)
                       }}
                     >
                       {a.label}

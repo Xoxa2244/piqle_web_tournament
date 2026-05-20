@@ -24,6 +24,14 @@ import { checkCampaignAlerts } from '@/lib/ai/scoring-optimizer'
 import { generateMemberProfilesForClub, generateSingleMemberProfile } from '@/lib/ai/member-profile-generator'
 import { generateClubInsights } from '@/lib/ai/insights-engine'
 import { runBusinessInsights } from '@/lib/ai/business-insights-engine'
+import {
+  createCohortDraft,
+  getCohortDraft,
+  createCampaignDraft,
+  getCampaignDraft,
+  createProgrammingDraft,
+  getProgrammingDraft,
+} from '@/lib/ai/draft-store'
 import { intelligenceLogger as log } from '@/lib/logger'
 import { pushToUser } from '@/lib/realtime'
 import { advisorActionSchema, extractAdvisorAction, getAdvisorActionFromMetadata } from '@/lib/ai/advisor-actions'
@@ -6156,6 +6164,94 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const report = await runBusinessInsights(ctx.prisma as any, input.clubId)
       return report
+    }),
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Draft store — Step 11 of DASHBOARD_AND_ACTION_CENTER_SPEC.md §8.1.
+  // Six endpoints (create + get for each of cohort/campaign/programming
+  // drafts). Cards on Dashboard/Action Center call the matching `create`
+  // mutation before navigating to the destination page with ?draftId=…
+  // The destination page calls the matching `get` query to apply the
+  // prefill payload. TTL is 7 days (DB default); see cleanup cron at
+  // app/api/cron/draft-cleanup/route.ts.
+  // ─────────────────────────────────────────────────────────────────────
+
+  createCohortDraft: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        filters: z.array(cohortFilterSchema),
+        suggestedName: z.string().max(120).optional(),
+        sourceInsightId: z.string().max(120).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { draftId } = await createCohortDraft(ctx.prisma as any, {
+        clubId: input.clubId,
+        filters: input.filters as any,
+        suggestedName: input.suggestedName,
+        sourceInsightId: input.sourceInsightId,
+      })
+      return { draftId }
+    }),
+
+  getCohortDraft: protectedProcedure
+    .input(z.object({ draftId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const row = await getCohortDraft(ctx.prisma as any, input.draftId)
+      if (!row) return { found: false as const }
+      // Light auth: caller must be admin on the draft's club.
+      await requireClubAdmin(ctx.prisma, row.clubId, ctx.session.user.id)
+      return { found: true as const, draft: row }
+    }),
+
+  createCampaignDraft: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        templateKey: z.string().min(1).max(80),
+        cohortRef: z.string().max(120).optional(),
+        channelMix: z.record(z.string(), z.unknown()).optional(),
+        sourceInsightId: z.string().max(120).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { draftId } = await createCampaignDraft(ctx.prisma as any, input)
+      return { draftId }
+    }),
+
+  getCampaignDraft: protectedProcedure
+    .input(z.object({ draftId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const row = await getCampaignDraft(ctx.prisma as any, input.draftId)
+      if (!row) return { found: false as const }
+      await requireClubAdmin(ctx.prisma, row.clubId, ctx.session.user.id)
+      return { found: true as const, draft: row }
+    }),
+
+  createProgrammingDraft: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        prefill: z.record(z.string(), z.unknown()),
+        sourceInsightId: z.string().max(120).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { draftId } = await createProgrammingDraft(ctx.prisma as any, input)
+      return { draftId }
+    }),
+
+  getProgrammingDraft: protectedProcedure
+    .input(z.object({ draftId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const row = await getProgrammingDraft(ctx.prisma as any, input.draftId)
+      if (!row) return { found: false as const }
+      await requireClubAdmin(ctx.prisma, row.clubId, ctx.session.user.id)
+      return { found: true as const, draft: row }
     }),
 
   // ─────────────────────────────────────────────────────────────────────

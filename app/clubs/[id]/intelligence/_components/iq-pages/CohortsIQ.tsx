@@ -497,6 +497,73 @@ export default function CohortsIQ() {
     setShowCreate(true)
   }, [builderIntent])
 
+  // Draft-id prefill — Step 11 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
+  // §8.1. When a Business Insight or Operational Signal card creates a
+  // cohort draft and routes here with ?draftId=<id>, we fetch the draft
+  // and best-effort map its canon CohortFilter[] payload into the
+  // quick-cohort builder state. Unmapped filters (e.g. attendedLeagueFamily)
+  // are surfaced as advisory text — operator switches to advanced mode
+  // to refine. Then we strip the param so back/forward navigation
+  // doesn't re-open the builder forever.
+  const draftIdFromUrl = searchParams?.get('draftId') ?? null
+  const cohortDraftQuery = trpc.intelligence.getCohortDraft.useQuery(
+    { draftId: draftIdFromUrl ?? '' },
+    { enabled: !!draftIdFromUrl },
+  )
+
+  useEffect(() => {
+    if (!draftIdFromUrl) return
+    if (!cohortDraftQuery.data || !cohortDraftQuery.data.found) return
+    setSelectedCohortId(null)
+    setShowCreate(true)
+  }, [draftIdFromUrl, cohortDraftQuery.data])
+
+  // Translate canon CohortFilter[] → QuickCohortState. Best-effort —
+  // canon uses `frequency lte 2` style; quick builder uses ranges +
+  // multi-select chips. Fields the quick builder doesn't expose
+  // (skillLevel, attendedProgrammingTier, etc.) are dropped here and
+  // visible to the operator via the source-insight side note.
+  const draftSeed = useMemo(() => {
+    if (!cohortDraftQuery.data?.found) return null
+    const draft = cohortDraftQuery.data.draft
+    const qf = { ...EMPTY_QUICK_COHORT }
+    for (const f of draft.filters as Array<{ field: string; op: string; value: any }>) {
+      if (f.field === 'joinedDaysAgo' && (f.op === 'lt' || f.op === 'lte')) {
+        qf.joinedWithinDays = String(f.value)
+      } else if (f.field === 'frequency' && (f.op === 'lte' || f.op === 'lt')) {
+        qf.sessionsPerMonthMax = String(f.value)
+      } else if (f.field === 'frequency' && (f.op === 'gte' || f.op === 'gt')) {
+        qf.sessionsPerMonthMin = String(f.value)
+      } else if (f.field === 'membershipType' && Array.isArray(f.value)) {
+        qf.membershipType = f.value
+      } else if (f.field === 'membershipType' && typeof f.value === 'string') {
+        qf.membershipType = [f.value]
+      } else if (f.field === 'membershipStatus' && Array.isArray(f.value)) {
+        qf.membershipStatus = f.value
+      } else if (f.field === 'riskLevel' && Array.isArray(f.value)) {
+        qf.riskLevel = f.value as any
+      } else if (f.field === 'engagementTrend' && Array.isArray(f.value)) {
+        qf.engagementTrend = f.value
+      } else if (f.field === 'valueTier' && Array.isArray(f.value)) {
+        qf.valueTier = f.value
+      }
+    }
+    return {
+      mode: 'quick' as const,
+      name: draft.suggestedName ?? '',
+      description: '',
+      quickFilters: qf,
+    }
+  }, [cohortDraftQuery.data])
+
+  const clearDraftIntent = () => {
+    if (!pathname || !draftIdFromUrl) return
+    const next = new URLSearchParams(searchParams?.toString() || '')
+    next.delete('draftId')
+    const qs = next.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }
+
   const { data: cohorts, refetch } = trpc.intelligence.listCohorts.useQuery({ clubId })
   // P3-T2: AI-suggested cohorts (3 generators per D4)
   const { data: suggestedCohorts = [] } = useSuggestedCohorts(clubId)
@@ -692,14 +759,28 @@ export default function CohortsIQ() {
             the action near context. */}
       </div>
 
-      {/* Create / Edit modal */}
+      {/* Create / Edit modal — accepts either a quick-cohort URL intent
+          or a canon draft seed (Step 11 of
+          DASHBOARD_AND_ACTION_CENTER_SPEC.md §8.1). Draft seed takes
+          precedence when both happen to be present, since drafts are
+          a more recent surface and the operator clicked from an
+          insight card with explicit intent. */}
       <AnimatePresence>
         {showCreate && (
           <CohortBuilder
             clubId={clubId}
-            initialSeed={builderIntent}
-            onClose={() => { setShowCreate(false); clearBuilderIntent() }}
-            onSaved={() => { setShowCreate(false); clearBuilderIntent(); refetch() }}
+            initialSeed={draftSeed ?? builderIntent}
+            onClose={() => {
+              setShowCreate(false)
+              clearBuilderIntent()
+              clearDraftIntent()
+            }}
+            onSaved={() => {
+              setShowCreate(false)
+              clearBuilderIntent()
+              clearDraftIntent()
+              refetch()
+            }}
           />
         )}
       </AnimatePresence>
