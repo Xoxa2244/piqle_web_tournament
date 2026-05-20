@@ -266,10 +266,7 @@ function DivisionStageManagementContent() {
   }
 
   // Filter matchups by selected division
-  const divisionMatchups = useMemo(() => {
-    if (!matchups) return []
-    return matchups.filter((m: any) => m.divisionId === selectedDivisionId)
-  }, [matchups, selectedDivisionId])
+  const divisionMatchups = matchups?.filter((m: any) => m.divisionId === selectedDivisionId) || []
 
   // Set first match day as default for selected division
   const dayFromUrl = searchParams.get('day')
@@ -700,26 +697,10 @@ function DivisionStageManagementContent() {
 
   // Check if all matches are completed (for DUPR upload button)
   const allMatchesCompleted = useMemo(() => {
-    if (isIndyLeague) {
-      return (
-        divisionMatchups.length > 0 &&
-        divisionMatchups.every((m: any) => m.status === 'COMPLETED')
-      )
-    }
-
     const allMatches = [...rrMatches, ...playInMatches, ...eliminationMatches]
     const allCompletedMatches = [...completedRRMatches, ...completedPlayInMatches, ...completedPlayoffMatches]
     return allMatches.length > 0 && allMatches.length === allCompletedMatches.length
-  }, [
-    isIndyLeague,
-    divisionMatchups,
-    rrMatches,
-    playInMatches,
-    eliminationMatches,
-    completedRRMatches,
-    completedPlayInMatches,
-    completedPlayoffMatches,
-  ])
+  }, [rrMatches, playInMatches, eliminationMatches, completedRRMatches, completedPlayInMatches, completedPlayoffMatches])
 
   // Function to upload tournament results to DUPR
   const handleUploadToDupr = async () => {
@@ -735,15 +716,7 @@ function DivisionStageManagementContent() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          tournamentId,
-          ...(isIndyLeague
-            ? {
-                matchDayId: selectedMatchDayId || undefined,
-                divisionId: selectedDivisionId || undefined,
-              }
-            : {}),
-        }),
+        body: JSON.stringify({ tournamentId }),
       })
 
       const data = await response.json()
@@ -956,16 +929,7 @@ function DivisionStageManagementContent() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          tournamentId,
-          matchId,
-          ...(isIndyLeague
-            ? {
-                matchDayId: selectedMatchDayId || undefined,
-                divisionId: selectedDivisionId || undefined,
-              }
-            : {}),
-        }),
+        body: JSON.stringify({ tournamentId, matchId }),
       })
 
       const data = await response.json()
@@ -1680,21 +1644,15 @@ function DivisionStageManagementContent() {
                                       <div className="pt-2 border-t">
                                         {currentScores.homeScore !== null && currentScores.awayScore !== null ? (
                                           <div className="space-y-2">
-                                            {currentScores.homeScore === 0 && currentScores.awayScore === 0 ? (
-                                              <div className="text-center text-sm font-semibold text-gray-500">
-                                                No Score
-                                              </div>
-                                            ) : (
-                                              <div className="text-center text-sm font-medium flex items-center justify-center gap-2">
-                                                <span className={currentScores.homeScore > currentScores.awayScore ? 'text-green-600 font-bold' : currentScores.homeScore < currentScores.awayScore ? 'text-orange-600 font-bold' : ''}>
-                                                  {currentScores.homeScore}
-                                                </span>
-                                                <span className="text-gray-400">-</span>
-                                                <span className={currentScores.awayScore > currentScores.homeScore ? 'text-green-600 font-bold' : currentScores.awayScore < currentScores.homeScore ? 'text-orange-600 font-bold' : ''}>
-                                                  {currentScores.awayScore}
-                                                </span>
-                                              </div>
-                                            )}
+                                            <div className="text-center text-sm font-medium flex items-center justify-center gap-2">
+                                              <span className={currentScores.homeScore > currentScores.awayScore ? 'text-green-600 font-bold' : currentScores.homeScore < currentScores.awayScore ? 'text-orange-600 font-bold' : ''}>
+                                                {currentScores.homeScore}
+                                              </span>
+                                              <span className="text-gray-400">-</span>
+                                              <span className={currentScores.awayScore > currentScores.homeScore ? 'text-green-600 font-bold' : currentScores.awayScore < currentScores.homeScore ? 'text-orange-600 font-bold' : ''}>
+                                                {currentScores.awayScore}
+                                              </span>
+                                            </div>
                                             <Button
                                               size="sm"
                                               variant="outline"
@@ -2925,7 +2883,6 @@ function DivisionStageManagementContent() {
           existingScoreA={selectedIndyGame.game.homeScore ?? null}
           existingScoreB={selectedIndyGame.game.awayScore ?? null}
           isLoading={updateGameScore.isPending}
-          allowNoScore
         />
       )}
 

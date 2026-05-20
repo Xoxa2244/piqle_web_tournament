@@ -33,7 +33,6 @@ interface ScoreInputModalProps {
   existingScoreB?: number | null
   availableCourts?: Array<{ id: string; name: string }>
   selectedCourtId?: string | null
-  allowNoScore?: boolean
 }
 
 export default function ScoreInputModal({
@@ -54,14 +53,12 @@ export default function ScoreInputModal({
   existingScoreB,
   availableCourts = [],
   selectedCourtId = null,
-  allowNoScore = false,
 }: ScoreInputModalProps) {
   const [scoreA, setScoreA] = useState('')
   const [scoreB, setScoreB] = useState('')
   const [sendToDupr, setSendToDupr] = useState(false)
   const [showPlayersWithoutDupr, setShowPlayersWithoutDupr] = useState(false)
   const [courtId, setCourtId] = useState<string>('')
-  const [noScore, setNoScore] = useState(false)
 
   // Check if all players have DUPR rating
   const allPlayersHaveDupr = useMemo(() => {
@@ -114,17 +111,11 @@ export default function ScoreInputModal({
         setScoreB('')
       }
       setCourtId(selectedCourtId ?? '')
-      setNoScore(Boolean(allowNoScore && existingScoreA === 0 && existingScoreB === 0))
     }
-  }, [isOpen, allPlayersHaveDupr, existingScoreA, existingScoreB, selectedCourtId, allowNoScore])
+  }, [isOpen, allPlayersHaveDupr, existingScoreA, existingScoreB, selectedCourtId])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (noScore) {
-      onSubmit(0, 0, sendToDupr && allPlayersHaveDupr, courtId || null)
-      return
-    }
-
     const scoreAValue = parseInt(scoreA)
     const scoreBValue = parseInt(scoreB)
     
@@ -141,7 +132,6 @@ export default function ScoreInputModal({
     setScoreB('')
     setSendToDupr(false)
     setCourtId('')
-    setNoScore(false)
     setShowPlayersWithoutDupr(false)
     onClose()
   }
@@ -175,8 +165,7 @@ export default function ScoreInputModal({
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Team A score"
                   min="0"
-                  required={!noScore}
-                  disabled={noScore}
+                  required
                 />
           </div>
 
@@ -193,30 +182,9 @@ export default function ScoreInputModal({
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Team B score"
                   min="0"
-                  required={!noScore}
-                  disabled={noScore}
+                  required
                 />
           </div>
-
-          {allowNoScore && (
-            <div className="flex items-center space-x-2 pt-1">
-              <Checkbox
-                id="noScore"
-                checked={noScore}
-                onCheckedChange={(checked) => {
-                  const enabled = checked === true
-                  setNoScore(enabled)
-                  if (enabled) {
-                    setScoreA('')
-                    setScoreB('')
-                  }
-                }}
-              />
-              <label htmlFor="noScore" className="text-sm text-gray-700">
-                Mark as No score (game not played)
-              </label>
-            </div>
-          )}
 
           {availableCourts.length > 0 && (
             <div className="space-y-2">

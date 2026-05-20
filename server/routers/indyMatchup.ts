@@ -1146,16 +1146,11 @@ export const indyMatchupRouter = createTRPCRouter({
 
       await assertDivisionScoreAccess(ctx.prisma, ctx.session.user.id, game.matchup.divisionId)
 
-      // "No score" is represented by 0-0 for Indy games.
-      // Keep regular tie protection for all other equal scores.
-      const isNoScoreMarker = input.homeScore === 0 && input.awayScore === 0
-
       // Validate: no ties allowed
       if (
         input.homeScore !== null &&
         input.awayScore !== null &&
-        input.homeScore === input.awayScore &&
-        !isNoScoreMarker
+        input.homeScore === input.awayScore
       ) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
