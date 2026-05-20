@@ -288,27 +288,6 @@ export function SignalCard({ signal, clubId, onResolve }: Props) {
                 >
                   <ExternalLink className="w-3.5 h-3.5" /> Open in source
                 </button>
-                {/* Programming Health cross-link — only for signals that
-                    originate from the weekly scorecard backend (execution
-                    check failures + league gap detection). Per
-                    DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.2 §9.3:
-                    Action Center → Programming Health for context, where
-                    the operator can see the full weekly breakdown that
-                    surfaced this signal. */}
-                {(signal.source === 'scorecard_execution' ||
-                  signal.source === 'league_gap') && (
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 w-full px-3 py-1.5 text-[12px] text-left hover:bg-white/5"
-                    style={{ color: 'var(--t3)' }}
-                    onClick={() => {
-                      setMenuOpen(false)
-                      router.push(`/clubs/${clubId}/intelligence/scorecard`)
-                    }}
-                  >
-                    <ClipboardCheck className="w-3.5 h-3.5" /> View in Programming Health
-                  </button>
-                )}
               </div>
             )}
           </div>

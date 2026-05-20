@@ -714,193 +714,6 @@ export async function pilotSkillProgression(
   }
 }
 
-/**
- * Generator 9 — high-value reactivation candidates.
- *
- * Per DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.2 §3.7 + §7.4 — this is one
- * of the two insights spawned by the Customer Health Overview cleanup
- * (v1.3). The inline "Reactivation >" button is gone; the action now
- * lives here as a canonical insight, scoped to *high-value* churned
- * members, not the whole churned bucket.
- *
- * Selection:
- *   - Last CONFIRMED booking ≥ 45 days ago (churned)
- *   - membership_type matches VIP / Premium / Unlimited (Spec §7.2)
- *   - membership_status = 'Active' (the subscription is still live —
- *     they paused playing, not paid; reactivation is a value capture,
- *     not net-new acquisition)
- *   - First booking ≥ 365 days ago (long-tenure — there's a habit to
- *     restart, not a brand-new sign-up to nurture)
- *
- * Returns null when no qualifying members exist.
- */
-export async function pilotHighValueReactivation(
-  prisma: PrismaClient,
-  clubId: string,
-): Promise<BusinessInsight | null> {
-  const rows = (await prisma.$queryRawUnsafe(
-    `
-    WITH last_play AS (
-      SELECT b."userId", MAX(ps.date) AS last_played
-      FROM play_session_bookings b
-      JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = $1
-        AND b.status::text = 'CONFIRMED'
-      GROUP BY b."userId"
-    ),
-    first_play AS (
-      SELECT b."userId", MIN(ps.date) AS first_played
-      FROM play_session_bookings b
-      JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = $1
-        AND b.status::text = 'CONFIRMED'
-      GROUP BY b."userId"
-    )
-    SELECT lp."userId"
-    FROM last_play lp
-    JOIN first_play fp ON fp."userId" = lp."userId"
-    JOIN club_followers cf
-      ON cf.user_id::text = lp."userId"::text
-     AND cf.club_id = $1
-    JOIN users u ON u.id::text = lp."userId"::text
-    WHERE lp.last_played <= NOW() - INTERVAL '45 days'
-      AND (
-        u.membership_type ILIKE '%VIP%'
-        OR u.membership_type ILIKE '%Premium%'
-        OR u.membership_type ILIKE '%Unlimited%'
-      )
-      AND u.membership_status = 'Active'
-      AND fp.first_played <= NOW() - INTERVAL '365 days'
-    `,
-    clubId,
-  )) as Array<{ userId: string }>
-
-  if (!rows || rows.length === 0) return null
-  const total = rows.length
-
-  return {
-    dedupeKey: 'high_value_reactivation',
-    category: 'retention',
-    severity: total >= 5 ? 'high' : 'medium',
-
-    analysis:
-      `${total} long-tenure Premium / VIP / Unlimited member${total > 1 ? 's are' : ' is'} ` +
-      `45+ days inactive — the subscription is still active, but the habit lapsed.`,
-
-    metrics: {
-      highValueChurned: total,
-    },
-
-    insight:
-      'High-value churn beats acquisition on ROI by a wide margin — the ' +
-      'subscription is paid, the brand familiarity is there, and the ' +
-      'switching cost is low. Reactivating these members costs an email; ' +
-      'replacing them costs a quarter of CAC each.',
-
-    action: {
-      primary: {
-        type: 'create_campaign',
-        label: 'Launch targeted winback for high-value lapsed members',
-        templateKey: 'high_value_winback',
-      },
-      secondary: [
-        {
-          type: 'create_cohort',
-          label: 'High-value lapsed cohort',
-          cohortRules: [
-            { field: 'recency', op: 'gt', value: 45 },
-            { field: 'valueTier', op: 'eq', value: 'high' },
-          ],
-        },
-      ],
-    },
-  }
-}
-
-/**
- * Generator 10 — dormant activation (registered, never played).
- *
- * Per DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.2 §3.7 + §7.4 — second
- * canonical insight that replaces the legacy "Create Activation Cohort >"
- * inline button on Customer Health Overview.
- *
- * Selection:
- *   - Member of the club (entry in club_followers)
- *   - No CONFIRMED booking ever
- *   - Followed the club ≥ 1 day ago (give them a calendar day's grace)
- *   - membership_status = 'Active' (paying, just not showing up — perfect
- *     activation target; cancelled members go through a different funnel)
- *
- * Returns null when no qualifying members exist.
- */
-export async function pilotDormantActivation(
-  prisma: PrismaClient,
-  clubId: string,
-): Promise<BusinessInsight | null> {
-  const rows = (await prisma.$queryRawUnsafe(
-    `
-    WITH played AS (
-      SELECT DISTINCT b."userId"
-      FROM play_session_bookings b
-      JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = $1
-        AND b.status::text = 'CONFIRMED'
-    )
-    SELECT cf.user_id AS "userId"
-    FROM club_followers cf
-    JOIN users u ON u.id::text = cf.user_id::text
-    LEFT JOIN played p ON p."userId" = cf.user_id::text
-    WHERE cf.club_id = $1
-      AND p."userId" IS NULL
-      AND cf.created_at <= NOW() - INTERVAL '1 day'
-      AND u.membership_status = 'Active'
-    `,
-    clubId,
-  )) as Array<{ userId: string }>
-
-  if (!rows || rows.length === 0) return null
-  const total = rows.length
-
-  return {
-    dedupeKey: 'dormant_activation',
-    category: 'growth',
-    severity: total >= 10 ? 'high' : 'medium',
-
-    analysis:
-      `${total} active member${total > 1 ? 's' : ''} signed up but ` +
-      `${total > 1 ? "haven't" : "hasn't"} booked a single session yet.`,
-
-    metrics: {
-      dormantMembers: total,
-    },
-
-    insight:
-      'Registration without a first visit is a measurable leak in the ' +
-      'onboarding funnel — these members convert at roughly half the rate ' +
-      'of those who book within their first two weeks. The window for ' +
-      'a low-touch nudge stays open for about 30 days; after that you ' +
-      'need a stronger intervention.',
-
-    action: {
-      primary: {
-        type: 'create_cohort',
-        label: 'Create "Never played" activation cohort',
-        cohortRules: [
-          { field: 'frequency', op: 'eq', value: 0 },
-          { field: 'joinedDaysAgo', op: 'gte', value: 1 },
-        ],
-      },
-      secondary: [
-        {
-          type: 'create_campaign',
-          label: 'Launch first-visit activation sequence',
-          templateKey: 'first_visit_activation',
-        },
-      ],
-    },
-  }
-}
-
 // ─── Run + persist (the upsert layer) ───────────────────────────────────
 
 /**
@@ -933,19 +746,12 @@ export async function runBusinessInsights(
   // null and use a stable dedupeKey scoped per-club (clubId is included
   // separately in the partial unique index).
   //
-  // 10 canon-migrated generators (8 from Step 9 + 2 from v1.3 cleanup —
-  // Customer Health Overview is now metrics-only, so the inline
-  // "Reactivation >" / "Create Activation Cohort >" buttons were
-  // re-homed as canonical insights here: pilotHighValueReactivation
-  // (targeted, not whole churned bucket) and pilotDormantActivation
-  // (registered, never played).
-  //
-  // Remaining legacy functions in lib/ai/insights-engine.ts:
-  // vipMembersAtRisk (per-member signals move to Action Center — Step 18;
-  // aggregation already covered by getVipAtRiskPercent in Step 7) and
-  // suspendedWinback (per-membership signals move to Action Center —
-  // Step 16). The legacy file continues to serve those two via
-  // getClubInsights until Action Center ships.
+  // 8 canon-migrated generators. Remaining legacy functions in
+  // lib/ai/insights-engine.ts: vipMembersAtRisk (per-member signals move
+  // to Action Center — Step 18; aggregation already covered by
+  // getVipAtRiskPercent in Step 7) and suspendedWinback (per-membership
+  // signals move to Action Center — Step 16). The legacy file continues
+  // to serve those two via getClubInsights until Action Center ships.
   const generators: Array<
     (p: PrismaClient, c: string) => Promise<BusinessInsight | null>
   > = [
@@ -957,8 +763,6 @@ export async function runBusinessInsights(
     pilotDayOfWeekGap,
     pilotGuestPassUpsell,
     pilotSkillProgression,
-    pilotHighValueReactivation,
-    pilotDormantActivation,
   ]
 
   const produced: BusinessInsight[] = []

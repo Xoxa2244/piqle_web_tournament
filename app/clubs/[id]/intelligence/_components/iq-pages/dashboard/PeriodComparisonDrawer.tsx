@@ -127,27 +127,18 @@ export function PeriodComparisonDrawer({
     <AnimatePresence>
       {open && metric && (
         <>
-          {/* Backdrop — opaque enough that Dashboard content behind the drawer
-              doesn't bleed through. Per DASHBOARD_AND_ACTION_CENTER_SPEC.md
-              v1.2 UI fix from rgdev preview review. */}
+          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
             className="fixed inset-0 z-40"
-            style={{
-              background: 'rgba(0,0,0,0.6)',
-              backdropFilter: 'blur(4px)',
-              WebkitBackdropFilter: 'blur(4px)',
-            }}
+            style={{ background: 'rgba(0,0,0,0.45)' }}
             onClick={onClose}
           />
 
-          {/* Drawer — solid page background under the card layer so
-              transparent CSS theme tokens (--card-bg often has alpha)
-              don't reveal Dashboard content. Backdrop above adds blur
-              for the rest of the viewport. */}
+          {/* Drawer */}
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
@@ -155,10 +146,9 @@ export function PeriodComparisonDrawer({
             transition={{ type: 'spring', damping: 28, stiffness: 220 }}
             className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-[560px] overflow-y-auto"
             style={{
-              backgroundColor: 'var(--page-bg)',
-              backgroundImage: 'linear-gradient(var(--card-bg), var(--card-bg))',
+              background: 'var(--card-bg)',
               borderLeft: '1px solid var(--card-border)',
-              boxShadow: '-8px 0 24px rgba(0,0,0,0.35)',
+              boxShadow: '-8px 0 24px rgba(0,0,0,0.2)',
             }}
           >
             {/* Header */}

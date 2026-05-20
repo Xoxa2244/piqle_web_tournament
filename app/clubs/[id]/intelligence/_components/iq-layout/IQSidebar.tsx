@@ -9,7 +9,7 @@ import {
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
   Menu, X, CreditCard, Plug, Activity, Bot, Mail, Rocket, Sparkles,
-  FileBarChart, Inbox,
+  Trophy, FileBarChart, Inbox,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -53,14 +53,8 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "" },
       { icon: CalendarDays, label: "Schedule", path: "/sessions" },
-      // Leagues removed from sidebar per DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.3
-      // — leagues are a form of programming (Tier 2), not a top-level section.
-      // LeaguesIQ is now reachable as a drawer inside Programming IQ.
-      // Continuity / gap detection is surfaced via Action Center signals.
-      // Scorecard renamed to "Programming Health" — symmetric with
-      // Customer Health, easier to grasp than the spreadsheet metaphor.
-      // URL stays /scorecard for backwards compatibility.
-      { icon: FileBarChart, label: "Programming Health", path: "/scorecard" },
+      { icon: Trophy, label: "Leagues", path: "/leagues" },
+      { icon: FileBarChart, label: "Scorecard", path: "/scorecard" },
     ],
   },
   {

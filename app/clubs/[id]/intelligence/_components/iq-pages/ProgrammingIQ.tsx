@@ -25,9 +25,7 @@ import {
   Brain, Calendar, Sparkles, Wand2, ChevronLeft, ChevronRight,
   ShieldAlert, TrendingUp, AlertTriangle,
   Loader2, Info, Clock, Trash2, X, SlidersHorizontal, CheckCircle2, ChevronDown, HelpCircle,
-  Trophy,
 } from 'lucide-react'
-import { LeaguesDrawer } from '../leagues-drawer'
 import {
   useProgrammingScheduleGrid,
   useGenerateProgrammingSchedule,
@@ -124,9 +122,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
   const strategyPresets = useMemo(() => getProgrammingStrategyPresets(), [])
   const isDemo = useIsDemo()
   const [weekStart, setWeekStart] = useState<string>(() => toLocalISODate(mondayOf(new Date())))
-  // Leagues drawer state — Spec v1.3 §8.3. Leagues moved out of the
-  // sidebar; the read-only league catalogue is now reachable here.
-  const [leaguesDrawerOpen, setLeaguesDrawerOpen] = useState(false)
   const [regeneratePrompt, setRegeneratePrompt] = useState('')
   const [selectedPresetIds, setSelectedPresetIds] = useState<ProgrammingStrategyPresetId[]>([])
   const [prioritizeRequest, setPrioritizeRequest] = useState(false)
@@ -472,19 +467,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
               style={{ color: 'var(--t4)', border: '1px solid var(--card-border)' }}
             >
               This week
-            </button>
-
-            {/* Leagues view — opens the read-only LeaguesIQ catalogue as
-                a drawer. Replaces the standalone /leagues sidebar entry
-                that was removed per Spec v1.3 §8.3. */}
-            <button
-              onClick={() => setLeaguesDrawerOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs rounded-lg hover:bg-black/5"
-              style={{ color: 'var(--t4)', border: '1px solid var(--card-border)' }}
-              title="Open the league catalogue (Tier 2)"
-            >
-              <Trophy className="w-3.5 h-3.5" />
-              Leagues
             </button>
 
             <button
@@ -878,15 +860,6 @@ export function ProgrammingIQ({ clubId }: ProgrammingIQProps) {
           reviewMutating={acceptLiveReviewMutation.isPending || declineLiveReviewMutation.isPending}
         />
       )}
-
-      {/* [6] Leagues drawer ──────────────────────────────────────────
-          Mounted but only rendered when open via internal AnimatePresence.
-          Replaces the standalone /leagues route per Spec v1.3 §8.3. */}
-      <LeaguesDrawer
-        open={leaguesDrawerOpen}
-        onClose={() => setLeaguesDrawerOpen(false)}
-        clubId={clubId}
-      />
     </div>
   )
 }
