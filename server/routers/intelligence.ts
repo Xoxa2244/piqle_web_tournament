@@ -2067,6 +2067,9 @@ export const intelligenceRouter = createTRPCRouter({
       const weekEnd = new Date(weekStart.getTime() + 7 * 86400000)
 
       // Pull sessions for the window with attendance counts inline.
+      // `pricePerSlot` carries the per-player price set when the session
+      // was published. Multiplied by `confirmed_count` it gives the
+      // gross revenue per session — see Step 12 (Sprint 9 partial).
       const sessionRows = await ctx.prisma.$queryRaw<Array<{
         id: string
         title: string | null
@@ -2074,6 +2077,7 @@ export const intelligenceRouter = createTRPCRouter({
         category: string | null
         max_players: number | null
         registered_count: number | null
+        price_per_slot: number | null
         date: Date
         confirmed_count: number
       }>>`
@@ -2082,8 +2086,9 @@ export const intelligenceRouter = createTRPCRouter({
           ps.title,
           ps.format::text AS format,
           ps.category,
-          ps."maxPlayers" AS max_players,
+          ps."maxPlayers"    AS max_players,
           ps.registered_count,
+          ps."pricePerSlot"  AS price_per_slot,
           ps.date,
           (
             SELECT COUNT(*)::int FROM play_session_bookings psb
@@ -2130,6 +2135,23 @@ export const intelligenceRouter = createTRPCRouter({
           if (peak == null || util > peak) peak = util
         }
         return peak
+      }
+
+      // Sprint 9 Step 12 — revenue per tier (cents).
+      // Returns null when zero qualifying sessions OR all sessions in
+      // the tier have null `pricePerSlot`, so the UI can render "—"
+      // instead of misleading $0.
+      const sumRevenueCents = (rows: typeof sessionRows): number | null => {
+        let anyPriced = false
+        let total = 0
+        for (const r of rows) {
+          const price = r.price_per_slot
+          if (price == null) continue
+          anyPriced = true
+          const reg = r.confirmed_count ?? r.registered_count ?? 0
+          total += Math.round(Number(price) * 100) * reg
+        }
+        return anyPriced ? total : null
       }
 
       // T1: Open Play / Classes / Pickleball 101 sub-buckets within T1_CORE.
@@ -2282,6 +2304,59 @@ export const intelligenceRouter = createTRPCRouter({
         if (!topT3 || util > topT3.fillRate) topT3 = { title: s.title || 'Session', fillRate: util }
       }
 
+      // ─── Sprint 9 Step 13 — Non-member % for T4 social. ──────────────
+      // Computed only from CONFIRMED bookings whose user has a known
+      // membership state. "Non-member" = membership_status != 'Active'
+      // OR membership_type matches guest / drop-in / pay-per-play.
+      // Returns null when zero qualifying bookings so the UI shows "—".
+      let t4NonMemberPercent: number | null = null
+      const t4Ids = buckets.T4_SOCIAL.sessions.map(s => s.id)
+      if (t4Ids.length > 0) {
+        const t4Counts = (await ctx.prisma.$queryRawUnsafe(
+          `
+          SELECT
+            COUNT(*) FILTER (WHERE
+              (u.membership_status IS NULL
+                OR u.membership_status != 'Active'
+                OR u.membership_type ILIKE '%guest%'
+                OR u.membership_type ILIKE '%pay per%'
+                OR u.membership_type ILIKE '%drop%in%'
+                OR u.membership_type ILIKE '%trial%')
+            )::int AS "nonMember",
+            COUNT(*)::int AS "total"
+          FROM play_session_bookings b
+          JOIN users u ON u.id = b."userId"
+          WHERE b."sessionId" = ANY($1::text[])
+            AND b.status::text = 'CONFIRMED'
+          `,
+          t4Ids,
+        )) as Array<{ nonMember: number; total: number }>
+        const total = Number(t4Counts[0]?.total ?? 0)
+        const nonMember = Number(t4Counts[0]?.nonMember ?? 0)
+        if (total > 0) {
+          t4NonMemberPercent = Math.round((nonMember / total) * 100)
+        }
+      }
+
+      // ─── Sprint 9 Step 14 — Waitlist count for T2 leagues. ───────────
+      // Sourced from `play_session_waitlist` (CR-synced where the connector
+      // populates it; 0 in clubs without sync — that's correct rather
+      // than misleading). Counts WAITING entries on T2 sessions this week.
+      let t2WaitlistedPlayers = 0
+      const t2Ids = buckets.T2_LEAGUE.sessions.map(s => s.id)
+      if (t2Ids.length > 0) {
+        const t2Waitlist = (await ctx.prisma.$queryRawUnsafe(
+          `
+          SELECT COUNT(*)::int AS "count"
+          FROM play_session_waitlist
+          WHERE "sessionId" = ANY($1::text[])
+            AND status::text = 'WAITING'
+          `,
+          t2Ids,
+        )) as Array<{ count: number }>
+        t2WaitlistedPlayers = Number(t2Waitlist[0]?.count ?? 0)
+      }
+
       return {
         weekStart: weekStart.toISOString(),
         weekEnd: weekEnd.toISOString(),
@@ -2306,6 +2381,7 @@ export const intelligenceRouter = createTRPCRouter({
               : null,
             sampleConvertedTiers,
           },
+          revenueCents: sumRevenueCents(buckets.T1_CORE.sessions),
         },
         tier2: {
           activeLeagues,
@@ -2315,21 +2391,22 @@ export const intelligenceRouter = createTRPCRouter({
           totalCapacity: t2Stats.totalCap,
           fillRate: t2Stats.fillRate,
           continuouslyAvailable: leaguesContinuous,
+          waitlistedPlayers: t2WaitlistedPlayers,
+          revenueCents: sumRevenueCents(buckets.T2_LEAGUE.sessions),
         },
         tier3: {
           eventsRun: buckets.T3_SIGNATURE.sessions.length,
           totalParticipants: sumPlayers(buckets.T3_SIGNATURE.sessions),
           fillRate: sumFillRate(buckets.T3_SIGNATURE.sessions).fillRate,
           topPerformingEvent: topT3,
+          revenueCents: sumRevenueCents(buckets.T3_SIGNATURE.sessions),
         },
         tier4: {
           eventsRun: buckets.T4_SOCIAL.sessions.length,
           totalParticipants: sumPlayers(buckets.T4_SOCIAL.sessions),
           fillRate: sumFillRate(buckets.T4_SOCIAL.sessions).fillRate,
-          // Non-member % requires guest-pass attendance source we don't
-          // currently snapshot per session — return null until P5 cost
-          // model lands the missing field.
-          nonMemberPercent: null,
+          nonMemberPercent: t4NonMemberPercent,
+          revenueCents: sumRevenueCents(buckets.T4_SOCIAL.sessions),
         },
         tier5: {
           held: buckets.T5_TOURNAMENT.sessions.length > 0,
@@ -2337,12 +2414,14 @@ export const intelligenceRouter = createTRPCRouter({
           fillRate: t5Stats.fillRate,
           // profitability — stretch goal in Sprint 9 once EventCost lands.
           profitabilityCents: null,
+          revenueCents: sumRevenueCents(buckets.T5_TOURNAMENT.sessions),
         },
         tier6: {
           specialtyClinics: buckets.T6_PREMIUM.sessions.length,
           participants: sumPlayers(buckets.T6_PREMIUM.sessions),
           fillRate: sumFillRate(buckets.T6_PREMIUM.sessions).fillRate,
           proClinicHeld: t6ProClinicHeld,
+          revenueCents: sumRevenueCents(buckets.T6_PREMIUM.sessions),
         },
         tier7: {
           youthSessions: buckets.T7_YOUTH.sessions.length,
@@ -2351,12 +2430,14 @@ export const intelligenceRouter = createTRPCRouter({
           // (Sprint 9 P5.3). Until then we return null so the UI prints
           // "—" instead of a misleading 0.
           schoolPartnersActive: null,
+          revenueCents: sumRevenueCents(buckets.T7_YOUTH.sessions),
         },
         kpiSummary: {
           totalSessions: allSessions.length,
           uniqueParticipants: totalUniqueParticipants,
           newPlayersThisWeek,
           courtUtilizationPercent: overallFill.fillRate,
+          revenueCents: sumRevenueCents(allSessions),
         },
         executionCheck: {
           coreProgrammingDaily,

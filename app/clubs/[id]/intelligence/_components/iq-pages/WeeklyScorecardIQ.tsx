@@ -99,13 +99,18 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
       ) : (
         <>
           {/* KPI Summary */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <KpiTile label="Total sessions" value={String(data.kpiSummary.totalSessions)} />
             <KpiTile label="Unique participants" value={String(data.kpiSummary.uniqueParticipants)} />
             <KpiTile label="New players" value={String(data.kpiSummary.newPlayersThisWeek)} accent="green" />
             <KpiTile
               label="Court utilization"
               value={data.kpiSummary.courtUtilizationPercent != null ? `${data.kpiSummary.courtUtilizationPercent}%` : '—'}
+            />
+            <KpiTile
+              label="Revenue (week)"
+              value={formatRevenue(data.kpiSummary.revenueCents)}
+              accent="green"
             />
           </div>
 
@@ -129,6 +134,7 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             icon={<div className="w-2.5 h-2.5 rounded-full" style={{ background: '#EF4444' }} />}
             tint="red"
             subtitle="Daily Open Play, Classes & Clinics, Pickleball 101"
+            footer={<RevenueRow value={data.tier1.revenueCents} />}
           >
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <SubBlock title="Open Play">
@@ -161,14 +167,20 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             icon={<div className="w-2.5 h-2.5 rounded-full" style={{ background: '#F97316' }} />}
             tint="orange"
             subtitle="Always active, never between sessions"
+            footer={<RevenueRow value={data.tier2.revenueCents} />}
           >
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <Stat label="Active families" value={String(data.tier2.activeLeagues)} />
               <Stat label="Sessions this week" value={String(data.tier2.sessionsThisWeek)} />
               <Stat label="Total participants" value={String(data.tier2.totalParticipants)} />
               <Stat
                 label="Fill rate"
                 value={data.tier2.fillRate != null ? `${data.tier2.fillRate}%` : '—'}
+              />
+              <Stat
+                label="Waitlisted"
+                value={String(data.tier2.waitlistedPlayers)}
+                accent={data.tier2.waitlistedPlayers > 0}
               />
             </div>
             {data.tier2.gapCriticalCount > 0 && (
@@ -193,6 +205,7 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             icon={<div className="w-2.5 h-2.5 rounded-full" style={{ background: '#EAB308' }} />}
             tint="yellow"
             subtitle="1–2 per week — Round Robins, Moneyball, DUPR events, K/Q court"
+            footer={<RevenueRow value={data.tier3.revenueCents} />}
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <Stat label="Events run" value={String(data.tier3.eventsRun)} />
@@ -217,6 +230,7 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             icon={<div className="w-2.5 h-2.5 rounded-full" style={{ background: '#3B82F6' }} />}
             tint="blue"
             subtitle="1–2 per month — Cosmic, Trivia, themed, charity"
+            footer={<RevenueRow value={data.tier4.revenueCents} />}
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <Stat label="Events run" value={String(data.tier4.eventsRun)} />
@@ -224,7 +238,15 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
               <Stat
                 label="Non-member %"
                 value={data.tier4.nonMemberPercent != null ? `${data.tier4.nonMemberPercent}%` : '—'}
-                hint="Requires guest-pass attendance source — coming in Sprint 9"
+                hint={
+                  data.tier4.nonMemberPercent != null
+                    ? 'Share of CONFIRMED bookings made by guests / drop-ins / trial members'
+                    : 'No T4 bookings in this week'
+                }
+                accent={
+                  data.tier4.nonMemberPercent != null &&
+                  data.tier4.nonMemberPercent >= 25
+                }
               />
             </div>
           </SectionCard>
@@ -235,6 +257,7 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             icon={<div className="w-2.5 h-2.5 rounded-full" style={{ background: '#A855F7' }} />}
             tint="purple"
             subtitle="Monthly local + 4 system-wide per year"
+            footer={<RevenueRow value={data.tier5.revenueCents} />}
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <Stat label="Held this week" value={data.tier5.held ? 'Yes' : 'No'} />
@@ -253,6 +276,7 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             icon={<div className="w-2.5 h-2.5 rounded-full" style={{ background: '#10B981' }} />}
             tint="green"
             subtitle="Monthly specialty clinics + quarterly visiting pros"
+            footer={<RevenueRow value={data.tier6.revenueCents} />}
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <Stat label="Specialty clinics" value={String(data.tier6.specialtyClinics)} />
@@ -267,6 +291,7 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             icon={<div className="w-2.5 h-2.5 rounded-full" style={{ background: '#6B7280' }} />}
             tint="grey"
             subtitle="Intro / Development / Academy"
+            footer={<RevenueRow value={data.tier7.revenueCents} />}
           >
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <Stat label="Youth sessions" value={String(data.tier7.youthSessions)} />
@@ -306,12 +331,14 @@ function SectionCard({
   subtitle,
   tint,
   children,
+  footer,
 }: {
   title: string
   icon: React.ReactNode
   subtitle?: string
   tint: 'red' | 'orange' | 'yellow' | 'blue' | 'purple' | 'green' | 'grey' | 'emerald'
   children: React.ReactNode
+  footer?: React.ReactNode
 }) {
   const tintMap: Record<string, string> = {
     red: '#EF4444',
@@ -341,6 +368,14 @@ function SectionCard({
         <p className="text-xs mb-3" style={{ color: 'var(--t4)' }}>{subtitle}</p>
       )}
       {children}
+      {footer && (
+        <div
+          className="mt-4 pt-3"
+          style={{ borderTop: '1px dashed var(--card-border)' }}
+        >
+          {footer}
+        </div>
+      )}
     </div>
   )
 }
@@ -397,6 +432,37 @@ function Stat({
       <div style={{ fontSize: 16, fontWeight: 700, color: accent ? '#10B981' : 'var(--heading)' }}>{value}</div>
     </div>
   )
+}
+
+// Sprint 9 Step 12 — revenue footer rendered at the bottom of each
+// tier section. `value` is cents; null prints "—" so we never show
+// $0.00 when sessions have no price data.
+function RevenueRow({ value }: { value: number | null }) {
+  return (
+    <div className="flex items-center justify-between text-[11px]">
+      <span style={{ color: 'var(--t4)' }} className="uppercase tracking-wider font-semibold">
+        Revenue (week)
+      </span>
+      <span
+        style={{
+          color: value != null && value > 0 ? '#10B981' : 'var(--t3)',
+          fontWeight: 700,
+          fontSize: 13,
+        }}
+      >
+        {formatRevenue(value)}
+      </span>
+    </div>
+  )
+}
+
+function formatRevenue(cents: number | null | undefined): string {
+  if (cents == null) return '—'
+  const dollars = cents / 100
+  if (Math.abs(dollars) >= 1000) {
+    return `$${Math.round(dollars).toLocaleString('en-US')}`
+  }
+  return `$${dollars.toFixed(0)}`
 }
 
 function ExecRow({ label, value }: { label: string; value: boolean }) {
