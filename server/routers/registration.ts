@@ -242,9 +242,17 @@ export const registrationRouter = createTRPCRouter({
           entryFeeCents,
           currency: tournament.currency ?? 'usd',
           registrationOpen: isRegistrationOpen(tournament),
-          payoutsActive:
-            Boolean(tournament.user?.organizerStripeAccountId) &&
-            Boolean(tournament.user?.stripeOnboardingComplete),
+          // payoutsActive controls the "Pay" button in the invite UI.
+          // Two payment models are supported:
+          //   1. Organizer Stripe Connect → money goes to organizer's
+          //      bank via transfer_data.destination + application_fee_amount
+          //   2. Platform-collected → no Connect on organizer; payment
+          //      lands on Piqle's platform Stripe account directly
+          // Both flows are wired in the checkout-session route; this
+          // gate just needs to confirm a fee is set. The destination
+          // decision happens in the checkout route based on whether
+          // organizer has Connect set up.
+          payoutsActive: entryFeeCents > 0,
         },
         player: player
           ? {
@@ -455,9 +463,11 @@ export const registrationRouter = createTRPCRouter({
         paymentTiming: getEffectivePaymentTiming(
           (tournament.paymentTiming ?? 'PAY_IN_15_MIN') as 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE'
         ),
-        payoutsActive:
-          Boolean(user?.organizerStripeAccountId) &&
-          Boolean(user?.stripeOnboardingComplete),
+        // Same semantics as in getInviteRegistration above — payment can
+        // flow either via Connect destination (if organizer has it) or
+        // directly to platform Stripe (if not). The checkout route
+        // decides at runtime.
+        payoutsActive: (tournament.entryFeeCents ?? 0) > 0,
         divisions: tournament.divisions,
       }
     }),
