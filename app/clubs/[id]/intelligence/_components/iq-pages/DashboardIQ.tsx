@@ -1147,41 +1147,33 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               </div>
             ))}
           </div>
-          {/* Churned members banner — links Health to Reactivation */}
+          {/* Lifecycle counts as pure metrics.
+              Per DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.2 §3.4: Customer Health
+              Overview shows metrics only — no inline action buttons. The
+              actionable side ("Reactivation campaign", "Activation cohort")
+              now lives in Business Insights below via canonical insights
+              (highValueReactivation, dormantActivation in
+              lib/ai/business-insights-engine.ts). */}
           {(() => {
             const churnedCount = healthData?.summary?.churned || 0;
-            if (!churnedCount) return null;
-            return (
-              <div className="mt-3 flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}>
-                <span className="text-[11px]" style={{ color: "var(--t3)" }}>
-                  <span style={{ color: "#F97316", fontWeight: 700 }}>{churnedCount}</span> churned (45+ days inactive)
-                </span>
-                <button
-                  onClick={() => router.push(`/clubs/${clubId}/intelligence/reactivation`)}
-                  className="text-[11px] flex items-center gap-1 transition-opacity hover:opacity-80"
-                  style={{ color: "#F97316", fontWeight: 600 }}
-                >
-                  Reactivation <ChevronRight className="w-3 h-3" />
-                </button>
-              </div>
-            );
-          })()}
-          {/* Dormant members banner — never played */}
-          {(() => {
             const dormantCount = (healthData?.summary as any)?.dormant || 0;
-            if (!dormantCount) return null;
+            if (!churnedCount && !dormantCount) return null;
             return (
-              <div className="mt-2 flex items-center justify-between px-3 py-2 rounded-lg" style={{ background: "rgba(107,114,128,0.08)", border: "1px solid rgba(107,114,128,0.15)" }}>
-                <span className="text-[11px]" style={{ color: "var(--t3)" }}>
-                  <span style={{ color: "#6B7280", fontWeight: 700 }}>{dormantCount}</span> dormant (never played)
-                </span>
-                <button
-                  onClick={() => router.push(`/clubs/${clubId}/intelligence/cohorts`)}
-                  className="text-[11px] flex items-center gap-1 transition-opacity hover:opacity-80"
-                  style={{ color: "#6B7280", fontWeight: 600 }}
-                >
-                  Create Activation Cohort <ChevronRight className="w-3 h-3" />
-                </button>
+              <div className="mt-3 space-y-2">
+                {churnedCount > 0 && (
+                  <div className="flex items-center px-3 py-2 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}>
+                    <span className="text-[11px]" style={{ color: "var(--t3)" }}>
+                      <span style={{ color: "#F97316", fontWeight: 700 }}>{churnedCount}</span> churned (45+ days inactive)
+                    </span>
+                  </div>
+                )}
+                {dormantCount > 0 && (
+                  <div className="flex items-center px-3 py-2 rounded-lg" style={{ background: "rgba(107,114,128,0.08)", border: "1px solid rgba(107,114,128,0.15)" }}>
+                    <span className="text-[11px]" style={{ color: "var(--t3)" }}>
+                      <span style={{ color: "#6B7280", fontWeight: 700 }}>{dormantCount}</span> dormant (never played)
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })()}

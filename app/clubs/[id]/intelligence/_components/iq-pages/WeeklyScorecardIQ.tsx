@@ -9,7 +9,8 @@
  */
 
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, FileBarChart, CheckCircle2, XCircle, AlertCircle, Trophy, Users, GraduationCap, Sparkles } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ChevronLeft, ChevronRight, FileBarChart, CheckCircle2, XCircle, AlertCircle, Trophy, Users, GraduationCap, Sparkles, Inbox } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 
 interface Props {
@@ -38,6 +39,10 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
   const lastCompletedMonday = new Date(today.getTime() - 7 * 86400000)
   const [weekStart, setWeekStart] = useState(isoWeekStartFromDate(lastCompletedMonday))
 
+  // router needed for the Action Center cross-links on Execution Check
+  // failures + league gap alerts (Spec v1.2 §9.3).
+  const router = useRouter()
+
   const query = trpc.intelligence.getWeeklyScorecard.useQuery(
     { clubId, weekStart },
     { enabled: !!clubId, staleTime: 5 * 60_000 },
@@ -62,9 +67,13 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             <FileBarChart className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--heading)' }}>Weekly Programming Scorecard</h1>
+            {/* Title renamed Scorecard → Programming Health per
+                DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.2 §5.1 — symmetric with
+                Customer Health, plainer than the spreadsheet metaphor. URL
+                stays /scorecard for backwards compatibility. */}
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--heading)' }}>Programming Health</h1>
             <p style={{ fontSize: 13, color: 'var(--t3)' }}>
-              IPC Programming OS rollup — one report per location per week
+              Weekly rollup of IPC Programming OS — one report per location per week
             </p>
           </div>
         </div>
@@ -95,7 +104,7 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
       </div>
 
       {query.isLoading || !data ? (
-        <div className="text-sm" style={{ color: 'var(--t3)' }}>Loading scorecard…</div>
+        <div className="text-sm" style={{ color: 'var(--t3)' }}>Loading Programming Health…</div>
       ) : (
         <>
           {/* KPI Summary */}
@@ -121,10 +130,33 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             tint="emerald"
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <ExecRow label="Core programming delivered daily?" value={data.executionCheck.coreProgrammingDaily} />
-              <ExecRow label="Leagues continuous (no gaps)?" value={data.executionCheck.leaguesContinuous} />
-              <ExecRow label="At least 1 signature event run?" value={data.executionCheck.signatureEventRun} />
-              <ExecRow label="Monthly social/tournament cadence on track?" value={data.executionCheck.socialTournamentOnTrack} />
+              {/* ruleKey values match what the operational signals engine
+                  emits for scorecard_execution failures (Step 17). When a
+                  check is "No", the badge deep-links into Action Center. */}
+              <ExecRow
+                label="Core programming delivered daily?"
+                value={data.executionCheck.coreProgrammingDaily}
+                ruleKey="core_programming_daily"
+                clubId={clubId}
+              />
+              <ExecRow
+                label="Leagues continuous (no gaps)?"
+                value={data.executionCheck.leaguesContinuous}
+                ruleKey="leagues_continuous"
+                clubId={clubId}
+              />
+              <ExecRow
+                label="At least 1 signature event run?"
+                value={data.executionCheck.signatureEventRun}
+                ruleKey="signature_event_run"
+                clubId={clubId}
+              />
+              <ExecRow
+                label="Monthly social/tournament cadence on track?"
+                value={data.executionCheck.socialTournamentOnTrack}
+                ruleKey="social_tournament_on_track"
+                clubId={clubId}
+              />
             </div>
           </SectionCard>
 
@@ -185,16 +217,40 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             </div>
             {data.tier2.gapCriticalCount > 0 && (
               <div
-                className="mt-3 rounded-lg p-3 text-sm flex gap-2"
+                className="mt-3 rounded-lg p-3 text-sm flex gap-2 items-start"
                 style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', color: 'var(--t2)' }}
               >
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-red-500" />
-                <span>
-                  <strong style={{ color: 'var(--heading)' }}>{data.tier2.gapCriticalCount}</strong>{' '}
-                  league {data.tier2.gapCriticalCount === 1 ? 'family is' : 'families are'} in a critical gap
-                  (no upcoming session, last past 14-60d ago). The League Gap detector will draft an
-                  open-enrollment campaign suggestion in the agent queue.
-                </span>
+                <div className="flex-1 flex items-start justify-between gap-3 flex-wrap">
+                  <span>
+                    <strong style={{ color: 'var(--heading)' }}>{data.tier2.gapCriticalCount}</strong>{' '}
+                    league {data.tier2.gapCriticalCount === 1 ? 'family is' : 'families are'} in a critical gap
+                    (no upcoming session, last past 14-60d ago). The League Gap detector will draft an
+                    open-enrollment campaign suggestion in the agent queue.
+                  </span>
+                  {/* Cross-link to the matching league_gap signals in
+                      Action Center — Spec v1.2 §9.3. Each affected
+                      family has its own signal; this jumps the operator
+                      straight to that section of the feed. */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      router.push(
+                        `/clubs/${clubId}/intelligence/action-center?source=league_gap`,
+                      )
+                    }
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] transition-opacity hover:opacity-80 shrink-0"
+                    style={{
+                      background: 'rgba(168,85,247,0.12)',
+                      color: '#A855F7',
+                      border: '1px solid rgba(168,85,247,0.25)',
+                      fontWeight: 600,
+                    }}
+                    title="Open the matching league_gap signals in Action Center"
+                  >
+                    <Inbox className="w-3 h-3" /> Open in Action Center
+                  </button>
+                </div>
               </div>
             )}
           </SectionCard>
@@ -259,14 +315,13 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             subtitle="Monthly local + 4 system-wide per year"
             footer={<RevenueRow value={data.tier5.revenueCents} />}
           >
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {/* Profit / profitability hidden per DASHBOARD_AND_ACTION_CENTER_SPEC.md
+                v1.3 §5.4 — no cost data source, so we don't render a placeholder.
+                Backend still returns profitabilityCents (currently null) but
+                frontend deliberately skips the tile until a cost model lands. */}
+            <div className="grid grid-cols-2 gap-3">
               <Stat label="Held this week" value={data.tier5.held ? 'Yes' : 'No'} />
               <Stat label="Total players" value={String(data.tier5.totalPlayers)} />
-              <Stat
-                label="Profit"
-                value={data.tier5.profitabilityCents != null ? `$${(data.tier5.profitabilityCents / 100).toFixed(0)}` : '—'}
-                hint="Requires cost model — coming in Sprint 9 P5.2"
-              />
             </div>
           </SectionCard>
 
@@ -293,14 +348,13 @@ export function WeeklyScorecardIQ({ clubId }: Props) {
             subtitle="Intro / Development / Academy"
             footer={<RevenueRow value={data.tier7.revenueCents} />}
           >
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {/* School partners hidden per DASHBOARD_AND_ACTION_CENTER_SPEC.md
+                v1.3 §5.4 — partnership data lives outside CR (no source), so
+                we don't render a placeholder. Backend keeps schoolPartnersActive
+                as null until a partnership entity / manual entry lands. */}
+            <div className="grid grid-cols-2 gap-3">
               <Stat label="Youth sessions" value={String(data.tier7.youthSessions)} />
               <Stat label="Participants" value={String(data.tier7.participants)} />
-              <Stat
-                label="School partners"
-                value={data.tier7.schoolPartnersActive != null ? String(data.tier7.schoolPartnersActive) : '—'}
-                hint="Requires SchoolPartnership entity — coming in Sprint 9 P5.3"
-              />
             </div>
           </SectionCard>
         </>
@@ -465,7 +519,33 @@ function formatRevenue(cents: number | null | undefined): string {
   return `$${dollars.toFixed(0)}`
 }
 
-function ExecRow({ label, value }: { label: string; value: boolean }) {
+function ExecRow({
+  label,
+  value,
+  ruleKey,
+  clubId,
+}: {
+  label: string
+  value: boolean
+  ruleKey?: string
+  clubId?: string
+}) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const demoParam = searchParams?.get('demo') === 'true' ? '&demo=true' : ''
+
+  // Per DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.2 §9.3 — failed checks
+  // get a cross-link to Action Center, where the matching operational
+  // signal will be waiting (sources scorecard_execution / league_gap,
+  // emitted by lib/ai/operational-signals-engine.ts).
+  //
+  // The link carries ruleKey as a query param so Action Center can
+  // (eventually) auto-filter the feed. Today the page accepts the
+  // param silently and shows the unfiltered feed — that's fine; the
+  // signal sits near the top thanks to severity sorting, and the
+  // URL convention is in place for when the filter ships.
+  const showCrossLink = value === false && ruleKey && clubId
+
   return (
     <div
       className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm"
@@ -476,15 +556,37 @@ function ExecRow({ label, value }: { label: string; value: boolean }) {
       }}
     >
       <span>{label}</span>
-      {value ? (
-        <span className="inline-flex items-center gap-1 text-emerald-500" style={{ fontWeight: 700 }}>
-          <CheckCircle2 className="w-4 h-4" /> Yes
-        </span>
-      ) : (
-        <span className="inline-flex items-center gap-1 text-red-500" style={{ fontWeight: 700 }}>
-          <XCircle className="w-4 h-4" /> No
-        </span>
-      )}
+      <div className="flex items-center gap-2 shrink-0">
+        {value ? (
+          <span className="inline-flex items-center gap-1 text-emerald-500" style={{ fontWeight: 700 }}>
+            <CheckCircle2 className="w-4 h-4" /> Yes
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-red-500" style={{ fontWeight: 700 }}>
+            <XCircle className="w-4 h-4" /> No
+          </span>
+        )}
+        {showCrossLink && (
+          <button
+            type="button"
+            onClick={() =>
+              router.push(
+                `/clubs/${clubId}/intelligence/action-center?ruleKey=${ruleKey}${demoParam}`,
+              )
+            }
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] transition-opacity hover:opacity-80"
+            style={{
+              background: 'rgba(168,85,247,0.12)',
+              color: '#A855F7',
+              border: '1px solid rgba(168,85,247,0.25)',
+              fontWeight: 600,
+            }}
+            title="Open the matching signal in Action Center"
+          >
+            <Inbox className="w-3 h-3" /> Open in Action Center
+          </button>
+        )}
+      </div>
     </div>
   )
 }
