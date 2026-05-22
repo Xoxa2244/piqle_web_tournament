@@ -85,6 +85,11 @@ const inviteRegistrationInputSchema = z.object({
     .trim()
     .min(3, 'Enter last name and first name')
     .refine((value) => value.split(/\s+/).length >= 2, 'Enter last name and first name'),
+  phoneNumber: z
+    .string()
+    .trim()
+    .min(2, 'Enter phone number')
+    .regex(/^\+?\d+$/, 'Phone number can contain only a leading + and digits'),
   gender: z.enum(['M', 'F']),
   duprRating: z.number().min(0).max(8),
   desiredLevel: z.enum(INVITE_REGISTRATION_LEVELS),
@@ -283,6 +288,7 @@ export const registrationRouter = createTRPCRouter({
     .input(inviteRegistrationInputSchema)
     .mutation(async ({ ctx, input }) => {
       const normalizedFullName = input.fullName.trim().replace(/\s+/g, ' ')
+      const normalizedPhoneNumber = input.phoneNumber.trim()
       const roundedDuprRating = Math.round(input.duprRating * 100) / 100
 
       return ctx.prisma.$transaction(async (tx) => {
@@ -329,6 +335,7 @@ export const registrationRouter = createTRPCRouter({
         const registrationComment = {
           source: 'invite_registration' as const,
           fullName: normalizedFullName,
+          phoneNumber: normalizedPhoneNumber,
           desiredLevel: input.desiredLevel,
           clubName: input.clubName,
           duprRating: roundedDuprRating,
@@ -363,6 +370,7 @@ export const registrationRouter = createTRPCRouter({
               entityId: existingPlayer.id,
               payload: {
                 fullName: normalizedFullName,
+                phoneNumber: normalizedPhoneNumber,
                 gender: input.gender,
                 duprRating: roundedDuprRating,
                 desiredLevel: input.desiredLevel,
@@ -408,6 +416,7 @@ export const registrationRouter = createTRPCRouter({
             entityId: player.id,
             payload: {
               fullName: normalizedFullName,
+              phoneNumber: normalizedPhoneNumber,
               gender: input.gender,
               duprRating: roundedDuprRating,
               desiredLevel: input.desiredLevel,

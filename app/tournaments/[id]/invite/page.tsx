@@ -36,6 +36,7 @@ export default function TournamentInviteRegistrationPage() {
   const utils = trpc.useUtils()
 
   const [fullName, setFullName] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
   const [gender, setGender] = useState<GenderValue>('')
   const [duprRating, setDuprRating] = useState('')
   const [desiredLevel, setDesiredLevel] = useState('')
@@ -201,6 +202,10 @@ export default function TournamentInviteRegistrationPage() {
       toast({ description: 'Enter last name and first name', variant: 'destructive' })
       return
     }
+    if (!/^\+?\d+$/.test(phoneNumber.trim())) {
+      toast({ description: 'Enter phone number using only + and digits', variant: 'destructive' })
+      return
+    }
     if (!gender) {
       toast({ description: 'Select gender', variant: 'destructive' })
       return
@@ -218,6 +223,7 @@ export default function TournamentInviteRegistrationPage() {
       await submitMutation.mutateAsync({
         tournamentId,
         fullName: fullName.trim(),
+        phoneNumber: phoneNumber.trim(),
         gender,
         duprRating: parsedDuprRating,
         desiredLevel: desiredLevel as (typeof INVITE_REGISTRATION_LEVELS)[number],
@@ -363,6 +369,21 @@ export default function TournamentInviteRegistrationPage() {
                     value={fullName}
                     onChange={(event) => setFullName(event.target.value)}
                     placeholder="Smith John"
+                    disabled={submitMutation.isPending || !tournament.registrationOpen}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number *
+                  </label>
+                  <Input
+                    id="phoneNumber"
+                    type="tel"
+                    inputMode="tel"
+                    value={phoneNumber}
+                    onChange={(event) => setPhoneNumber(event.target.value)}
+                    placeholder="+13175551234"
                     disabled={submitMutation.isPending || !tournament.registrationOpen}
                   />
                 </div>

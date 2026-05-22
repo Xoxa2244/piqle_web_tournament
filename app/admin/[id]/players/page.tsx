@@ -174,6 +174,7 @@ export default function PlayersPage() {
           if (!details) return false
           return [
             details.fullName,
+            details.phoneNumber ?? '',
             details.desiredLevel,
             details.clubName,
             String(details.duprRating),
@@ -573,10 +574,14 @@ export default function PlayersPage() {
                         {inviteDetails && isExpanded && (
                           <tr className="border-b bg-blue-50/40">
                             <td colSpan={12} className="p-4">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 text-sm">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 text-sm">
                                 <div>
                                   <div className="text-xs font-medium uppercase text-gray-500">Name</div>
                                   <div className="text-gray-900">{inviteDetails.fullName}</div>
+                                </div>
+                                <div>
+                                  <div className="text-xs font-medium uppercase text-gray-500">Phone</div>
+                                  <div className="text-gray-900">{inviteDetails.phoneNumber || '—'}</div>
                                 </div>
                                 <div>
                                   <div className="text-xs font-medium uppercase text-gray-500">Gender</div>
