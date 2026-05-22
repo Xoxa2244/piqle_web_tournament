@@ -1111,8 +1111,8 @@ function NewTournamentPageInner() {
       ? toCents(parsedEntryFee)
       : 0
   const organizerBreakdown = calculateOrganizerNetCents(entryFeeCents)
-  const requiresPayoutsSetup =
-    entryFeeCents > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
+  const showPayoutsSetupWarning =
+    entryFeeCents > 0 && !payoutStatus.payoutsActive && !payoutStatus.isLoading
   const isSeries =
     ENABLE_RECURRING_DRAFTS && seriesDraftForm.enabled && Number(seriesDraftForm.count) > 1
   const isCreating =
@@ -1149,11 +1149,6 @@ function NewTournamentPageInner() {
       setStepIndex(2)
       return
     }
-    if (requiresPayoutsSetup) {
-      toast({ description: 'Connect payouts with Stripe before creating a paid tournament.', variant: 'destructive' })
-      return
-    }
-
     const normalizedTimezone = normalizeKnownTimezone(formData.timezone) || undefined
     const payload = {
       title: formData.title,
@@ -2160,7 +2155,7 @@ function NewTournamentPageInner() {
                       <div>Payouts: Active via Stripe</div>
                     ) : (
                       <div className="space-y-2">
-                        <div>To receive payouts for paid tournaments, please connect your bank details via Stripe.</div>
+                        <div>Paid registrations can be collected by Piqle without Stripe Connect. Connect payouts if the organizer should receive automatic bank payouts.</div>
                         <Button type="button" variant="outline" onClick={handleConnectStripe}>
                           Connect payouts with Stripe
                         </Button>
@@ -2335,7 +2330,6 @@ function NewTournamentPageInner() {
                     disabled={
                       !createArmed ||
                       isCreating ||
-                      requiresPayoutsSetup ||
                       !structureDraft
                     }
                   >
@@ -2351,9 +2345,11 @@ function NewTournamentPageInner() {
               </div>
             </div>
 
-            {stepIndex === 3 && requiresPayoutsSetup ? (
+            {stepIndex === 3 && showPayoutsSetupWarning ? (
               <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                <div className="mb-2">Paid tournaments require payouts to be connected via Stripe.</div>
+                <div className="mb-2">
+                  Without Stripe Connect, paid registrations will be collected on the Piqle platform Stripe account.
+                </div>
                 <Button type="button" variant="outline" onClick={handleConnectStripe}>
                   Connect payouts with Stripe
                 </Button>

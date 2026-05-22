@@ -393,8 +393,8 @@ export default function TournamentDetailPage() {
       ? toCents(parsedEntryFeeForForm)
       : 0
   const organizerBreakdown = calculateOrganizerNetCents(entryFeeCentsForForm)
-  const requiresPayoutsSetup =
-    entryFeeCentsForForm > 0 && (!payoutStatus.payoutsActive || payoutStatus.isLoading)
+  const showPayoutsSetupWarning =
+    entryFeeCentsForForm > 0 && !payoutStatus.payoutsActive && !payoutStatus.isLoading
   
   // Get pending access requests (only for owner)
   const { data: accessRequests, refetch: refetchAccessRequests } = trpc.tournamentAccess.listRequests.useQuery(
@@ -538,11 +538,6 @@ export default function TournamentDetailPage() {
       toast({ description: 'Please fill in required fields', variant: 'destructive' })
       return
     }
-    if (requiresPayoutsSetup) {
-      toast({ description: 'Connect payouts with Stripe before setting a paid entry fee.', variant: 'destructive' })
-      return
-    }
-
     // Validate dates
     const startDate = new Date(tournamentForm.startDate)
     const endDate = new Date(tournamentForm.endDate)
@@ -1429,7 +1424,7 @@ export default function TournamentDetailPage() {
                   ) : (
                     <div className="space-y-2">
                       <div>
-                        To receive payouts for paid tournaments, please connect your bank details via Stripe.
+                        Paid registrations can be collected by Piqle without Stripe Connect. Connect payouts if the organizer should receive automatic bank payouts.
                       </div>
                       <Button type="button" variant="outline" onClick={handleConnectStripe}>
                         Connect payouts with Stripe
@@ -1600,17 +1595,17 @@ export default function TournamentDetailPage() {
               </Button>
               <Button
                 onClick={handleTournamentSubmit}
-                disabled={updateTournament.isPending || requiresPayoutsSetup}
+                disabled={updateTournament.isPending}
                 className="px-6 py-3 text-base bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-colors font-semibold"
               >
                 {updateTournament.isPending ? 'Updating...' : 'Update Tournament'}
               </Button>
             </div>
-            {requiresPayoutsSetup && (
+            {showPayoutsSetupWarning && (
               <div className="px-8 pb-8">
                 <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                   <div className="mb-2">
-                    Paid entry fees require payouts to be connected via Stripe.
+                    Without Stripe Connect, paid registrations will be collected on the Piqle platform Stripe account.
                   </div>
                   <Button type="button" variant="outline" onClick={handleConnectStripe}>
                     Connect payouts with Stripe
