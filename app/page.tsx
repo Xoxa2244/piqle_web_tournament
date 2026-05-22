@@ -696,7 +696,7 @@ function HomePageContent() {
                           : status === 'waitlisted'
                           ? 'Leave Waitlist'
                           : status === 'registered'
-                          ? 'View Registration'
+                          ? 'Cancel Registration'
                           : 'Join Tournament'
 
                       return (
@@ -713,7 +713,7 @@ function HomePageContent() {
                           )}
                           <Button
                             className={`w-full ${label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
-                            variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
+                            variant={label === 'Join Tournament' ? undefined : status === 'active' || status === 'registered' ? 'destructive' : 'default'}
                             disabled={status === 'registered' ? false : !registrationOpen}
                             onClick={(e) => {
                               e.stopPropagation()
@@ -721,7 +721,7 @@ function HomePageContent() {
                                 router.push(`/auth/signin?callbackUrl=${encodeURIComponent(registrationHref)}`)
                                 return
                               }
-                              if (status === 'active') {
+                              if (status === 'active' || status === 'registered') {
                                 setCancelModalTournament({
                                   tournamentId: tournament.id,
                                   isPaid: isPaidTournament,

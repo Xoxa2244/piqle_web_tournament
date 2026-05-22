@@ -980,6 +980,8 @@ export const registrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Player not found' })
       }
 
+      const hasInviteDetails = hasInviteRegistrationDetails(player.registrationComment)
+
       const teamPlayer = await ctx.prisma.teamPlayer.findFirst({
         where: {
           playerId: player.id,
@@ -998,35 +1000,59 @@ export const registrationRouter = createTRPCRouter({
         },
       })
 
-      if (!teamPlayer) {
+      if (!teamPlayer && !hasInviteDetails) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Registration not found' })
       }
 
-      await ctx.prisma.teamPlayer.delete({ where: { id: teamPlayer.id } })
+      await ctx.prisma.$transaction(async (tx) => {
+        if (hasInviteDetails) {
+          await tx.auditLog.create({
+            data: {
+              actorUserId: ctx.session.user.id,
+              tournamentId: input.tournamentId,
+              action: 'PLAYER_CANCEL_REGISTRATION',
+              entityType: 'Player',
+              entityId: player.id,
+              payload: {
+                teamId: teamPlayer?.teamId ?? null,
+                divisionId: teamPlayer?.team.divisionId ?? null,
+                registrationType: 'invite',
+              },
+            },
+          })
 
-      await ctx.prisma.payment.updateMany({
-        where: {
-          tournamentId: input.tournamentId,
-          playerId: player.id,
-          status: 'PENDING',
-        },
-        data: {
-          status: 'CANCELED',
-        },
-      })
+          await tx.player.delete({ where: { id: player.id } })
+          return
+        }
 
-      await ctx.prisma.auditLog.create({
-        data: {
-          actorUserId: ctx.session.user.id,
-          tournamentId: input.tournamentId,
-          action: 'PLAYER_CANCEL_REGISTRATION',
-          entityType: 'TeamPlayer',
-          entityId: teamPlayer.id,
-          payload: {
-            teamId: teamPlayer.teamId,
-            divisionId: teamPlayer.team.divisionId,
+        if (!teamPlayer) return
+
+        await tx.teamPlayer.delete({ where: { id: teamPlayer.id } })
+
+        await tx.payment.updateMany({
+          where: {
+            tournamentId: input.tournamentId,
+            playerId: player.id,
+            status: 'PENDING',
           },
-        },
+          data: {
+            status: 'CANCELED',
+          },
+        })
+
+        await tx.auditLog.create({
+          data: {
+            actorUserId: ctx.session.user.id,
+            tournamentId: input.tournamentId,
+            action: 'PLAYER_CANCEL_REGISTRATION',
+            entityType: 'TeamPlayer',
+            entityId: teamPlayer.id,
+            payload: {
+              teamId: teamPlayer.teamId,
+              divisionId: teamPlayer.team.divisionId,
+            },
+          },
+        })
       })
 
       return { success: true }

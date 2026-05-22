@@ -384,7 +384,7 @@ export default function TournamentModal({
                     : status === 'waitlisted'
                       ? 'Leave Waitlist'
                       : status === 'registered'
-                        ? 'View Registration'
+                        ? 'Cancel Registration'
                       : 'Join Tournament'
                 return (
                   <div className="flex flex-wrap gap-2">
@@ -401,7 +401,11 @@ export default function TournamentModal({
                     <Button
                       className={label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
                       variant={
-                        label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'
+                        label === 'Join Tournament'
+                          ? undefined
+                          : status === 'active' || status === 'registered'
+                            ? 'destructive'
+                            : 'default'
                       }
                       disabled={status === 'registered' ? false : !registrationOpen}
                       onClick={(e) => {
@@ -412,7 +416,7 @@ export default function TournamentModal({
                           )
                           return
                         }
-                        if (status === 'active') {
+                        if (status === 'active' || status === 'registered') {
                           setShowCancelRegistrationModal(true)
                           return
                         }
