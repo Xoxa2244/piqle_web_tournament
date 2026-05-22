@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getStripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
+import { isStripeConnectPayoutsActive } from '@/lib/stripeConnect'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -28,7 +29,7 @@ export async function GET() {
 
   const stripe = getStripe()
   const account = await stripe.accounts.retrieve(user.organizerStripeAccountId)
-  const payoutsActive = Boolean(account.details_submitted && account.charges_enabled)
+  const payoutsActive = isStripeConnectPayoutsActive(account)
 
   if (payoutsActive !== user.stripeOnboardingComplete) {
     await prisma.user.update({

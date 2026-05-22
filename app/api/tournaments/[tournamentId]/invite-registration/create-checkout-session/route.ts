@@ -6,6 +6,7 @@ import { getStripe } from '@/lib/stripe'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
 import { hasInviteRegistrationDetails } from '@/lib/inviteRegistrationGate'
+import { getActiveStripeDestinationAccountId } from '@/lib/stripeConnect'
 
 const resolveAppBaseUrl = (request: Request) => {
   const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
@@ -211,7 +212,10 @@ export async function POST(
 
     const stripe = getStripe()
     const appBaseUrl = resolveAppBaseUrl(request)
-    const destinationAccountId = tournament.user?.organizerStripeAccountId
+    const destinationAccountId = await getActiveStripeDestinationAccountId(
+      stripe,
+      tournament.user?.organizerStripeAccountId
+    )
     const checkoutSession = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSessionFromMobileToken } from '@/lib/mobileAuth'
 import { prisma } from '@/lib/prisma'
 import { getStripe } from '@/lib/stripe'
+import { isStripeConnectPayoutsActive } from '@/lib/stripeConnect'
 
 const getBearerToken = (req: NextRequest) => {
   const header = req.headers.get('authorization') || req.headers.get('Authorization')
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
 
   const stripe = getStripe()
   const account = await stripe.accounts.retrieve(user.organizerStripeAccountId)
-  const payoutsActive = Boolean(account.details_submitted && account.charges_enabled)
+  const payoutsActive = isStripeConnectPayoutsActive(account)
 
   if (payoutsActive !== user.stripeOnboardingComplete) {
     await prisma.user.update({

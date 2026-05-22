@@ -1,4 +1,5 @@
 import { getStripe } from '@/lib/stripe'
+import { getActiveStripeDestinationAccountId } from '@/lib/stripeConnect'
 
 const toCents = (value: unknown) => Math.round(Number(value ?? 0) * 100)
 
@@ -50,6 +51,7 @@ export const processDueAutoPaymentsForTournament = async (
   } catch {
     return summary
   }
+  const destinationAccountCache = new Map<string, string | null>()
 
   const duePayments = await prisma.payment.findMany({
     where: {
@@ -122,11 +124,16 @@ export const processDueAutoPaymentsForTournament = async (
       continue
     }
 
-    const organizerAccountId =
-      payment.tournament.user?.organizerStripeAccountId &&
-      payment.tournament.user?.stripeOnboardingComplete
-        ? payment.tournament.user.organizerStripeAccountId
-        : null
+    const organizerStripeAccountId = payment.tournament.user?.organizerStripeAccountId ?? null
+    if (organizerStripeAccountId && !destinationAccountCache.has(organizerStripeAccountId)) {
+      destinationAccountCache.set(
+        organizerStripeAccountId,
+        await getActiveStripeDestinationAccountId(stripe, organizerStripeAccountId)
+      )
+    }
+    const organizerAccountId = organizerStripeAccountId
+      ? destinationAccountCache.get(organizerStripeAccountId) ?? null
+      : null
     const platformFeeCents = Math.max(
       0,
       Math.min(amountCents, toCents(payment.platformFeeAmount))

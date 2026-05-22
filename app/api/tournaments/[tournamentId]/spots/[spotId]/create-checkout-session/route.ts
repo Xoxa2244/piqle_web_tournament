@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
 import { getStripe } from '@/lib/stripe'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
+import { getActiveStripeDestinationAccountId } from '@/lib/stripeConnect'
 import {
   INVITE_REGISTRATION_TOURNAMENT_COOKIE,
   hasInviteRegistrationDetails,
@@ -110,8 +111,6 @@ export async function POST(
     if (entryFeeCents <= 0) {
       return NextResponse.json({ error: 'Entry fee is not set' }, { status: 400 })
     }
-
-    const destinationAccountId = tournament.user?.organizerStripeAccountId
 
     const player = await prisma.player.findUnique({
       where: {
@@ -277,6 +276,10 @@ export async function POST(
 
     const stripe = getStripe()
     const appBaseUrl = resolveAppBaseUrl(request)
+    const destinationAccountId = await getActiveStripeDestinationAccountId(
+      stripe,
+      tournament.user?.organizerStripeAccountId
+    )
     const sessionParams = await stripe.checkout.sessions.create({
       mode: 'payment',
       payment_method_types: ['card'],
