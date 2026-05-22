@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { getStripe } from '@/lib/stripe'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
+import { hasInviteRegistrationDetails } from '@/lib/inviteRegistrationGate'
 
 const resolveAppBaseUrl = (request: Request) => {
   const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
@@ -106,6 +107,13 @@ export async function POST(
 
     if (!player) {
       return NextResponse.json({ error: 'Register before paying' }, { status: 400 })
+    }
+
+    if (!hasInviteRegistrationDetails(player.registrationComment)) {
+      return NextResponse.json(
+        { error: 'Complete the invite registration form before paying' },
+        { status: 400 }
+      )
     }
 
     if (player.isPaid) {

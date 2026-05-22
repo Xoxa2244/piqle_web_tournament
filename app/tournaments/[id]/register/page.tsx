@@ -256,6 +256,11 @@ export default function TournamentRegistrationPage() {
         utils.registration.getSeatMap.invalidate({ tournamentId }),
       ])
       if (isPaidTournament) {
+        if (result?.isPaid) {
+          toast({ description: 'You are registered. Payment is already complete.', variant: 'success' })
+          return
+        }
+
         if (!ENABLE_DEFERRED_PAYMENTS) {
           if (!payoutsActive) {
             toast({ description: 'You are registered. Payments are not enabled yet; contact the organizer.', variant: 'success' })

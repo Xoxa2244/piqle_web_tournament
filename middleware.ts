@@ -1,4 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
+import {
+  INVITE_REGISTRATION_TOURNAMENT_COOKIE,
+  addInviteRegistrationTournamentId,
+} from "@/lib/inviteRegistrationGate"
 
 export async function middleware(req: NextRequest) {
   // Basic Auth for dev is disabled for now.
@@ -30,8 +34,24 @@ export async function middleware(req: NextRequest) {
     console.log('[Middleware] All cookies:', allCookies.map(c => ({ name: c.name, hasValue: !!c.value })))
   }
 
-  // Если есть старая cookie, удаляем её
   const response = NextResponse.next()
+
+  const inviteMatch = req.nextUrl.pathname.match(/^\/tournaments\/([^/]+)\/invite\/?$/)
+  if (inviteMatch) {
+    const tournamentId = decodeURIComponent(inviteMatch[1])
+    const currentValue = req.cookies.get(INVITE_REGISTRATION_TOURNAMENT_COOKIE)?.value
+    response.cookies.set({
+      name: INVITE_REGISTRATION_TOURNAMENT_COOKIE,
+      value: addInviteRegistrationTournamentId(currentValue, tournamentId),
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 30 * 24 * 60 * 60,
+      path: '/',
+    })
+  }
+
+  // Если есть старая cookie, удаляем её
   if (oldCookie && oldCookieName) {
     response.cookies.delete(oldCookieName)
   }

@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
+import { parse as parseCookie } from 'cookie'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { getStripe } from '@/lib/stripe'
 import { calculateOrganizerNetCents, fromCents } from '@/lib/payment'
 import { ENABLE_DEFERRED_PAYMENTS } from '@/lib/features'
+import {
+  INVITE_REGISTRATION_TOURNAMENT_COOKIE,
+  hasInviteRegistrationDetails,
+  isInviteRegistrationRequiredForTournament,
+  parseInviteRegistrationTournamentIds,
+} from '@/lib/inviteRegistrationGate'
 
 const resolveAppBaseUrl = (request: Request) => {
   const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
@@ -46,6 +53,13 @@ const parseSpotId = (spotId: string) => {
   const slotIndex = Number(slotIndexRaw)
   if (!teamId || !Number.isInteger(slotIndex)) return null
   return { teamId, slotIndex }
+}
+
+const getInviteRegistrationTournamentIdsFromRequest = (request: Request) => {
+  const cookieHeader = request.headers.get('cookie')
+  if (!cookieHeader) return new Set<string>()
+  const cookies = parseCookie(cookieHeader)
+  return new Set(parseInviteRegistrationTournamentIds(cookies[INVITE_REGISTRATION_TOURNAMENT_COOKIE]))
 }
 
 const getPaymentDueAt = (tournament: {
@@ -121,6 +135,19 @@ export async function POST(
 
     if (!player) {
       return NextResponse.json({ error: 'Join a slot before paying' }, { status: 400 })
+    }
+
+    if (
+      isInviteRegistrationRequiredForTournament(
+        tournament.id,
+        getInviteRegistrationTournamentIdsFromRequest(request)
+      ) &&
+      !hasInviteRegistrationDetails(player.registrationComment)
+    ) {
+      return NextResponse.json(
+        { error: 'Complete the invite registration form before paying' },
+        { status: 403 }
+      )
     }
 
     const matchingTeamPlayer = player.teamPlayers.find(
