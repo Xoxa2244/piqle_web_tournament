@@ -3064,7 +3064,7 @@ export const intelligenceRouter = createTRPCRouter({
       const spendRows = await ctx.prisma.$queryRawUnsafe<SpendRow[]>(
         `SELECT COALESCE(SUM(cost_usd), 0)::float AS total
          FROM ai_usage_logs
-         WHERE club_id = $1 AND created_at >= $2`,
+         WHERE club_id::text = $1 AND created_at >= $2`,
         input.clubId,
         periodStart,
       )
@@ -6295,6 +6295,11 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
+      // Column-side cast (club_id::text = $1) instead of param cast
+      // ($1::uuid) — Prisma binds raw-query params as text and the
+      // text→uuid implicit cast trips up the Supabase pooler on prod.
+      // Column-cast keeps the comparison text=text and always works.
+      // See parity with getInactivePlayersCount (uses plain `$1`).
       const rows = (await ctx.prisma.$queryRawUnsafe(
         `
         SELECT id,
@@ -6311,7 +6316,7 @@ export const intelligenceRouter = createTRPCRouter({
                resolved_at  AS "resolvedAt",
                snooze_until AS "snoozeUntil"
         FROM business_insight
-        WHERE club_id = $1::uuid
+        WHERE club_id::text = $1
           AND status IN ('active', 'snoozed')
         ORDER BY
           CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
@@ -6348,7 +6353,7 @@ export const intelligenceRouter = createTRPCRouter({
           `
           UPDATE business_insight
           SET status = 'snoozed', snooze_until = $1
-          WHERE id = $2 AND club_id = $3::uuid
+          WHERE id = $2 AND club_id::text = $3
           `,
           new Date(input.snoozeUntil),
           input.insightId,
@@ -6362,7 +6367,7 @@ export const intelligenceRouter = createTRPCRouter({
         `
         UPDATE business_insight
         SET status = $1, resolved_at = $2
-        WHERE id = $3 AND club_id = $4::uuid
+        WHERE id = $3 AND club_id::text = $4
         `,
         newStatus,
         new Date(),
@@ -7210,13 +7215,19 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
+      // Column-side casts (cf.club_id::text = $1) instead of param
+      // casts ($1::uuid) — Prisma binds raw params as text and the
+      // text→uuid implicit cast trips up Supabase's transaction-mode
+      // pooler. Column-cast keeps the comparison text=text. Matches
+      // the pattern used by other passing endpoints (e.g.,
+      // getInactivePlayersCount).
       const rows = (await ctx.prisma.$queryRawUnsafe(
         `
         WITH vip_members AS (
           SELECT u.id AS user_id
           FROM users u
           JOIN club_followers cf
-            ON cf.user_id::text = u.id::text AND cf.club_id = $1::uuid
+            ON cf.user_id::text = u.id::text AND cf.club_id::text = $1
           WHERE
             LOWER(COALESCE(u.membership_type, '')) LIKE '%vip%' OR
             LOWER(COALESCE(u.membership_type, '')) LIKE '%premium%' OR
@@ -7225,7 +7236,7 @@ export const intelligenceRouter = createTRPCRouter({
         latest_health AS (
           SELECT DISTINCT ON (user_id) user_id, risk_level
           FROM member_health_snapshots
-          WHERE club_id = $1::uuid
+          WHERE club_id::text = $1
           ORDER BY user_id, date DESC
         )
         SELECT

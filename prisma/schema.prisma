@@ -1768,7 +1768,7 @@ model UserPlayPreference {
 
 model AIRecommendationLog {
   id          String               @id @default(uuid())
-  clubId      String
+  clubId      String               @db.Uuid
   club        Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
   userId      String
   user        User                 @relation("AIRecommendationLogs", fields: [userId], references: [id])
