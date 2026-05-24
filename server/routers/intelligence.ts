@@ -4346,7 +4346,7 @@ export const intelligenceRouter = createTRPCRouter({
                 health_score,
                 risk_level
               FROM member_health_snapshots
-              WHERE club_id = $1
+              WHERE club_id::text = $1
               ORDER BY user_id, date DESC
             )
             SELECT risk_level                         AS "riskLevel",
@@ -4442,17 +4442,19 @@ export const intelligenceRouter = createTRPCRouter({
           }
 
           // Dormant = followers with 0 confirmed bookings ever at this club.
-          // Cheap single COUNT — no per-member iteration.
+          // Cheap single COUNT — no per-member iteration. Column-cast to
+          // text on both sides (text=text) — avoids the Prisma+Supavisor
+          // text=uuid parameter-binding bug.
           const dormantRows = (await ctx.prisma.$queryRawUnsafe(
             `
             SELECT COUNT(*)::int AS "count"
             FROM club_followers cf
-            WHERE cf.club_id = $1::uuid
+            WHERE cf.club_id::text = $1
               AND NOT EXISTS (
                 SELECT 1
                 FROM play_session_bookings b
                 JOIN play_sessions ps ON ps.id = b."sessionId"
-                WHERE ps."clubId" = $1::uuid
+                WHERE ps."clubId"::text = $1
                   AND b."userId"::text = cf.user_id::text
                   AND b.status::text = 'CONFIRMED'
               )
@@ -4469,7 +4471,7 @@ export const intelligenceRouter = createTRPCRouter({
               SELECT b."userId", MAX(ps.date) AS "lastPlayed"
               FROM play_session_bookings b
               JOIN play_sessions ps ON ps.id = b."sessionId"
-              WHERE ps."clubId" = $1::uuid
+              WHERE ps."clubId"::text = $1
                 AND b.status::text = 'CONFIRMED'
               GROUP BY b."userId"
             )
@@ -4483,7 +4485,7 @@ export const intelligenceRouter = createTRPCRouter({
 
           // Total = followers (matches full-path semantics, includes dormant).
           const totalRows = (await ctx.prisma.$queryRawUnsafe(
-            `SELECT COUNT(*)::int AS "count" FROM club_followers WHERE club_id = $1::uuid`,
+            `SELECT COUNT(*)::int AS "count" FROM club_followers WHERE club_id::text = $1`,
             input.clubId,
           )) as Array<{ count: number }>
           const total = Number(totalRows[0]?.count ?? 0)
