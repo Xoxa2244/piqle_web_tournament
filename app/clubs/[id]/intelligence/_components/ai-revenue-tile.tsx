@@ -38,17 +38,14 @@ function formatUsd(value: number): string {
 export function AIRevenueTile({ clubId }: Props) {
   const { data, isLoading } = useAIRevenueAttribution(clubId, 30)
 
-  if (isLoading) {
-    return (
-      <div className="rounded-2xl border border-border/60 bg-card p-6 animate-pulse">
-        <div className="h-6 w-48 bg-muted/40 rounded mb-4" />
-        <div className="h-12 w-32 bg-muted/40 rounded mb-3" />
-        <div className="h-4 w-64 bg-muted/40 rounded" />
-      </div>
-    )
-  }
-
-  if (!data) return null
+  // No data yet (loading or errored) → render nothing. Previously this
+  // returned a tall animate-pulse skeleton, which stayed visible for
+  // ~10s during the react-query retry storm on getAIRevenueAttribution
+  // (currently failing on prod due to stale Prisma client cache —
+  // separate fix). A giant grey block above Customer Health was the
+  // dominant "loading" artifact on the dashboard. Render nothing now;
+  // the tile pops in when (and if) data arrives.
+  if (isLoading || !data) return null
 
   const revenueLabel = formatUsd(data.attributedRevenueUsd || 0)
   const hasData = (data.attributedBookingsCount || 0) > 0
