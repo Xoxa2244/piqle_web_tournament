@@ -24,10 +24,7 @@ import { CourtReserveConnector } from "./shared/CourtReserveConnector";
 import { AIRevenueTile } from "../ai-revenue-tile";
 // IntroFunnelTile (Pickleball 101 funnel) removed per
 // DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.1 Step 5.
-// TierBreakdownTile / "Programming Health Overview" removed —
-// duplicates the dedicated Weekly Scorecard page (same tier
-// distribution + executionCheck, same window). Operators get one
-// canonical surface for programming health.
+import { TierBreakdownTile } from "../tier-breakdown-tile";
 import { BusinessInsightCard, type BusinessInsightRow } from "./dashboard/BusinessInsightCard";
 import {
   PeriodComparisonDrawer,
@@ -1078,10 +1075,11 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           Top-of-funnel acquisition story moves to canon-driven
           newMemberOnboarding insight in Business Insights block. */}
 
-      {/* "Programming Health Overview" tile removed — duplicates the
-          Weekly Scorecard page (same source: tier distribution +
-          executionCheck via getWeeklyScorecard, same window). Two
-          surfaces split operator attention; Scorecard is canonical. */}
+      {/* P1.4 (Sprint 1) — 7-tier programming breakdown across IPC's
+          Programming OS taxonomy (T1 Core → T7 Youth). Lets the
+          operator see "what kind of programming did we actually run
+          this week?" without scanning the schedule. */}
+      <TierBreakdownTile clubId={clubId} />
 
       {/* Customer Health Overview (renamed from "Player Health Overview"
           per DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.4 — Step 7). */}
