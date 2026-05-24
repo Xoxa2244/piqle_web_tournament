@@ -4318,9 +4318,136 @@ export const intelligenceRouter = createTRPCRouter({
 
   // ── Member Health: AI-powered churn prediction ──
   getMemberHealth: protectedProcedure
-    .input(z.object({ clubId: z.string().uuid() }))
+    .input(z.object({
+      clubId: z.string().uuid(),
+      // Dashboard fast-path: skip per-member scoring + payload, return
+      // just the bucket counts the Customer Health Overview tile needs.
+      // Drops response from ~3.8MB / ~12s to ~100B / ~50ms by reading
+      // pre-computed daily snapshots instead of recomputing 8-component
+      // scores for every member on every dashboard mount.
+      summaryOnly: z.boolean().optional(),
+    }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // ── Fast path: summary aggregates from member_health_snapshots ──
+      if (input.summaryOnly) {
+        try {
+          // Latest snapshot row per (user_id), bucketed by risk_level.
+          // member_health_snapshots is populated daily by the
+          // health-snapshot cron (03:00 UTC). Skipping the full member
+          // walk + co-player graph + embeddings here — we only need
+          // counts for the Dashboard Customer Health Overview.
+          const buckets = (await ctx.prisma.$queryRawUnsafe(
+            `
+            WITH latest AS (
+              SELECT DISTINCT ON (user_id)
+                user_id,
+                health_score,
+                risk_level
+              FROM member_health_snapshots
+              WHERE club_id = $1
+              ORDER BY user_id, date DESC
+            )
+            SELECT risk_level                         AS "riskLevel",
+                   COUNT(*)::int                      AS "count",
+                   ROUND(AVG(health_score))::int      AS "avgScore"
+            FROM latest
+            GROUP BY risk_level
+            `,
+            input.clubId,
+          )) as Array<{ riskLevel: string; count: number; avgScore: number }>
+
+          let healthy = 0, watch = 0, atRisk = 0, critical = 0
+          let weightedScoreSum = 0, snapshotMembers = 0
+          for (const b of buckets) {
+            const c = Number(b.count)
+            const avg = Number(b.avgScore) || 0
+            snapshotMembers += c
+            weightedScoreSum += c * avg
+            switch (b.riskLevel) {
+              case 'healthy': healthy = c; break
+              case 'watch': watch = c; break
+              case 'at_risk': atRisk = c; break
+              case 'critical': critical = c; break
+            }
+          }
+          const avgHealthScore = snapshotMembers > 0
+            ? Math.round(weightedScoreSum / snapshotMembers)
+            : 0
+
+          // Dormant = followers with 0 confirmed bookings ever at this club.
+          // Cheap single COUNT — no per-member iteration.
+          const dormantRows = (await ctx.prisma.$queryRawUnsafe(
+            `
+            SELECT COUNT(*)::int AS "count"
+            FROM club_followers cf
+            WHERE cf.club_id = $1::uuid
+              AND NOT EXISTS (
+                SELECT 1
+                FROM play_session_bookings b
+                JOIN play_sessions ps ON ps.id = b."sessionId"
+                WHERE ps."clubId" = $1::uuid
+                  AND b."userId"::text = cf.user_id::text
+                  AND b.status::text = 'CONFIRMED'
+              )
+            `,
+            input.clubId,
+          )) as Array<{ count: number }>
+          const dormant = Number(dormantRows[0]?.count ?? 0)
+
+          // Churned = members with last booking ≥45d ago (parity with
+          // generateMemberHealth's churn threshold). Single aggregate.
+          const churnedRows = (await ctx.prisma.$queryRawUnsafe(
+            `
+            WITH last_play AS (
+              SELECT b."userId", MAX(ps.date) AS "lastPlayed"
+              FROM play_session_bookings b
+              JOIN play_sessions ps ON ps.id = b."sessionId"
+              WHERE ps."clubId" = $1::uuid
+                AND b.status::text = 'CONFIRMED'
+              GROUP BY b."userId"
+            )
+            SELECT COUNT(*)::int AS "count"
+            FROM last_play
+            WHERE "lastPlayed" < NOW() - INTERVAL '45 days'
+            `,
+            input.clubId,
+          )) as Array<{ count: number }>
+          const churned = Number(churnedRows[0]?.count ?? 0)
+
+          // Total = followers (matches full-path semantics, includes dormant).
+          const totalRows = (await ctx.prisma.$queryRawUnsafe(
+            `SELECT COUNT(*)::int AS "count" FROM club_followers WHERE club_id = $1::uuid`,
+            input.clubId,
+          )) as Array<{ count: number }>
+          const total = Number(totalRows[0]?.count ?? 0)
+
+          return {
+            members: [], // intentionally empty — slim path
+            summary: {
+              total,
+              healthy,
+              watch,
+              atRisk,
+              critical,
+              churned,
+              dormant,
+              avgHealthScore,
+              // revenueAtRisk + trendVsPrevWeek require per-member scoring;
+              // dashboard doesn't render them today, so 0 is acceptable.
+              revenueAtRisk: 0,
+              trendVsPrevWeek: 0,
+            },
+          }
+        } catch (err) {
+          log.warn('[Intelligence] getMemberHealth(summaryOnly) failed:', (err as Error).message?.slice(0, 120))
+          return {
+            members: [],
+            summary: { total: 0, healthy: 0, watch: 0, atRisk: 0, critical: 0, churned: 0, dormant: 0, avgHealthScore: 0, revenueAtRisk: 0, trendVsPrevWeek: 0 },
+          }
+        }
+      }
 
       try {
         // Get only club members who have at least 1 confirmed booking.

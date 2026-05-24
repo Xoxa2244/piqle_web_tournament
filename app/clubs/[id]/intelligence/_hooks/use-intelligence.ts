@@ -238,6 +238,39 @@ export function useMemberHealth(clubId: string, options?: IntelligenceQueryOptio
 }
 
 /**
+ * Slim Member Health for the Dashboard.
+ *
+ * Uses `getMemberHealth({ summaryOnly: true })` which short-circuits
+ * the per-member 8-component scoring + co-player graph + embeddings
+ * fetch and reads bucket counts directly from member_health_snapshots
+ * instead. Drops the payload from ~3.8MB / ~12s to ~100B / ~50ms,
+ * unblocking the dashboard tRPC megabatch which was otherwise pinned
+ * to whatever getMemberHealth took.
+ *
+ * Use this on the Dashboard route; use `useMemberHealth` on Members /
+ * Campaign / Cohort pages where the per-member array is actually consumed.
+ */
+export function useMemberHealthSummary(clubId: string, options?: IntelligenceQueryOptions) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getMemberHealth.useQuery(
+    { clubId, summaryOnly: true },
+    { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
+  )
+
+  if (isDemo) {
+    const mock = mockMemberHealth()
+    return {
+      data: { members: [], summary: (mock as any).summary ?? mock },
+      isLoading: false,
+      error: null,
+    }
+  }
+
+  return query
+}
+
+/**
  * P4-T6: Active Campaigns (lightweight v1).
  * Wraps `intelligence.listActiveCampaigns`. Reads real Campaign rows
  * once they exist (post-P1.1).

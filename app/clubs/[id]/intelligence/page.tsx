@@ -17,7 +17,7 @@ import { SessionTable } from './_components/session-table'
 import { PlayerActivity } from './_components/player-activity'
 import { DashboardSkeleton } from './_components/skeleton'
 import { EmptyState } from './_components/empty-state'
-import { useDashboardV2, useMemberHealth, useIntelligenceSettings, useWeeklySummary, useGenerateWeeklySummary, useOccupancyHeatmap, useMemberGrowth, useUploadHistory } from './_hooks/use-intelligence'
+import { useDashboardV2, useMemberHealthSummary, useIntelligenceSettings, useWeeklySummary, useGenerateWeeklySummary, useOccupancyHeatmap, useMemberGrowth, useUploadHistory } from './_hooks/use-intelligence'
 import { WeeklySummaryCard } from './_components/weekly-summary-card'
 import { cn } from '@/lib/utils'
 import { useSetPageContext } from './_hooks/usePageContext'
@@ -67,7 +67,13 @@ export default function IntelligenceDashboardPage() {
   }, [datePreset, customFrom, customTo])
 
   const { data, isLoading, error } = useDashboardV2(clubId, dateFilters.dateFrom, dateFilters.dateTo)
-  const { data: healthData } = useMemberHealth(clubId)
+  // Dashboard renders only Customer Health Overview summary counts,
+  // never the per-member array. Use the slim summary endpoint to keep
+  // the dashboard tRPC megabatch out of the 22k-row fetch path
+  // (~3.8MB / ~12s on prod for IPC East). Members page, Campaign
+  // Wizard, and Cohort builder still call useMemberHealth() for the
+  // full array.
+  const { data: healthData } = useMemberHealthSummary(clubId)
   const { data: heatmapData } = useOccupancyHeatmap(clubId)
   const { data: memberGrowthData } = useMemberGrowth(clubId)
   const { data: uploadHistoryData } = useUploadHistory(clubId)
