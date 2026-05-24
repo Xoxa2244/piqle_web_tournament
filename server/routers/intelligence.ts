@@ -4372,9 +4372,74 @@ export const intelligenceRouter = createTRPCRouter({
               case 'critical': critical = c; break
             }
           }
-          const avgHealthScore = snapshotMembers > 0
+          let avgHealthScore = snapshotMembers > 0
             ? Math.round(weightedScoreSum / snapshotMembers)
             : 0
+
+          // ── Fallback when snapshots are empty/stale ────────────────
+          // On prod the health-snapshot cron has been stale since
+          // 2026-04-01 (and never ran for some clubs), so the bucket
+          // counts above can all be zero even though the club has
+          // thousands of active members. Rather than show a misleading
+          // "0 healthy / 0 watch / 0 at-risk" tile, derive a cheap
+          // activity-based heuristic from booking recency. Different
+          // methodology than generateMemberHealth's 8-component score,
+          // but it answers the same question ("how engaged is each
+          // bucket?") and renders in one aggregate SQL query.
+          //
+          // Once the snapshot cron is unstuck, this branch stops firing
+          // because snapshotMembers > 0.
+          if (snapshotMembers === 0) {
+            const activity = (await ctx.prisma.$queryRawUnsafe(
+              `
+              WITH last_play AS (
+                SELECT cf.user_id::text AS user_id,
+                       MAX(ps.date)     AS last_played
+                FROM club_followers cf
+                LEFT JOIN play_session_bookings b
+                       ON b."userId"::text = cf.user_id::text
+                      AND b.status::text = 'CONFIRMED'
+                LEFT JOIN play_sessions ps
+                       ON ps.id = b."sessionId"
+                      AND ps."clubId"::text = cf.club_id::text
+                WHERE cf.club_id::text = $1
+                GROUP BY cf.user_id
+              )
+              SELECT
+                COUNT(*) FILTER (
+                  WHERE last_played IS NOT NULL
+                    AND last_played >= NOW() - INTERVAL '14 days'
+                )::int                                                     AS "healthy",
+                COUNT(*) FILTER (
+                  WHERE last_played >= NOW() - INTERVAL '30 days'
+                    AND last_played <  NOW() - INTERVAL '14 days'
+                )::int                                                     AS "watch",
+                COUNT(*) FILTER (
+                  WHERE last_played >= NOW() - INTERVAL '45 days'
+                    AND last_played <  NOW() - INTERVAL '30 days'
+                )::int                                                     AS "atRisk",
+                COUNT(*) FILTER (
+                  WHERE last_played IS NOT NULL
+                    AND last_played <  NOW() - INTERVAL '45 days'
+                )::int                                                     AS "critical"
+              FROM last_play
+              `,
+              input.clubId,
+            )) as Array<{ healthy: number; watch: number; atRisk: number; critical: number }>
+            const a = activity[0]
+            if (a) {
+              healthy = Number(a.healthy)
+              watch = Number(a.watch)
+              atRisk = Number(a.atRisk)
+              critical = Number(a.critical)
+              const bucketTotal = healthy + watch + atRisk + critical
+              // Rough average: lerp midpoints of each bucket's score
+              // range (healthy=85, watch=60, at_risk=40, critical=20).
+              avgHealthScore = bucketTotal > 0
+                ? Math.round((healthy * 85 + watch * 60 + atRisk * 40 + critical * 20) / bucketTotal)
+                : 0
+            }
+          }
 
           // Dormant = followers with 0 confirmed bookings ever at this club.
           // Cheap single COUNT — no per-member iteration.
@@ -7221,6 +7286,12 @@ export const intelligenceRouter = createTRPCRouter({
       // pooler. Column-cast keeps the comparison text=text. Matches
       // the pattern used by other passing endpoints (e.g.,
       // getInactivePlayersCount).
+      // Single query computes both snapshot-based at-risk (preferred,
+      // matches generateMemberHealth methodology) AND an activity-based
+      // fallback (VIP last booking ≥14d ago). The fallback fires when
+      // the snapshot cron is stale (prod state as of 2026-05-24:
+      // last health snapshot 2026-04-01) so the tile doesn't render
+      // a misleading "0% at risk" when 1k+ VIPs haven't booked recently.
       const rows = (await ctx.prisma.$queryRawUnsafe(
         `
         WITH vip_members AS (
@@ -7238,24 +7309,54 @@ export const intelligenceRouter = createTRPCRouter({
           FROM member_health_snapshots
           WHERE club_id::text = $1
           ORDER BY user_id, date DESC
+        ),
+        vip_last_play AS (
+          SELECT v.user_id, MAX(ps.date) AS last_played
+          FROM vip_members v
+          LEFT JOIN play_session_bookings b
+                 ON b."userId"::text = v.user_id::text
+                AND b.status::text = 'CONFIRMED'
+          LEFT JOIN play_sessions ps
+                 ON ps.id = b."sessionId"
+                AND ps."clubId"::text = $1
+          GROUP BY v.user_id
         )
         SELECT
-          (SELECT COUNT(*) FROM vip_members)::int AS total_vip,
+          (SELECT COUNT(*) FROM vip_members)::int                          AS total_vip,
           (SELECT COUNT(*)
              FROM vip_members v
              JOIN latest_health h ON h.user_id::text = v.user_id::text
              WHERE h.risk_level IN ('watch', 'at_risk', 'critical')
-          )::int AS at_risk_vip
+          )::int                                                            AS at_risk_vip_snapshot,
+          (SELECT COUNT(*) FROM latest_health)::int                         AS snapshot_size,
+          (SELECT COUNT(*)
+             FROM vip_last_play
+             WHERE last_played IS NULL
+                OR last_played < NOW() - INTERVAL '14 days'
+          )::int                                                            AS at_risk_vip_activity
         `,
         input.clubId,
-      )) as Array<{ total_vip: number; at_risk_vip: number }>
+      )) as Array<{
+        total_vip: number
+        at_risk_vip_snapshot: number
+        snapshot_size: number
+        at_risk_vip_activity: number
+      }>
 
-      const r = rows[0] ?? { total_vip: 0, at_risk_vip: 0 }
+      const r = rows[0] ?? {
+        total_vip: 0,
+        at_risk_vip_snapshot: 0,
+        snapshot_size: 0,
+        at_risk_vip_activity: 0,
+      }
+      // Prefer snapshot-derived count when the snapshot table actually
+      // has data for this club; otherwise fall back to activity heuristic.
+      const atRiskVip = r.snapshot_size > 0 ? r.at_risk_vip_snapshot : r.at_risk_vip_activity
       const percent =
-        r.total_vip > 0 ? Math.round((r.at_risk_vip / r.total_vip) * 100) : 0
+        r.total_vip > 0 ? Math.round((atRiskVip / r.total_vip) * 100) : 0
       return {
         totalVip: r.total_vip,
-        atRiskVip: r.at_risk_vip,
+        atRiskVip,
         percent,
       }
     }),
