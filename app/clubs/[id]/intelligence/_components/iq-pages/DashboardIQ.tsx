@@ -996,8 +996,15 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         </motion.div>
       )}
 
-      {/* Empty state — CourtReserve connection (same as Integrations) */}
-      {!hasOperationalData && (
+      {/* Empty state — CourtReserve connection (same as Integrations).
+          Gated on !isStillLoading so we don't flash this empty-state
+          (and the big "Loading…" card inside CourtReserveConnector) while
+          the dashboard data is still being fetched. The empty state is
+          for "club truly has no data" — during initial load `hasOperationalData`
+          is false simply because the request hasn't returned yet, which
+          would otherwise render the full-width Loading card for the
+          entire ~12s tRPC megabatch round-trip. */}
+      {!isStillLoading && !hasOperationalData && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
