@@ -3064,7 +3064,7 @@ export const intelligenceRouter = createTRPCRouter({
       const spendRows = await ctx.prisma.$queryRawUnsafe<SpendRow[]>(
         `SELECT COALESCE(SUM(cost_usd), 0)::float AS total
          FROM ai_usage_logs
-         WHERE club_id::text = $1 AND created_at >= $2`,
+         WHERE club_id = $1 AND created_at >= $2`,
         input.clubId,
         periodStart,
       )
@@ -4330,179 +4330,126 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      // ── Fast path: summary aggregates from member_health_snapshots ──
+      // ── Fast path: ONE round-trip aggregate for the slim summary ──
+      //
+      // History of bugs this path has accumulated:
+      //   1) Initially 4 serial $queryRawUnsafe — that's 4 Vercel→Supavisor
+      //      round-trips (~2s latency each on warm) → ~8s end-to-end. Made
+      //      the slim path slower than the megabatch it was supposed to
+      //      replace.
+      //   2) Used `WHERE col::text = $1` to dodge a Prisma text=uuid
+      //      parameter-binding bug — but column-side cast disables the
+      //      btree index on UUID columns, forcing seq scans across the
+      //      whole table.
+      //
+      // Both fixed here:
+      //   - All counts combined into ONE query with shared CTEs → 1 RT
+      //   - Plain `= $1` against UUID columns (Prisma's $queryRawUnsafe
+      //     inlines string literals, so PG resolves the type from the
+      //     column; no operator-mismatch error). Matches the working
+      //     pattern in getInactivePlayersCount.
+      //
+      // Schema notes for the joins below:
+      //   club_followers.club_id : UUID         → plain `= $1`
+      //   club_followers.user_id : TEXT
+      //   play_session_bookings."userId" : TEXT  (camelCase column)
+      //   play_sessions."clubId" : UUID         (camelCase column)
+      //   play_sessions.id : TEXT
       if (input.summaryOnly) {
         try {
-          // Latest snapshot row per (user_id), bucketed by risk_level.
-          // member_health_snapshots is populated daily by the
-          // health-snapshot cron (03:00 UTC). Skipping the full member
-          // walk + co-player graph + embeddings here — we only need
-          // counts for the Dashboard Customer Health Overview.
-          const buckets = (await ctx.prisma.$queryRawUnsafe(
+          const rows = (await ctx.prisma.$queryRawUnsafe(
             `
-            WITH latest AS (
+            WITH latest_snapshot AS (
               SELECT DISTINCT ON (user_id)
-                user_id,
-                health_score,
-                risk_level
+                     user_id,
+                     health_score,
+                     risk_level
               FROM member_health_snapshots
-              WHERE club_id::text = $1
+              WHERE club_id = $1
               ORDER BY user_id, date DESC
+            ),
+            follower_activity AS (
+              SELECT cf.user_id,
+                     MAX(ps.date) AS last_played
+              FROM club_followers cf
+              LEFT JOIN play_session_bookings b
+                     ON b."userId" = cf.user_id
+                    AND b.status::text = 'CONFIRMED'
+              LEFT JOIN play_sessions ps
+                     ON ps.id = b."sessionId"
+                    AND ps."clubId" = cf.club_id
+              WHERE cf.club_id = $1
+              GROUP BY cf.user_id
             )
-            SELECT risk_level                         AS "riskLevel",
-                   COUNT(*)::int                      AS "count",
-                   ROUND(AVG(health_score))::int      AS "avgScore"
-            FROM latest
-            GROUP BY risk_level
+            SELECT
+              -- Snapshot counts (preferred when populated)
+              (SELECT COUNT(*) FROM latest_snapshot)::int                      AS "snapSize",
+              (SELECT COUNT(*) FROM latest_snapshot WHERE risk_level = 'healthy')::int  AS "snapHealthy",
+              (SELECT COUNT(*) FROM latest_snapshot WHERE risk_level = 'watch')::int    AS "snapWatch",
+              (SELECT COUNT(*) FROM latest_snapshot WHERE risk_level = 'at_risk')::int  AS "snapAtRisk",
+              (SELECT COUNT(*) FROM latest_snapshot WHERE risk_level = 'critical')::int AS "snapCritical",
+              (SELECT COALESCE(ROUND(AVG(health_score))::int, 0) FROM latest_snapshot)  AS "snapAvgScore",
+              -- Activity-based fallback (used when snapSize = 0 — cron stale)
+              (SELECT COUNT(*) FROM follower_activity
+                 WHERE last_played IS NOT NULL
+                   AND last_played >= NOW() - INTERVAL '14 days')::int          AS "actHealthy",
+              (SELECT COUNT(*) FROM follower_activity
+                 WHERE last_played >= NOW() - INTERVAL '30 days'
+                   AND last_played <  NOW() - INTERVAL '14 days')::int          AS "actWatch",
+              (SELECT COUNT(*) FROM follower_activity
+                 WHERE last_played >= NOW() - INTERVAL '45 days'
+                   AND last_played <  NOW() - INTERVAL '30 days')::int          AS "actAtRisk",
+              (SELECT COUNT(*) FROM follower_activity
+                 WHERE last_played IS NOT NULL
+                   AND last_played <  NOW() - INTERVAL '45 days')::int          AS "actCritical",
+              -- Dormant + churned + total (shared between paths)
+              (SELECT COUNT(*) FROM follower_activity
+                 WHERE last_played IS NULL)::int                                AS "dormant",
+              (SELECT COUNT(*) FROM follower_activity
+                 WHERE last_played < NOW() - INTERVAL '45 days')::int           AS "churned",
+              (SELECT COUNT(*) FROM follower_activity)::int                     AS "total"
             `,
             input.clubId,
-          )) as Array<{ riskLevel: string; count: number; avgScore: number }>
+          )) as Array<{
+            snapSize: number; snapHealthy: number; snapWatch: number
+            snapAtRisk: number; snapCritical: number; snapAvgScore: number
+            actHealthy: number; actWatch: number; actAtRisk: number; actCritical: number
+            dormant: number; churned: number; total: number
+          }>
 
-          let healthy = 0, watch = 0, atRisk = 0, critical = 0
-          let weightedScoreSum = 0, snapshotMembers = 0
-          for (const b of buckets) {
-            const c = Number(b.count)
-            const avg = Number(b.avgScore) || 0
-            snapshotMembers += c
-            weightedScoreSum += c * avg
-            switch (b.riskLevel) {
-              case 'healthy': healthy = c; break
-              case 'watch': watch = c; break
-              case 'at_risk': atRisk = c; break
-              case 'critical': critical = c; break
+          const r = rows[0]
+          if (!r) {
+            return {
+              members: [],
+              summary: { total: 0, healthy: 0, watch: 0, atRisk: 0, critical: 0, churned: 0, dormant: 0, avgHealthScore: 0, revenueAtRisk: 0, trendVsPrevWeek: 0 },
             }
           }
-          let avgHealthScore = snapshotMembers > 0
-            ? Math.round(weightedScoreSum / snapshotMembers)
-            : 0
-
-          // ── Fallback when snapshots are empty/stale ────────────────
-          // On prod the health-snapshot cron has been stale since
-          // 2026-04-01 (and never ran for some clubs), so the bucket
-          // counts above can all be zero even though the club has
-          // thousands of active members. Rather than show a misleading
-          // "0 healthy / 0 watch / 0 at-risk" tile, derive a cheap
-          // activity-based heuristic from booking recency. Different
-          // methodology than generateMemberHealth's 8-component score,
-          // but it answers the same question ("how engaged is each
-          // bucket?") and renders in one aggregate SQL query.
-          //
-          // Once the snapshot cron is unstuck, this branch stops firing
-          // because snapshotMembers > 0.
-          if (snapshotMembers === 0) {
-            const activity = (await ctx.prisma.$queryRawUnsafe(
-              `
-              WITH last_play AS (
-                SELECT cf.user_id::text AS user_id,
-                       MAX(ps.date)     AS last_played
-                FROM club_followers cf
-                LEFT JOIN play_session_bookings b
-                       ON b."userId"::text = cf.user_id::text
-                      AND b.status::text = 'CONFIRMED'
-                LEFT JOIN play_sessions ps
-                       ON ps.id = b."sessionId"
-                      AND ps."clubId"::text = cf.club_id::text
-                WHERE cf.club_id::text = $1
-                GROUP BY cf.user_id
-              )
-              SELECT
-                COUNT(*) FILTER (
-                  WHERE last_played IS NOT NULL
-                    AND last_played >= NOW() - INTERVAL '14 days'
-                )::int                                                     AS "healthy",
-                COUNT(*) FILTER (
-                  WHERE last_played >= NOW() - INTERVAL '30 days'
-                    AND last_played <  NOW() - INTERVAL '14 days'
-                )::int                                                     AS "watch",
-                COUNT(*) FILTER (
-                  WHERE last_played >= NOW() - INTERVAL '45 days'
-                    AND last_played <  NOW() - INTERVAL '30 days'
-                )::int                                                     AS "atRisk",
-                COUNT(*) FILTER (
-                  WHERE last_played IS NOT NULL
-                    AND last_played <  NOW() - INTERVAL '45 days'
-                )::int                                                     AS "critical"
-              FROM last_play
-              `,
-              input.clubId,
-            )) as Array<{ healthy: number; watch: number; atRisk: number; critical: number }>
-            const a = activity[0]
-            if (a) {
-              healthy = Number(a.healthy)
-              watch = Number(a.watch)
-              atRisk = Number(a.atRisk)
-              critical = Number(a.critical)
-              const bucketTotal = healthy + watch + atRisk + critical
-              // Rough average: lerp midpoints of each bucket's score
-              // range (healthy=85, watch=60, at_risk=40, critical=20).
-              avgHealthScore = bucketTotal > 0
-                ? Math.round((healthy * 85 + watch * 60 + atRisk * 40 + critical * 20) / bucketTotal)
-                : 0
-            }
-          }
-
-          // Dormant = followers with 0 confirmed bookings ever at this club.
-          // Cheap single COUNT — no per-member iteration. Column-cast to
-          // text on both sides (text=text) — avoids the Prisma+Supavisor
-          // text=uuid parameter-binding bug.
-          const dormantRows = (await ctx.prisma.$queryRawUnsafe(
-            `
-            SELECT COUNT(*)::int AS "count"
-            FROM club_followers cf
-            WHERE cf.club_id::text = $1
-              AND NOT EXISTS (
-                SELECT 1
-                FROM play_session_bookings b
-                JOIN play_sessions ps ON ps.id = b."sessionId"
-                WHERE ps."clubId"::text = $1
-                  AND b."userId"::text = cf.user_id::text
-                  AND b.status::text = 'CONFIRMED'
-              )
-            `,
-            input.clubId,
-          )) as Array<{ count: number }>
-          const dormant = Number(dormantRows[0]?.count ?? 0)
-
-          // Churned = members with last booking ≥45d ago (parity with
-          // generateMemberHealth's churn threshold). Single aggregate.
-          const churnedRows = (await ctx.prisma.$queryRawUnsafe(
-            `
-            WITH last_play AS (
-              SELECT b."userId", MAX(ps.date) AS "lastPlayed"
-              FROM play_session_bookings b
-              JOIN play_sessions ps ON ps.id = b."sessionId"
-              WHERE ps."clubId"::text = $1
-                AND b.status::text = 'CONFIRMED'
-              GROUP BY b."userId"
-            )
-            SELECT COUNT(*)::int AS "count"
-            FROM last_play
-            WHERE "lastPlayed" < NOW() - INTERVAL '45 days'
-            `,
-            input.clubId,
-          )) as Array<{ count: number }>
-          const churned = Number(churnedRows[0]?.count ?? 0)
-
-          // Total = followers (matches full-path semantics, includes dormant).
-          const totalRows = (await ctx.prisma.$queryRawUnsafe(
-            `SELECT COUNT(*)::int AS "count" FROM club_followers WHERE club_id::text = $1`,
-            input.clubId,
-          )) as Array<{ count: number }>
-          const total = Number(totalRows[0]?.count ?? 0)
+          // Prefer snapshot counts when the cron has populated them;
+          // otherwise lean on activity heuristic so the tile renders
+          // meaningful buckets instead of 0/0/0/0.
+          const useSnap = Number(r.snapSize) > 0
+          const healthy = Number(useSnap ? r.snapHealthy : r.actHealthy)
+          const watch = Number(useSnap ? r.snapWatch : r.actWatch)
+          const atRisk = Number(useSnap ? r.snapAtRisk : r.actAtRisk)
+          const critical = Number(useSnap ? r.snapCritical : r.actCritical)
+          const bucketTotal = healthy + watch + atRisk + critical
+          const avgHealthScore = useSnap
+            ? Number(r.snapAvgScore)
+            : bucketTotal > 0
+              ? Math.round((healthy * 85 + watch * 60 + atRisk * 40 + critical * 20) / bucketTotal)
+              : 0
 
           return {
-            members: [], // intentionally empty — slim path
+            members: [],
             summary: {
-              total,
+              total: Number(r.total),
               healthy,
               watch,
               atRisk,
               critical,
-              churned,
-              dormant,
+              churned: Number(r.churned),
+              dormant: Number(r.dormant),
               avgHealthScore,
-              // revenueAtRisk + trendVsPrevWeek require per-member scoring;
-              // dashboard doesn't render them today, so 0 is acceptable.
               revenueAtRisk: 0,
               trendVsPrevWeek: 0,
             },
@@ -6362,11 +6309,10 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      // Column-side cast (club_id::text = $1) instead of param cast
-      // ($1::uuid) — Prisma binds raw-query params as text and the
-      // text→uuid implicit cast trips up the Supabase pooler on prod.
-      // Column-cast keeps the comparison text=text and always works.
-      // See parity with getInactivePlayersCount (uses plain `$1`).
+      // Plain `= $1` (no cast). Prisma's $queryRawUnsafe inlines the
+      // string literal so PG resolves the type from the column —
+      // matches the working pattern in getInactivePlayersCount and
+      // keeps the btree index usable.
       const rows = (await ctx.prisma.$queryRawUnsafe(
         `
         SELECT id,
@@ -6383,7 +6329,7 @@ export const intelligenceRouter = createTRPCRouter({
                resolved_at  AS "resolvedAt",
                snooze_until AS "snoozeUntil"
         FROM business_insight
-        WHERE club_id::text = $1
+        WHERE club_id = $1
           AND status IN ('active', 'snoozed')
         ORDER BY
           CASE severity WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END,
@@ -6420,7 +6366,7 @@ export const intelligenceRouter = createTRPCRouter({
           `
           UPDATE business_insight
           SET status = 'snoozed', snooze_until = $1
-          WHERE id = $2 AND club_id::text = $3
+          WHERE id = $2 AND club_id = $3
           `,
           new Date(input.snoozeUntil),
           input.insightId,
@@ -6434,7 +6380,7 @@ export const intelligenceRouter = createTRPCRouter({
         `
         UPDATE business_insight
         SET status = $1, resolved_at = $2
-        WHERE id = $3 AND club_id::text = $4
+        WHERE id = $3 AND club_id = $4
         `,
         newStatus,
         new Date(),
@@ -7294,13 +7240,17 @@ export const intelligenceRouter = createTRPCRouter({
       // the snapshot cron is stale (prod state as of 2026-05-24:
       // last health snapshot 2026-04-01) so the tile doesn't render
       // a misleading "0% at risk" when 1k+ VIPs haven't booked recently.
+      // Plain `= $1` (no ::text or ::uuid casts) — Prisma's
+      // $queryRawUnsafe inlines string literals and PG resolves the
+      // type from the column. Column-side casts disable btree indexes
+      // on the UUID columns and were causing seq scans (~2.7s).
       const rows = (await ctx.prisma.$queryRawUnsafe(
         `
         WITH vip_members AS (
           SELECT u.id AS user_id
           FROM users u
           JOIN club_followers cf
-            ON cf.user_id::text = u.id::text AND cf.club_id::text = $1
+            ON cf.user_id = u.id AND cf.club_id = $1
           WHERE
             LOWER(COALESCE(u.membership_type, '')) LIKE '%vip%' OR
             LOWER(COALESCE(u.membership_type, '')) LIKE '%premium%' OR
@@ -7309,25 +7259,25 @@ export const intelligenceRouter = createTRPCRouter({
         latest_health AS (
           SELECT DISTINCT ON (user_id) user_id, risk_level
           FROM member_health_snapshots
-          WHERE club_id::text = $1
+          WHERE club_id = $1
           ORDER BY user_id, date DESC
         ),
         vip_last_play AS (
           SELECT v.user_id, MAX(ps.date) AS last_played
           FROM vip_members v
           LEFT JOIN play_session_bookings b
-                 ON b."userId"::text = v.user_id::text
+                 ON b."userId" = v.user_id
                 AND b.status::text = 'CONFIRMED'
           LEFT JOIN play_sessions ps
                  ON ps.id = b."sessionId"
-                AND ps."clubId"::text = $1
+                AND ps."clubId" = $1
           GROUP BY v.user_id
         )
         SELECT
           (SELECT COUNT(*) FROM vip_members)::int                          AS total_vip,
           (SELECT COUNT(*)
              FROM vip_members v
-             JOIN latest_health h ON h.user_id::text = v.user_id::text
+             JOIN latest_health h ON h.user_id = v.user_id
              WHERE h.risk_level IN ('watch', 'at_risk', 'critical')
           )::int                                                            AS at_risk_vip_snapshot,
           (SELECT COUNT(*) FROM latest_health)::int                         AS snapshot_size,
