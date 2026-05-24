@@ -29,6 +29,13 @@ const STANDALONE_PATHS = new Set([
   'intelligence.getAIRevenueAttribution',  // attribution + spend aggregate
   'intelligence.getOccupancyHeatmap',      // 90-day session grid
   'intelligence.getMemberGrowth',          // 6-month rollup
+  // The next two add ~5s to the dashboard "fast batch" when bundled —
+  // both walk play_session_bookings (~30k rows) for activity-based
+  // bucketing/risk computation. As standalone they fire in parallel
+  // with everything else and only block their own tile (Customer
+  // Health Overview / VIP at-risk chip).
+  'intelligence.getMemberHealth',          // 3s on prod (slim summary path)
+  'intelligence.getVipAtRiskPercent',      // 2.7s on prod
 ])
 
 export function Providers({ children }: { children: React.ReactNode }) {
