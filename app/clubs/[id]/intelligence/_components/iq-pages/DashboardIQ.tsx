@@ -855,6 +855,19 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   // Hide Quick Start once the club already has real operational data
   const showQuickStart = !isStillLoading && quickStartProgress < quickStartSteps.length && !hasOperationalData;
 
+  // KPI placeholders so the 4-tile grid renders immediately on mount —
+  // real values from `data.kpis` swap in when the standalone
+  // getDashboardV2 request resolves (~5-11s on prod). Operator sees a
+  // "loaded" dashboard with skeleton numbers instead of an empty grid
+  // while the slow KPI query is in flight. Labels are intentionally
+  // kept identical to mapRealDataToPeriod so the swap is seamless.
+  const PLACEHOLDER_KPIS = [
+    { label: 'Active Players',  icon: Users },
+    { label: 'Court Occupancy', icon: Target },
+    { label: 'Player Sessions', icon: Activity },
+    { label: 'Inactive Players', icon: UserPlus },
+  ]
+
   return (
     <motion.div
       ref={ref}
@@ -1023,11 +1036,16 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         </motion.div>
       )}
 
-      {/* All data sections — only show with real data */}
-      {hasRealData && data && <>
+      {/* KPI grid — always renders 4 tiles. When data isn't ready yet,
+          shows skeleton placeholders so the dashboard structure is
+          visible immediately instead of waiting ~5-11s on the slow
+          standalone getDashboardV2 query. As data arrives, real
+          numbers swap in seamlessly. */}
+      {!showQuickStart && (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {data.kpis.map((kpi, i) => {
+        {(hasRealData && data ? data.kpis : PLACEHOLDER_KPIS).map((kpi: any, i: number) => {
           const Icon = kpi.icon;
+          const isPlaceholder = !(hasRealData && data);
           return (
             <motion.div
               key={kpi.label}
@@ -1038,16 +1056,23 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               <div title={kpi.tooltip}>
               <Card className="relative overflow-hidden">
                 <div className="flex items-start justify-between mb-3">
-                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient} flex items-center justify-center`}>
+                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient ?? 'from-slate-500/40 to-slate-600/40'} flex items-center justify-center`}>
                     <Icon className="w-5 h-5 text-white" />
                   </div>
-                  <Sparkline data={kpi.sparkData} color={kpi.up ? "#10B981" : "#EF4444"} />
+                  {!isPlaceholder && <Sparkline data={kpi.sparkData} color={kpi.up ? "#10B981" : "#EF4444"} />}
                 </div>
-                <div className="mb-1" style={{ fontSize: "28px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
+                {isPlaceholder ? (
+                  <div
+                    className="mb-1 h-8 w-24 rounded animate-pulse"
+                    style={{ background: 'var(--subtle)' }}
+                  />
+                ) : (
+                  <div className="mb-1" style={{ fontSize: "28px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-xs flex items-center gap-1" style={{ color: "var(--t3)" }}>
                     <span className="truncate">{kpi.label}</span>
-                    {kpi.tooltip && (
+                    {!isPlaceholder && kpi.tooltip && (
                       <span
                         className="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] cursor-help shrink-0"
                         style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}
@@ -1057,10 +1082,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                       </span>
                     )}
                   </span>
-                  <div className={`flex items-center gap-1 text-xs ${kpi.up ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>
-                    {kpi.up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                    {kpi.change}
-                  </div>
+                  {!isPlaceholder && (
+                    <div className={`flex items-center gap-1 text-xs ${kpi.up ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>
+                      {kpi.up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
+                      {kpi.change}
+                    </div>
+                  )}
                 </div>
               </Card>
               </div>
@@ -1068,6 +1095,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           );
         })}
       </div>
+      )}
+
+      {/* Below the KPI grid: original sections gate on hasRealData
+          (need actual data shape). Skeletons inside Customer Health /
+          Business Insights are handled by their own components. */}
+      {hasRealData && data && <>
 
       {/* AI-Attributed Revenue — the "money metric" tile.
           Placed right after KPIs so club owners (and demo viewers) see
