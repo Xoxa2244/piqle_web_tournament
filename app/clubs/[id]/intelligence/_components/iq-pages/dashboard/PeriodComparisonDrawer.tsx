@@ -56,6 +56,13 @@ const METRIC_FORMAT: Record<DrawerMetric, 'number' | 'percent' | 'decimal'> = {
   avg_sessions_per_player: 'decimal',
 }
 
+export type PeriodComparisonSnapshot = {
+  current: number
+  previous: number
+  delta: number
+  trendTone: 'positive' | 'negative' | 'neutral'
+}
+
 interface Props {
   open: boolean
   metric: DrawerMetric | null
@@ -66,6 +73,7 @@ interface Props {
   endDate: string
   /** 'week' (1m/3m windows) or 'month' (6m). */
   bucket: 'week' | 'month'
+  comparison?: PeriodComparisonSnapshot | null
   onClose: () => void
 }
 
@@ -76,6 +84,7 @@ export function PeriodComparisonDrawer({
   startDate,
   endDate,
   bucket,
+  comparison,
   onClose,
 }: Props) {
   const query = trpc.intelligence.getMetricTimeSeries.useQuery(
@@ -95,17 +104,19 @@ export function PeriodComparisonDrawer({
     if (fmt === 'decimal') return v.toFixed(1)
     return v.toLocaleString()
   }
+  const formatDelta = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v * 10) / 10}%`
 
   // Chart data = bars + trend evaluated at the same x positions.
   const chartData = useMemo(() => {
     if (!query.data) return []
     const { bars, trend } = query.data
+    const start = new Date(startDate).getTime()
     return bars.map((b, i) => ({
-      label: formatBucketLabel(new Date(b.bucketStart), bucket),
+      label: formatBucketLabel(new Date(Math.max(new Date(b.bucketStart).getTime(), start)), bucket),
       value: b.value,
       trend: Math.round((trend.intercept + trend.slope * i) * 10) / 10,
     }))
-  }, [query.data, bucket])
+  }, [query.data, bucket, startDate])
 
   const summary = useMemo(() => {
     if (!query.data) return null
@@ -196,17 +207,25 @@ export function PeriodComparisonDrawer({
               {/* Summary row */}
               {summary && (
                 <div className="grid grid-cols-3 gap-2">
-                  <Stat label="Avg / bucket" value={formatValue(summary.avg)} />
                   <Stat
-                    label="Total"
-                    value={
-                      fmt === 'percent'
-                        ? '—' // average-of-averages over a window isn't meaningful
-                        : summary.total.toLocaleString()
+                    label="Current period"
+                    value={comparison ? formatValue(comparison.current) : formatValue(summary.avg)}
+                  />
+                  <Stat
+                    label="Vs previous"
+                    value={comparison ? formatDelta(comparison.delta) : '—'}
+                    icon={
+                      comparison?.trendTone === 'positive' ? (
+                        <TrendingUp className="w-3 h-3" style={{ color: '#10B981' }} />
+                      ) : comparison?.trendTone === 'negative' ? (
+                        <TrendingDown className="w-3 h-3" style={{ color: '#F87171' }} />
+                      ) : (
+                        <Minus className="w-3 h-3" style={{ color: 'var(--t4)' }} />
+                      )
                     }
                   />
                   <Stat
-                    label="Trend"
+                    label={`${bucket === 'week' ? 'Weekly' : 'Monthly'} trend`}
                     value={
                       summary.slopeSign === 'up'
                         ? 'Rising'
@@ -269,12 +288,14 @@ export function PeriodComparisonDrawer({
                         formatter={(v: any) => formatValue(Number(v))}
                       />
                       <Bar
+                        name="Actual"
                         dataKey="value"
                         fill="rgba(139,92,246,0.7)"
                         radius={[4, 4, 0, 0]}
                         maxBarSize={28}
                       />
                       <Line
+                        name="Trend line"
                         type="monotone"
                         dataKey="trend"
                         stroke="#06B6D4"
@@ -288,7 +309,7 @@ export function PeriodComparisonDrawer({
               </div>
 
               <p className="text-[10px]" style={{ color: 'var(--t4)' }}>
-                Trend line = simple linear regression over the bucketed values.
+                Vs previous compares the whole current period with the prior period. The dotted line shows the trend inside this window; edge buckets can be partial.
               </p>
             </div>
           </motion.div>
