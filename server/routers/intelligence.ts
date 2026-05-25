@@ -2126,12 +2126,21 @@ export const intelligenceRouter = createTRPCRouter({
       const sumPlayers = (rows: typeof sessionRows) =>
         rows.reduce((a, r) => a + (r.confirmed_count ?? r.registered_count ?? 0), 0)
       const peakUtil = (rows: typeof sessionRows) => {
+        // Peak utilization is capped at 100% to avoid misleading values like
+        // 219%. Raw reg/cap can exceed 100 when a session is overbooked
+        // (waitlist counted in confirmed) or, more commonly, misclassified —
+        // e.g. a private lesson with max_players=1 and 2-3 registrants sneaks
+        // into the T1 Open Play bucket because mapFormat() falls back to
+        // OPEN_PLAY when CR's reservationType doesn't match clinic/drill/
+        // league/social. The proper fix is in classification (roadmap P1.4 —
+        // programmingTier column). This cap is the safety net so the UI never
+        // shows >100% even after classification improves.
         let peak: number | null = null
         for (const r of rows) {
           const reg = r.confirmed_count ?? r.registered_count ?? 0
           const cap = r.max_players ?? 0
           if (cap === 0) continue
-          const util = Math.round((reg / cap) * 100)
+          const util = Math.min(Math.round((reg / cap) * 100), 100)
           if (peak == null || util > peak) peak = util
         }
         return peak
