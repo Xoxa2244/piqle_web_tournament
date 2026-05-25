@@ -7179,12 +7179,115 @@ export const intelligenceRouter = createTRPCRouter({
           .sort((a, b) => a.bucketStart.getTime() - b.bucketStart.getTime())
       }
 
+      const fetchPrismaSeries = async (
+        startDate: Date,
+        endDate: Date,
+      ): Promise<SeriesPoint[]> => {
+        if (input.metric === 'player_registrations' || input.metric === 'court_occupancy') {
+          const sessions = await ctx.prisma.playSession.findMany({
+            where: {
+              clubId: input.clubId,
+              status: 'COMPLETED',
+              date: { gte: startDate, lt: endDate },
+            },
+            select: {
+              date: true,
+              maxPlayers: true,
+              registeredCount: true,
+              _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+            },
+          })
+
+          const buckets = new Map<string, { bucketStart: Date; total: number; count: number }>()
+          for (const session of sessions) {
+            const bucketStart = bucketStartForDate(session.date.toISOString().slice(0, 10))
+            const key = bucketStart.toISOString()
+            const bucket = buckets.get(key) ?? { bucketStart, total: 0, count: 0 }
+            const registered = session.registeredCount ?? session._count.bookings
+
+            if (input.metric === 'player_registrations') {
+              bucket.total += registered
+              bucket.count += 1
+            } else {
+              bucket.total += session.maxPlayers > 0 ? (registered / session.maxPlayers) * 100 : 0
+              bucket.count += 1
+            }
+
+            buckets.set(key, bucket)
+          }
+
+          return Array.from(buckets.values())
+            .map((bucket) => ({
+              bucketStart: bucket.bucketStart,
+              value: input.metric === 'court_occupancy' && bucket.count > 0
+                ? Math.round((bucket.total / bucket.count) * 10) / 10
+                : Math.round(bucket.total * 10) / 10,
+            }))
+            .filter(point => point.value > 0 || input.metric === 'court_occupancy')
+            .sort((a, b) => a.bucketStart.getTime() - b.bucketStart.getTime())
+        }
+
+        const bookings = await ctx.prisma.playSessionBooking.findMany({
+          where: {
+            status: 'CONFIRMED',
+            playSession: {
+              clubId: input.clubId,
+              date: { gte: startDate, lt: endDate },
+            },
+          },
+          select: {
+            userId: true,
+            playSession: { select: { date: true } },
+          },
+        })
+
+        const buckets = new Map<string, {
+          bucketStart: Date
+          players: Set<string>
+          bookingCounts: Map<string, number>
+        }>()
+
+        for (const booking of bookings) {
+          const bucketStart = bucketStartForDate(booking.playSession.date.toISOString().slice(0, 10))
+          const key = bucketStart.toISOString()
+          const bucket = buckets.get(key) ?? {
+            bucketStart,
+            players: new Set<string>(),
+            bookingCounts: new Map<string, number>(),
+          }
+
+          bucket.players.add(booking.userId)
+          bucket.bookingCounts.set(booking.userId, (bucket.bookingCounts.get(booking.userId) ?? 0) + 1)
+          buckets.set(key, bucket)
+        }
+
+        return Array.from(buckets.values())
+          .map((bucket) => {
+            const bookingsInBucket = Array.from(bucket.bookingCounts.values()).reduce((sum, count) => sum + count, 0)
+            const value = input.metric === 'active_players'
+              ? bucket.players.size
+              : bucket.players.size > 0 ? bookingsInBucket / bucket.players.size : 0
+            return {
+              bucketStart: bucket.bucketStart,
+              value: Math.round(value * 10) / 10,
+            }
+          })
+          .filter(point => point.value > 0)
+          .sort((a, b) => a.bucketStart.getTime() - b.bucketStart.getTime())
+      }
+
       const fetchSeries = async (
         startDate: Date,
         endDate: Date,
       ): Promise<SeriesPoint[]> => {
         const trunc = input.bucket // 'week' | 'month' — validated by Zod
         let bars: SeriesPoint[] = []
+
+        const prismaBars = await fetchPrismaSeries(startDate, endDate).catch((err) => {
+          log.warn('[getMetricTimeSeries] Prisma series failed, trying SQL/CSV fallback:', (err as Error).message?.slice(0, 120))
+          return [] as SeriesPoint[]
+        })
+        if (prismaBars.length > 0) return prismaBars
 
         try {
           switch (input.metric) {
