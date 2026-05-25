@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   classifyProgrammingTier,
+  isEquipmentBooking,
   PROGRAMMING_TIER_META,
   getTierMeta,
 } from '@/lib/ai/programming-tier-classifier'
@@ -378,6 +379,87 @@ describe('classifyProgrammingTier — IPC East canonical titles', () => {
         'T1_CORE',
       )
     })
+  })
+})
+
+describe('isEquipmentBooking', () => {
+  // Equipment bookings (ball machine rentals, court-only rentals) are
+  // technically play_sessions in CR but they're not part of the
+  // Programming Operating System. They should not be bucketed into a
+  // tier — including them in T1 Open Play makes max_players=1 sessions
+  // (ball machine: one player) skew peak utilization and inflate the
+  // session count.
+
+  it('flags "Ball Machine" sessions (real IPC East title)', () => {
+    // 10 instances per week on IPC East — biggest single source of
+    // false-positive T1 Open Play sessions before this filter.
+    expect(
+      isEquipmentBooking({
+        title: 'Single Person - Ball Machine - Court #9 (IPC East)',
+        format: 'OPEN_PLAY',
+      }),
+    ).toBe(true)
+  })
+
+  it('flags "ball machine" without "single person" prefix', () => {
+    expect(isEquipmentBooking({ title: 'Ball Machine Court #3', format: 'OPEN_PLAY' })).toBe(true)
+  })
+
+  it('flags case-insensitively', () => {
+    expect(isEquipmentBooking({ title: 'BALL MACHINE RENTAL', format: 'OPEN_PLAY' })).toBe(true)
+  })
+
+  it('flags generic court rental ("Court Rental" in title)', () => {
+    expect(isEquipmentBooking({ title: 'Court Rental - Court #5', format: 'OPEN_PLAY' })).toBe(
+      true,
+    )
+  })
+
+  it('flags "equipment rental"', () => {
+    expect(
+      isEquipmentBooking({ title: 'Paddle Equipment Rental', format: 'OPEN_PLAY' }),
+    ).toBe(true)
+  })
+
+  it('does NOT flag normal Open Play sessions', () => {
+    expect(
+      isEquipmentBooking({
+        title: 'Verified Open Play - Competitive (3.5 - 3.99)',
+        format: 'OPEN_PLAY',
+      }),
+    ).toBe(false)
+  })
+
+  it('does NOT flag Private Lessons (those are T6, not equipment)', () => {
+    expect(
+      isEquipmentBooking({
+        title: 'Private Lesson for 1 - Court #9 (IPC East)',
+        format: 'OPEN_PLAY',
+      }),
+    ).toBe(false)
+  })
+
+  it('does NOT flag generic Doubles court sessions', () => {
+    expect(
+      isEquipmentBooking({ title: 'Doubles - Court #6 (IPC East)', format: 'OPEN_PLAY' }),
+    ).toBe(false)
+  })
+
+  it('does NOT flag league play even if format word "court" appears', () => {
+    expect(
+      isEquipmentBooking({
+        title: 'IPL Team Practice - Court #1',
+        format: 'LEAGUE_PLAY',
+      }),
+    ).toBe(false)
+  })
+
+  it('returns false for empty title', () => {
+    expect(isEquipmentBooking({ title: '', format: 'OPEN_PLAY' })).toBe(false)
+  })
+
+  it('returns false for null title', () => {
+    expect(isEquipmentBooking({ title: null, format: 'OPEN_PLAY' })).toBe(false)
   })
 })
 

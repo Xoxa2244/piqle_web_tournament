@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { detectLeagueFamily } from '@/lib/ai/league-family-detector'
-import { classifyProgrammingTier } from '@/lib/ai/programming-tier-classifier'
+import { classifyProgrammingTier, isEquipmentBooking } from '@/lib/ai/programming-tier-classifier'
 import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
@@ -939,6 +939,11 @@ async function applyAttendanceCohortFilters(
       if (!bucket) { bucket = new Set(); families.set(b.user_id, bucket) }
       bucket.add(det.family)
     }
+    // Skip ball machine / equipment rentals — they aren't part of any
+    // programming tier and shouldn't count toward a user's tier taxonomy.
+    if (isEquipmentBooking({ title: b.title, format: b.format, category: b.category })) {
+      continue
+    }
     const tier = classifyProgrammingTier({ title: b.title, format: b.format, category: b.category })
     let tbucket = tiers.get(b.user_id)
     if (!tbucket) { tbucket = new Set(); tiers.set(b.user_id, tbucket) }
@@ -1805,7 +1810,7 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const { classifyProgrammingTier, PROGRAMMING_TIER_META } = await import('@/lib/ai/programming-tier-classifier')
+      const { classifyProgrammingTier, isEquipmentBooking, PROGRAMMING_TIER_META } = await import('@/lib/ai/programming-tier-classifier')
 
       const sinceDate = new Date(Date.now() - input.windowDays * 86400000)
 
@@ -1828,6 +1833,10 @@ export const intelligenceRouter = createTRPCRouter({
         buckets[tier] = { count: 0, registrations: 0, capacity: 0 }
       }
       for (const s of sessions) {
+        // Skip equipment / ball machine rentals — not part of any tier.
+        if (isEquipmentBooking({ title: s.title, format: s.format, category: s.category })) {
+          continue
+        }
         const tier = classifyProgrammingTier({
           title: s.title,
           format: s.format,
@@ -2114,6 +2123,12 @@ export const intelligenceRouter = createTRPCRouter({
         T7_YOUTH: { sessions: [] },
       }
       for (const s of sessionRows) {
+        // Skip equipment / ball machine rentals — they pollute T1 Open
+        // Play with max_players=1 sessions and skew peakUtilization.
+        // See isEquipmentBooking() docstring.
+        if (isEquipmentBooking({ title: s.title, format: s.format, category: s.category })) {
+          continue
+        }
         const tier = classifyProgrammingTier({ title: s.title, format: s.format, category: s.category })
         buckets[tier].sessions.push(s)
       }

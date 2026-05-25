@@ -204,3 +204,44 @@ export function classifyProgrammingTier(input: ClassifyInput): ProgrammingTier {
 export function getTierMeta(input: ClassifyInput): TierMeta {
   return PROGRAMMING_TIER_META[classifyProgrammingTier(input)]
 }
+
+/**
+ * Detects equipment / facility rentals masquerading as play sessions.
+ *
+ * CR exposes ball machine rentals, equipment rentals, and bare court
+ * rentals as `play_sessions` rows, but they aren't part of the
+ * Programming Operating System — no instructor, no skill-based bucket,
+ * no fill-rate signal. Including them in T1 Open Play skews two metrics
+ * in particular:
+ *
+ *   1. peakUtilization — ball machine sessions are max_players=1 with
+ *      a single registrant; util = 100% always. Combined with the
+ *      pre-cap 219% bug, these dominated the T1 peak metric.
+ *   2. session count / avg fill — a club with heavy ball-machine
+ *      bookings looks like it runs more "open play" than it does.
+ *
+ * Use this in tandem with classifyProgrammingTier(): the intelligence
+ * engine's weekly rollup loop should call isEquipmentBooking() first
+ * and `continue` for true matches before computing the session's tier.
+ *
+ * Separate from the tier taxonomy by design — equipment is *not a
+ * tier*, it's an orthogonal exclusion. Adding it as e.g. "T8_EQUIPMENT"
+ * would force every PROGRAMMING_TIER_META consumer (UI labels, color
+ * palette, Action Center, Tier Constructor) to learn about a category
+ * that doesn't belong in the IPC spec.
+ */
+export function isEquipmentBooking(input: ClassifyInput): boolean {
+  const title = (input.title ?? '').toLowerCase()
+  if (title.length === 0) return false
+
+  // Ball machine — most common case on IPC East (10/week).
+  if (/\bball\s*machine\b/.test(title)) return true
+
+  // Generic court rental (no programming attached).
+  if (/\bcourt\s+rental\b/.test(title)) return true
+
+  // Equipment rental.
+  if (/\b(paddle|equipment)\s+rental\b/.test(title)) return true
+
+  return false
+}

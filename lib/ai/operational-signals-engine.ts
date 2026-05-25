@@ -24,7 +24,7 @@ import type { PrismaClient } from '@prisma/client'
 
 import { normalizeMembership } from './membership-intelligence'
 import type { UnifiedAction } from './business-insights-engine'
-import { classifyProgrammingTier } from './programming-tier-classifier'
+import { classifyProgrammingTier, isEquipmentBooking } from './programming-tier-classifier'
 import { detectLeagueFamily } from './league-family-detector'
 
 // ─── Canon shape ────────────────────────────────────────────────────────
@@ -527,6 +527,12 @@ export async function scorecardExecutionSignals(
     T7_YOUTH: [],
   }
   for (const s of rows) {
+    // Skip equipment / ball machine rentals — they aren't part of any
+    // programming tier, so they shouldn't influence T1 daily-cadence or
+    // any other operational signal.
+    if (isEquipmentBooking({ title: s.title, format: s.format, category: s.category })) {
+      continue
+    }
     const tier = classifyProgrammingTier({
       title: s.title,
       format: s.format,
