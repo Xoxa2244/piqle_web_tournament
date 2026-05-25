@@ -150,46 +150,28 @@ export function classifyProgrammingTier(input: ClassifyInput): ProgrammingTier {
     return 'T5_TOURNAMENT'
   }
 
-  // T6 Premium — specialty / visiting-pro / advanced clinics, private
-  // lessons, intensive training, strategy-IQ format.
-  //
-  // Private lessons are the dominant T6 driver on IPC East (14+ per week)
-  // and are the proximate cause of the 219% peakUtil bug: max_players=1
-  // with 2-3 registrants → 200-300% util when bucketed into T1 Open Play.
-  // Catching them here moves them into T6 where the metric makes sense.
+  // T6 Premium — specialty / visiting-pro / advanced clinics.
   if (/\b(specialty|specialist|visiting\s+pro|guest\s+pro|pro\s+clinic|masterclass|advanced\s+clinic)\b/.test(title)) {
     return 'T6_PREMIUM'
   }
-  if (/\bprivate\s+lesson\b/.test(title)) return 'T6_PREMIUM'
-  if (/\b1[\s-]?on[\s-]?1\b/.test(title)) return 'T6_PREMIUM'
-  if (/\bintensive\s+(training|clinic)\b/.test(title)) return 'T6_PREMIUM'
-  // Branded "IQ & Strategy" / "Strategy Clinic" — advanced strategy
-  // content pitched at experienced players (typically 3.5+ gated). Not
-  // a basic T1 class; matches the "premium content" framing.
-  if (/\b(iq\s*&\s*strategy|strategy\s+clinic)\b/.test(title)) return 'T6_PREMIUM'
 
-  // T4 Social & community events — evaluated BEFORE T3 so "Charity
-  // Round Robin" gets T4 (charity intent wins over round-robin format).
-  // Themed / holiday / cosmic / trivia events are primary T4 signals.
-  if (/\bcosmic\b|glow\s+pickleball/.test(title)) return 'T4_SOCIAL'
-  if (/\btrivia\b/.test(title)) return 'T4_SOCIAL'
-  if (/\b(themed|theme\s+night|halloween|christmas|holiday|easter|valentine|new\s+year)\b/.test(title)) return 'T4_SOCIAL'
-  if (/\bcharity|fundraiser|benefit/.test(title)) return 'T4_SOCIAL'
-  if (/\b(mixer|social\s+night|pickle\s*&\s*pour|paddle\s*&\s*pints)\b/.test(title)) return 'T4_SOCIAL'
-
-  // T2 Leagues — format flag is the primary signal; title fallback for
-  // generic "league" mentions and league-affiliated team practices.
+  // T2 Leagues — format flag is the primary signal; title fallback.
   if (format === 'LEAGUE_PLAY') return 'T2_LEAGUE'
   if (/\bleague\b/.test(title)) return 'T2_LEAGUE'
-  if (/\bteam\s+practice\b/.test(title)) return 'T2_LEAGUE'
 
-  // T3 Signature events — the recurring branded weekly hooks. Evaluated
-  // after T4 so themed/charity context wins when both apply.
+  // T3 Signature events — the recurring branded weekly hooks.
   if (/\bround\s*robin\b/.test(title)) return 'T3_SIGNATURE'
   if (/\bmoneyball\b/.test(title)) return 'T3_SIGNATURE'
   if (/\bking\s*\/?\s*queen\b|king\s+of\s+the\s+court|queen\s+of\s+the\s+court/.test(title)) return 'T3_SIGNATURE'
   if (/\bdupr\s+(event|night|session|play)\b/.test(title)) return 'T3_SIGNATURE'
   if (/\bmix\s*&?\s*match\b|mix\s+and\s+match|partner\s+switch/.test(title)) return 'T3_SIGNATURE'
+
+  // T4 Social & community events.
+  if (/\bcosmic\b|glow\s+pickleball/.test(title)) return 'T4_SOCIAL'
+  if (/\btrivia\b/.test(title)) return 'T4_SOCIAL'
+  if (/\b(themed|theme\s+night|halloween|christmas|holiday|easter|valentine|new\s+year)\b/.test(title)) return 'T4_SOCIAL'
+  if (/\bcharity|fundraiser|benefit/.test(title)) return 'T4_SOCIAL'
+  if (/\b(mixer|social\s+night|pickle\s*&\s*pour|paddle\s*&\s*pints)\b/.test(title)) return 'T4_SOCIAL'
 
   // T1 Core fallback — Open Play, Classes & Clinics, Pickleball 101,
   // skill-level segmentation. Anything that doesn't match a more
@@ -203,45 +185,4 @@ export function classifyProgrammingTier(input: ClassifyInput): ProgrammingTier {
  */
 export function getTierMeta(input: ClassifyInput): TierMeta {
   return PROGRAMMING_TIER_META[classifyProgrammingTier(input)]
-}
-
-/**
- * Detects equipment / facility rentals masquerading as play sessions.
- *
- * CR exposes ball machine rentals, equipment rentals, and bare court
- * rentals as `play_sessions` rows, but they aren't part of the
- * Programming Operating System — no instructor, no skill-based bucket,
- * no fill-rate signal. Including them in T1 Open Play skews two metrics
- * in particular:
- *
- *   1. peakUtilization — ball machine sessions are max_players=1 with
- *      a single registrant; util = 100% always. Combined with the
- *      pre-cap 219% bug, these dominated the T1 peak metric.
- *   2. session count / avg fill — a club with heavy ball-machine
- *      bookings looks like it runs more "open play" than it does.
- *
- * Use this in tandem with classifyProgrammingTier(): the intelligence
- * engine's weekly rollup loop should call isEquipmentBooking() first
- * and `continue` for true matches before computing the session's tier.
- *
- * Separate from the tier taxonomy by design — equipment is *not a
- * tier*, it's an orthogonal exclusion. Adding it as e.g. "T8_EQUIPMENT"
- * would force every PROGRAMMING_TIER_META consumer (UI labels, color
- * palette, Action Center, Tier Constructor) to learn about a category
- * that doesn't belong in the IPC spec.
- */
-export function isEquipmentBooking(input: ClassifyInput): boolean {
-  const title = (input.title ?? '').toLowerCase()
-  if (title.length === 0) return false
-
-  // Ball machine — most common case on IPC East (10/week).
-  if (/\bball\s*machine\b/.test(title)) return true
-
-  // Generic court rental (no programming attached).
-  if (/\bcourt\s+rental\b/.test(title)) return true
-
-  // Equipment rental.
-  if (/\b(paddle|equipment)\s+rental\b/.test(title)) return true
-
-  return false
 }

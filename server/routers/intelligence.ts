@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { detectLeagueFamily } from '@/lib/ai/league-family-detector'
-import { isEquipmentBooking } from '@/lib/ai/programming-tier-classifier'
+import { classifyProgrammingTier } from '@/lib/ai/programming-tier-classifier'
 import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
@@ -28,7 +28,6 @@ import { runOperationalSignals } from '@/lib/ai/operational-signals-engine'
 import {
   ALL_TIER_KEYS,
   classifyProgrammingTierWithRules,
-  loadClubCustomRules,
   type ClassifierRule,
   type TierConfig,
   type TierOverride,
@@ -914,10 +913,6 @@ async function applyAttendanceCohortFilters(
 
   const since = new Date(Date.now() - 180 * 86400000)
 
-  // Load this club's per-club tier rules once, before the booking loop —
-  // see classifyProgrammingTierWithRules() below.
-  const customRules = await loadClubCustomRules(prisma, clubId)
-
   const bookings = await prisma.$queryRaw<Array<{
     user_id: string
     title: string | null
@@ -944,17 +939,7 @@ async function applyAttendanceCohortFilters(
       if (!bucket) { bucket = new Set(); families.set(b.user_id, bucket) }
       bucket.add(det.family)
     }
-    // Skip ball machine / equipment rentals — they aren't part of any
-    // programming tier and shouldn't count toward a user's tier taxonomy.
-    if (isEquipmentBooking({ title: b.title, format: b.format, category: b.category })) {
-      continue
-    }
-    // Use the per-club rules variant so a club's custom mappings (set
-    // in Tier Constructor) override the default regex classifier.
-    const tier = classifyProgrammingTierWithRules(
-      { title: b.title, format: b.format, category: b.category },
-      customRules,
-    )
+    const tier = classifyProgrammingTier({ title: b.title, format: b.format, category: b.category })
     let tbucket = tiers.get(b.user_id)
     if (!tbucket) { tbucket = new Set(); tiers.set(b.user_id, tbucket) }
     tbucket.add(tier)
@@ -1820,10 +1805,7 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const { isEquipmentBooking, PROGRAMMING_TIER_META } = await import('@/lib/ai/programming-tier-classifier')
-
-      // Per-club rules — fetched once, reused inside the session loop.
-      const customRules = await loadClubCustomRules(ctx.prisma, input.clubId)
+      const { classifyProgrammingTier, PROGRAMMING_TIER_META } = await import('@/lib/ai/programming-tier-classifier')
 
       const sinceDate = new Date(Date.now() - input.windowDays * 86400000)
 
@@ -1846,20 +1828,11 @@ export const intelligenceRouter = createTRPCRouter({
         buckets[tier] = { count: 0, registrations: 0, capacity: 0 }
       }
       for (const s of sessions) {
-        // Skip equipment / ball machine rentals — not part of any tier.
-        if (isEquipmentBooking({ title: s.title, format: s.format, category: s.category })) {
-          continue
-        }
-        // Per-club rules variant: a club's custom mappings (configured
-        // in Tier Constructor) override the default regex classifier.
-        const tier = classifyProgrammingTierWithRules(
-          {
-            title: s.title,
-            format: s.format,
-            category: s.category,
-          },
-          customRules,
-        )
+        const tier = classifyProgrammingTier({
+          title: s.title,
+          format: s.format,
+          category: s.category,
+        })
         buckets[tier].count += 1
         buckets[tier].registrations += s.registered_count ?? 0
         buckets[tier].capacity += s.max_players ?? 0
@@ -2057,9 +2030,8 @@ export const intelligenceRouter = createTRPCRouter({
   // summary and 4 execution-check yes/no flags.
   //
   // Source data: PlaySession + PlaySessionBooking + ClubFollower for the
-  // chosen ISO week. Tiers are derived via classifyProgrammingTierWithRules
-  // (per-club custom rules + default regex fallback); intro funnel
-  // reuses isIntroSession + cross-references against
+  // chosen ISO week. Tiers are derived via classifyProgrammingTier;
+  // intro funnel reuses isIntroSession + cross-references against
   // current users.membership_status. League continuity uses the same
   // family detector as the league catalog.
   //
@@ -2079,12 +2051,6 @@ export const intelligenceRouter = createTRPCRouter({
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-
-      // Load this club's per-club classifier rules once. Used below
-      // when bucketing each session into a tier so a club's custom
-      // mappings (configured in Tier Constructor) take effect on the
-      // Programming Health rollup, not just on the preview endpoint.
-      const customRules = await loadClubCustomRules(ctx.prisma, input.clubId)
 
       // Resolve week window. weekStart anchors a Mon 00:00 → Sun 23:59 span.
       let weekStart: Date
@@ -2148,18 +2114,7 @@ export const intelligenceRouter = createTRPCRouter({
         T7_YOUTH: { sessions: [] },
       }
       for (const s of sessionRows) {
-        // Skip equipment / ball machine rentals — they pollute T1 Open
-        // Play with max_players=1 sessions and skew peakUtilization.
-        // See isEquipmentBooking() docstring.
-        if (isEquipmentBooking({ title: s.title, format: s.format, category: s.category })) {
-          continue
-        }
-        // Per-club rules variant: custom mappings from Tier Constructor
-        // win over the default regex classifier.
-        const tier = classifyProgrammingTierWithRules(
-          { title: s.title, format: s.format, category: s.category },
-          customRules,
-        )
+        const tier = classifyProgrammingTier({ title: s.title, format: s.format, category: s.category })
         buckets[tier].sessions.push(s)
       }
 
@@ -2171,21 +2126,12 @@ export const intelligenceRouter = createTRPCRouter({
       const sumPlayers = (rows: typeof sessionRows) =>
         rows.reduce((a, r) => a + (r.confirmed_count ?? r.registered_count ?? 0), 0)
       const peakUtil = (rows: typeof sessionRows) => {
-        // Peak utilization is capped at 100% to avoid misleading values like
-        // 219%. Raw reg/cap can exceed 100 when a session is overbooked
-        // (waitlist counted in confirmed) or, more commonly, misclassified —
-        // e.g. a private lesson with max_players=1 and 2-3 registrants sneaks
-        // into the T1 Open Play bucket because mapFormat() falls back to
-        // OPEN_PLAY when CR's reservationType doesn't match clinic/drill/
-        // league/social. The proper fix is in classification (roadmap P1.4 —
-        // programmingTier column). This cap is the safety net so the UI never
-        // shows >100% even after classification improves.
         let peak: number | null = null
         for (const r of rows) {
           const reg = r.confirmed_count ?? r.registered_count ?? 0
           const cap = r.max_players ?? 0
           if (cap === 0) continue
-          const util = Math.min(Math.round((reg / cap) * 100), 100)
+          const util = Math.round((reg / cap) * 100)
           if (peak == null || util > peak) peak = util
         }
         return peak
@@ -7061,94 +7007,6 @@ export const intelligenceRouter = createTRPCRouter({
         userId,
       )
       return { ok: true as const }
-    }),
-
-  // ─────────────────────────────────────────────────────────────────────
-  // Tier Constructor — suggestion engine.
-  //
-  // Lists session titles (plus their format) that currently fall to
-  // T1_CORE through the default classifier after the club's saved
-  // custom_rules are applied. These are the titles an operator is most
-  // likely to want to re-map: "X happens 6 times a week and we're
-  // calling it T1, but really it's a T6 private clinic" — that kind of
-  // catch.
-  //
-  // Excludes equipment bookings (ball machine etc) because they're not
-  // a tier at all and we don't want the operator to mis-bucket them.
-  //
-  // Frequency threshold defaults to 3 sessions in the lookback window —
-  // anything rarer is noise. Lookback defaults to 30 days.
-  //
-  // Returned sorted by sessions DESC so the most common patterns
-  // surface first. The UI hangs an "Add rule" button off each row that
-  // pre-fills the rule creation form with `name_pattern` = exact title.
-  // ─────────────────────────────────────────────────────────────────────
-  getFrequentUntaggedTitles: protectedProcedure
-    .input(z.object({
-      clubId: z.string().uuid(),
-      lookbackDays: z.number().int().min(1).max(180).default(30),
-      minFrequency: z.number().int().min(1).max(50).default(3),
-      limit: z.number().int().min(1).max(200).default(50),
-    }))
-    .query(async ({ ctx, input }) => {
-      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const { isEquipmentBooking } = await import('@/lib/ai/programming-tier-classifier')
-
-      // Load saved rules so the suggestion reflects the *current* state —
-      // titles already mapped by a custom rule don't show up.
-      const customRules = await loadClubCustomRules(ctx.prisma, input.clubId)
-
-      // Group sessions by (title, format) in one shot. We don't dedupe
-      // by category because category is rare in CR data and keeping it
-      // attached lets the classifier match category-driven patterns
-      // properly.
-      const since = new Date(Date.now() - input.lookbackDays * 86_400_000)
-      const rows = await ctx.prisma.$queryRaw<Array<{
-        title: string | null
-        format: string | null
-        sessions: bigint
-      }>>`
-        SELECT ps.title,
-               ps.format::text AS format,
-               COUNT(*)::bigint AS sessions
-        FROM play_sessions ps
-        WHERE ps."clubId" = ${input.clubId}
-          AND ps.date >= ${since}
-          AND ps.title IS NOT NULL
-          AND length(trim(ps.title)) > 0
-        GROUP BY ps.title, ps.format
-        HAVING COUNT(*) >= ${input.minFrequency}
-        ORDER BY COUNT(*) DESC
-        LIMIT ${input.limit}
-      `
-
-      // Classify under current rules + skip equipment. Keep only the
-      // rows that land in T1_CORE (the default fallback) — those are
-      // the candidates an operator might want to re-tier.
-      const candidates: Array<{
-        title: string
-        format: string | null
-        sessions: number
-        currentTier: string
-      }> = []
-      for (const r of rows) {
-        const sessionInput = { title: r.title, format: r.format, category: null }
-        if (isEquipmentBooking(sessionInput)) continue
-        const tier = classifyProgrammingTierWithRules(sessionInput, customRules)
-        if (tier !== 'T1_CORE') continue
-        candidates.push({
-          title: r.title ?? '',
-          format: r.format,
-          sessions: Number(r.sessions),
-          currentTier: tier,
-        })
-      }
-
-      return {
-        candidates,
-        lookbackDays: input.lookbackDays,
-        minFrequency: input.minFrequency,
-      }
     }),
 
   // ─────────────────────────────────────────────────────────────────────

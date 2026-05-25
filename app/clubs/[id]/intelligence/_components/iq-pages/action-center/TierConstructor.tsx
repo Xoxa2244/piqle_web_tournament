@@ -102,23 +102,14 @@ export function TierConstructor({ clubId }: Props) {
     onSuccess: () => {
       configQuery.refetch()
       distributionQuery.refetch()
-      suggestionsQuery.refetch()
     },
   })
   const removeRuleMutation = trpc.intelligence.removeClassifierRule.useMutation({
     onSuccess: () => {
       configQuery.refetch()
       distributionQuery.refetch()
-      suggestionsQuery.refetch()
     },
   })
-  // Suggestion engine: frequent session titles currently falling to T1
-  // Core that an operator might want to re-tier (Private Lessons that
-  // CR labels as "Reservation", recurring branded events, etc).
-  const suggestionsQuery = trpc.intelligence.getFrequentUntaggedTitles.useQuery(
-    { clubId, lookbackDays: 30, minFrequency: 3, limit: 50 },
-    { enabled: !!clubId },
-  )
 
   const [editingTier, setEditingTier] = useState<TierKey | null>(null)
   const [showAddRule, setShowAddRule] = useState(false)
@@ -347,30 +338,6 @@ export function TierConstructor({ clubId }: Props) {
           </div>
         )}
       </div>
-
-      {/* Suggestion engine — frequent untagged titles */}
-      {suggestionsQuery.data && suggestionsQuery.data.candidates.length > 0 && (
-        <UntaggedTitlesSection
-          candidates={suggestionsQuery.data.candidates}
-          lookbackDays={suggestionsQuery.data.lookbackDays}
-          onAddRule={(title, targetTier) => {
-            addRuleMutation.mutate({
-              clubId,
-              rule: {
-                match: { kind: 'name_pattern', regex: escapeRegex(title) },
-                targetTier,
-                priority: 100,
-              },
-            })
-          }}
-          isPending={addRuleMutation.isPending}
-          pendingTitle={
-            addRuleMutation.isPending
-              ? extractPendingTitle(addRuleMutation.variables?.rule)
-              : null
-          }
-        />
-      )}
 
       {/* Add custom rule modal */}
       {showAddRule && (
@@ -1263,170 +1230,4 @@ function ModalFooter({
       </button>
     </div>
   )
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// Suggestion engine — surfaces frequent session titles that currently
-// fall to T1 Core after the club's saved rules + default classifier.
-// One-click "Add rule" pre-fills a name_pattern rule with the title
-// verbatim (regex-escaped) so the operator's click maps that exact
-// session series to the chosen tier.
-// ─────────────────────────────────────────────────────────────────────────
-
-interface Candidate {
-  title: string
-  format: string | null
-  sessions: number
-  currentTier: string
-}
-
-function UntaggedTitlesSection({
-  candidates,
-  lookbackDays,
-  onAddRule,
-  isPending,
-  pendingTitle,
-}: {
-  candidates: readonly Candidate[]
-  lookbackDays: number
-  onAddRule: (title: string, tier: TierKey) => void
-  isPending: boolean
-  pendingTitle: string | null
-}) {
-  return (
-    <div
-      className="rounded-xl"
-      style={{
-        background: 'var(--card-bg)',
-        border: '1px solid var(--card-border)',
-      }}
-    >
-      <div className="p-4 flex items-start gap-3" style={{ borderBottom: '1px solid var(--card-border)' }}>
-        <div
-          className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
-          style={{ background: 'rgba(234,179,8,0.15)' }}
-        >
-          <Sparkles className="w-5 h-5" style={{ color: '#EAB308' }} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-semibold" style={{ color: 'var(--t1)' }}>
-            Frequent untagged titles
-          </div>
-          <div className="text-[11px] mt-0.5" style={{ color: 'var(--t3)' }}>
-            {candidates.length} title{candidates.length === 1 ? '' : 's'} currently bucketed as T1 Core over the last {lookbackDays} days.
-            Pick the correct tier to add a custom rule.
-          </div>
-        </div>
-      </div>
-
-      <div className="divide-y" style={{ borderColor: 'var(--card-border)' }}>
-        {candidates.map((c) => (
-          <UntaggedTitleRow
-            key={`${c.title}__${c.format ?? 'null'}`}
-            candidate={c}
-            onAddRule={onAddRule}
-            isPending={isPending && pendingTitle === c.title}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// Tier choices an operator can pick for an untagged title. T1 is
-// excluded because the title is *already* falling to T1 — picking T1
-// here would just be a no-op rule.
-const SUGGEST_TARGET_TIERS: readonly TierKey[] = [
-  'T2_LEAGUE',
-  'T3_SIGNATURE',
-  'T4_SOCIAL',
-  'T5_TOURNAMENT',
-  'T6_PREMIUM',
-  'T7_YOUTH',
-]
-
-function UntaggedTitleRow({
-  candidate,
-  onAddRule,
-  isPending,
-}: {
-  candidate: Candidate
-  onAddRule: (title: string, tier: TierKey) => void
-  isPending: boolean
-}) {
-  const [selectedTier, setSelectedTier] = useState<TierKey | ''>('')
-
-  return (
-    <div className="flex items-center gap-3 px-4 py-2.5">
-      <div className="flex-1 min-w-0">
-        <div className="text-[13px] truncate" style={{ color: 'var(--t1)' }} title={candidate.title}>
-          {candidate.title}
-        </div>
-        <div className="text-[10px] mt-0.5" style={{ color: 'var(--t4)' }}>
-          {candidate.sessions} session{candidate.sessions === 1 ? '' : 's'}
-          {candidate.format ? ` · ${candidate.format}` : ''}
-        </div>
-      </div>
-
-      <select
-        value={selectedTier}
-        onChange={(e) => setSelectedTier(e.target.value as TierKey | '')}
-        className="text-[12px] px-2 py-1.5 rounded-md"
-        style={{
-          background: 'var(--card-bg)',
-          color: 'var(--t1)',
-          border: '1px solid var(--card-border)',
-        }}
-      >
-        <option value="">— pick tier —</option>
-        {SUGGEST_TARGET_TIERS.map((tier) => (
-          <option key={tier} value={tier}>
-            {PROGRAMMING_TIER_META[tier].shortLabel}
-          </option>
-        ))}
-      </select>
-
-      <button
-        type="button"
-        disabled={!selectedTier || isPending}
-        onClick={() => selectedTier && onAddRule(candidate.title, selectedTier)}
-        className="text-[12px] px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
-        style={{
-          background: 'rgba(139,92,246,0.18)',
-          color: '#A78BFA',
-          border: '1px solid rgba(139,92,246,0.32)',
-          fontWeight: 600,
-        }}
-      >
-        {isPending ? '...' : (<><Plus className="w-3.5 h-3.5" /> Add rule</>)}
-      </button>
-    </div>
-  )
-}
-
-/**
- * Escape regex special characters so a verbatim title is matched as
- * a literal string when used as a `name_pattern` rule. Without this,
- * a title like "Private Lesson for 1 - Court #9 (IPC East)" would be
- * an invalid pattern (unescaped parens / +) or silently match too many
- * other titles.
- */
-function escapeRegex(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/**
- * Pull the title out of the in-flight addRule mutation variables so we
- * can show a spinner on the right row only. Best-effort — returns null
- * when the variable shape isn't what we expect.
- */
-function extractPendingTitle(
-  rule: { match?: { kind?: string; regex?: string } } | undefined,
-): string | null {
-  if (!rule || rule.match?.kind !== 'name_pattern' || typeof rule.match.regex !== 'string') {
-    return null
-  }
-  // Reverse the regex-escape so the displayed title matches the source
-  // candidate row. Only handles the escapes we add ourselves.
-  return rule.match.regex.replace(/\\([.*+?^${}()|[\]\\])/g, '$1')
 }
