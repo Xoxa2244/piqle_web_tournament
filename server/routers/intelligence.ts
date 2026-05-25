@@ -7049,118 +7049,260 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
+      interface CsvSessionMeta {
+        date: string
+        startTime?: string
+        endTime?: string
+        court?: string
+        format?: string
+        skillLevel?: string
+        registered: number
+        capacity: number
+        occupancy?: number
+        playerNames?: string[]
+      }
+
+      type SeriesPoint = { bucketStart: Date; value: number }
+
+      const bucketStartForDate = (dateStr: string): Date => {
+        const d = new Date(`${dateStr}T12:00:00.000Z`)
+        if (input.bucket === 'month') {
+          return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
+        }
+
+        const weekStart = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+        const day = weekStart.getUTCDay()
+        const diffToMonday = day === 0 ? -6 : 1 - day
+        weekStart.setUTCDate(weekStart.getUTCDate() + diffToMonday)
+        return weekStart
+      }
+
+      const fetchCsvSeries = async (
+        startDate: Date,
+        endDate: Date,
+      ): Promise<SeriesPoint[]> => {
+        const rows = await ctx.prisma.$queryRaw<Array<{ metadata: any }>>`
+          SELECT metadata
+          FROM document_embeddings
+          WHERE club_id = ${input.clubId}
+            AND content_type = 'session'
+            AND source_table = 'csv_import'
+        `.catch(() => [])
+
+        const allSessions = rows
+          .map((r) => (typeof r.metadata === 'string' ? JSON.parse(r.metadata) : r.metadata) as CsvSessionMeta)
+          .filter((s) => s?.date && Number(s.capacity) > 0)
+          .sort((a, b) => a.date.localeCompare(b.date))
+
+        if (allSessions.length === 0) return []
+
+        let sessions = allSessions.filter((s) => {
+          const sessionDate = new Date(`${s.date}T12:00:00.000Z`)
+          return sessionDate >= startDate && sessionDate < endDate
+        })
+
+        // Match getDashboardV2's CSV fallback behavior: when the requested
+        // calendar window has no imported sessions, use the newer half of
+        // the CSV import instead of returning an empty drill-down.
+        if (sessions.length === 0) {
+          sessions = allSessions.slice(Math.floor(allSessions.length / 2))
+        }
+
+        const buckets = new Map<string, {
+          bucketStart: Date
+          total: number
+          count: number
+          players: Set<string>
+        }>()
+
+        const getBucket = (dateStr: string) => {
+          const bucketStart = bucketStartForDate(dateStr)
+          const key = bucketStart.toISOString()
+          const current = buckets.get(key)
+          if (current) return current
+          const next = { bucketStart, total: 0, count: 0, players: new Set<string>() }
+          buckets.set(key, next)
+          return next
+        }
+
+        for (const session of sessions) {
+          const bucket = getBucket(session.date)
+          const registered = Number(session.registered) || 0
+          const capacity = Number(session.capacity) || 0
+          const occupancy = Number.isFinite(Number(session.occupancy))
+            ? Number(session.occupancy)
+            : capacity > 0 ? (registered / capacity) * 100 : 0
+          const playerNames = Array.isArray(session.playerNames)
+            ? session.playerNames.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+            : []
+
+          switch (input.metric) {
+            case 'player_registrations':
+              bucket.total += registered
+              bucket.count += 1
+              break
+            case 'court_occupancy':
+              bucket.total += occupancy
+              bucket.count += 1
+              break
+            case 'active_players':
+              playerNames.forEach(name => bucket.players.add(name))
+              break
+            case 'avg_sessions_per_player':
+              playerNames.forEach(name => {
+                bucket.players.add(name)
+                bucket.total += 1
+              })
+              break
+          }
+        }
+
+        return Array.from(buckets.values())
+          .map((bucket) => {
+            let value = 0
+            if (input.metric === 'court_occupancy') {
+              value = bucket.count > 0 ? bucket.total / bucket.count : 0
+            } else if (input.metric === 'active_players') {
+              value = bucket.players.size
+            } else if (input.metric === 'avg_sessions_per_player') {
+              value = bucket.players.size > 0 ? bucket.total / bucket.players.size : 0
+            } else {
+              value = bucket.total
+            }
+
+            return {
+              bucketStart: bucket.bucketStart,
+              value: Math.round(value * 10) / 10,
+            }
+          })
+          .filter(point => point.value > 0 || input.metric === 'court_occupancy')
+          .sort((a, b) => a.bucketStart.getTime() - b.bucketStart.getTime())
+      }
+
       const fetchSeries = async (
         startDate: Date,
         endDate: Date,
-      ): Promise<Array<{ bucketStart: Date; value: number }>> => {
+      ): Promise<SeriesPoint[]> => {
         const trunc = input.bucket // 'week' | 'month' — validated by Zod
+        let bars: SeriesPoint[] = []
 
-        switch (input.metric) {
-          case 'player_registrations': {
-            // One row per CONFIRMED booking in window, grouped by bucket.
-            const rows = (await ctx.prisma.$queryRawUnsafe(
-              `
-              SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
-                     COUNT(*)::int AS value
-              FROM play_session_bookings b
-              JOIN play_sessions ps ON ps.id = b."sessionId"
-              WHERE ps."clubId" = $1::uuid
-                AND b.status::text = 'CONFIRMED'
-                AND ps.date >= $2 AND ps.date < $3
-              GROUP BY bucket_start
-              ORDER BY bucket_start
-              `,
-              input.clubId,
-              startDate,
-              endDate,
-            )) as Array<{ bucket_start: Date; value: number }>
-            return rows.map(r => ({ bucketStart: r.bucket_start, value: r.value }))
-          }
-
-          case 'court_occupancy': {
-            // Average per-session fill across the bucket. Same formula
-            // the Schedule page uses (registered_count / maxPlayers).
-            const rows = (await ctx.prisma.$queryRawUnsafe(
-              `
-              SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
-                     AVG(
-                       CASE WHEN ps."maxPlayers" > 0
-                            THEN (ps.registered_count::float / ps."maxPlayers") * 100
-                            ELSE 0
-                       END
-                     )::float AS value
-              FROM play_sessions ps
-              WHERE ps."clubId" = $1::uuid
-                AND ps.date >= $2 AND ps.date < $3
-                AND ps."maxPlayers" > 0
-              GROUP BY bucket_start
-              ORDER BY bucket_start
-              `,
-              input.clubId,
-              startDate,
-              endDate,
-            )) as Array<{ bucket_start: Date; value: number }>
-            return rows.map(r => ({
-              bucketStart: r.bucket_start,
-              value: Math.round(r.value * 10) / 10,
-            }))
-          }
-
-          case 'active_players': {
-            // Distinct users with ≥1 CONFIRMED booking inside the bucket.
-            const rows = (await ctx.prisma.$queryRawUnsafe(
-              `
-              SELECT bucket_start, COUNT(DISTINCT user_id)::int AS value
-              FROM (
+        try {
+          switch (input.metric) {
+            case 'player_registrations': {
+              // One row per CONFIRMED booking in window, grouped by bucket.
+              const rows = (await ctx.prisma.$queryRawUnsafe(
+                `
                 SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
-                       b."userId" AS user_id
+                       COUNT(*)::int AS value
                 FROM play_session_bookings b
                 JOIN play_sessions ps ON ps.id = b."sessionId"
                 WHERE ps."clubId" = $1::uuid
                   AND b.status::text = 'CONFIRMED'
                   AND ps.date >= $2 AND ps.date < $3
-                GROUP BY 1, 2
-              ) sub
-              GROUP BY bucket_start
-              ORDER BY bucket_start
-              `,
-              input.clubId,
-              startDate,
-              endDate,
-            )) as Array<{ bucket_start: Date; value: number }>
-            return rows.map(r => ({ bucketStart: r.bucket_start, value: r.value }))
-          }
+                GROUP BY bucket_start
+                ORDER BY bucket_start
+                `,
+                input.clubId,
+                startDate,
+                endDate,
+              )) as Array<{ bucket_start: Date; value: number }>
+              bars = rows.map(r => ({ bucketStart: r.bucket_start, value: r.value }))
+              break
+            }
 
-          case 'avg_sessions_per_player': {
-            // Average bookings per active player in each bucket.
-            const rows = (await ctx.prisma.$queryRawUnsafe(
-              `
-              WITH bucket_counts AS (
+            case 'court_occupancy': {
+              // Average per-session fill across the bucket. Same formula
+              // the Schedule page uses (registered_count / maxPlayers).
+              const rows = (await ctx.prisma.$queryRawUnsafe(
+                `
                 SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
-                       b."userId" AS user_id,
-                       COUNT(*) AS cnt
-                FROM play_session_bookings b
-                JOIN play_sessions ps ON ps.id = b."sessionId"
+                       AVG(
+                         CASE WHEN ps."maxPlayers" > 0
+                              THEN (ps.registered_count::float / ps."maxPlayers") * 100
+                              ELSE 0
+                         END
+                       )::float AS value
+                FROM play_sessions ps
                 WHERE ps."clubId" = $1::uuid
-                  AND b.status::text = 'CONFIRMED'
                   AND ps.date >= $2 AND ps.date < $3
-                GROUP BY 1, 2
-              )
-              SELECT bucket_start, AVG(cnt)::float AS value
-              FROM bucket_counts
-              GROUP BY bucket_start
-              ORDER BY bucket_start
-              `,
-              input.clubId,
-              startDate,
-              endDate,
-            )) as Array<{ bucket_start: Date; value: number }>
-            return rows.map(r => ({
-              bucketStart: r.bucket_start,
-              value: Math.round(r.value * 10) / 10,
-            }))
+                  AND ps."maxPlayers" > 0
+                GROUP BY bucket_start
+                ORDER BY bucket_start
+                `,
+                input.clubId,
+                startDate,
+                endDate,
+              )) as Array<{ bucket_start: Date; value: number }>
+              bars = rows.map(r => ({
+                bucketStart: r.bucket_start,
+                value: Math.round(r.value * 10) / 10,
+              }))
+              break
+            }
+
+            case 'active_players': {
+              // Distinct users with ≥1 CONFIRMED booking inside the bucket.
+              const rows = (await ctx.prisma.$queryRawUnsafe(
+                `
+                SELECT bucket_start, COUNT(DISTINCT user_id)::int AS value
+                FROM (
+                  SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
+                         b."userId" AS user_id
+                  FROM play_session_bookings b
+                  JOIN play_sessions ps ON ps.id = b."sessionId"
+                  WHERE ps."clubId" = $1::uuid
+                    AND b.status::text = 'CONFIRMED'
+                    AND ps.date >= $2 AND ps.date < $3
+                  GROUP BY 1, 2
+                ) sub
+                GROUP BY bucket_start
+                ORDER BY bucket_start
+                `,
+                input.clubId,
+                startDate,
+                endDate,
+              )) as Array<{ bucket_start: Date; value: number }>
+              bars = rows.map(r => ({ bucketStart: r.bucket_start, value: r.value }))
+              break
+            }
+
+            case 'avg_sessions_per_player': {
+              // Average bookings per active player in each bucket.
+              const rows = (await ctx.prisma.$queryRawUnsafe(
+                `
+                WITH bucket_counts AS (
+                  SELECT date_trunc('${trunc}', ps.date) AS bucket_start,
+                         b."userId" AS user_id,
+                         COUNT(*) AS cnt
+                  FROM play_session_bookings b
+                  JOIN play_sessions ps ON ps.id = b."sessionId"
+                  WHERE ps."clubId" = $1::uuid
+                    AND b.status::text = 'CONFIRMED'
+                    AND ps.date >= $2 AND ps.date < $3
+                  GROUP BY 1, 2
+                )
+                SELECT bucket_start, AVG(cnt)::float AS value
+                FROM bucket_counts
+                GROUP BY bucket_start
+                ORDER BY bucket_start
+                `,
+                input.clubId,
+                startDate,
+                endDate,
+              )) as Array<{ bucket_start: Date; value: number }>
+              bars = rows.map(r => ({
+                bucketStart: r.bucket_start,
+                value: Math.round(r.value * 10) / 10,
+              }))
+              break
+            }
           }
+        } catch (err) {
+          log.warn('[getMetricTimeSeries] SQL series failed, trying CSV fallback:', (err as Error).message?.slice(0, 120))
         }
+
+        if (bars.length > 0) return bars
+        return fetchCsvSeries(startDate, endDate)
       }
 
       // Simple linear regression on (i, value) pairs — slope + intercept

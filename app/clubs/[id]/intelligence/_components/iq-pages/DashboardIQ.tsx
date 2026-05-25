@@ -1547,20 +1547,18 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           };
           const toOcc = (v: any): number => parseFloat(String(v || '0').replace('%','')) || 0;
 
-          // Extract session counts from subtitles (e.g. "42 sessions")
-          const parseSessionCount = (subtitle: any): string | null => {
-            if (typeof subtitle !== 'string') return null;
-            const m = subtitle.match(/^(\d[\d,]*)\s+sessions?/);
-            return m ? `${m[1]} sessions` : null;
-          };
-
-          // Metrics: [label, currentVal, prevVal, format, invertGood, subtitle]
-          const metrics: Array<{ label: string; cur: number; prev: number; format: 'number'|'percent'; invert?: boolean; curSub?: string | null; prevSub?: string | null }> = cur ? [
+          const metrics: Array<{
+            label: string;
+            cur: number;
+            prev: number;
+            format: 'number'|'percent';
+            invert?: boolean;
+            deltaCur?: number;
+            deltaPrev?: number;
+          }> = cur ? [
             {
               label: "Player Registrations",
               cur: toNum(cur.bookings?.value), prev: toNum(prv?.bookings?.value), format: 'number',
-              curSub: parseSessionCount(cur.occupancy?.subtitle),
-              prevSub: parseSessionCount(prv?.occupancy?.subtitle),
             },
             { label: "Court Occupancy", cur: toOcc(cur.occupancy?.value), prev: toOcc(prv?.occupancy?.value), format: 'percent' },
             { label: "Active Players", cur: toNum(cur.members?.value), prev: toNum(prv?.members?.value), format: 'number' },
@@ -1569,6 +1567,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               cur: toNum(cur.members?.value) > 0 ? Math.round((toNum(cur.bookings?.value) / toNum(cur.members?.value)) * 10) / 10 : 0,
               prev: toNum(prv?.members?.value) > 0 ? Math.round((toNum(prv?.bookings?.value) / toNum(prv?.members?.value)) * 10) / 10 : 0,
               format: 'number',
+              deltaCur: toNum(cur.members?.value) > 0 ? toNum(cur.bookings?.value) / toNum(cur.members?.value) : 0,
+              deltaPrev: toNum(prv?.members?.value) > 0 ? toNum(prv?.bookings?.value) / toNum(prv?.members?.value) : 0,
             },
           ] : [];
 
@@ -1589,7 +1589,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           return (
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {metrics.map((row) => {
-                const rawDelta = row.prev === 0 ? 0 : ((row.cur - row.prev) / row.prev) * 100;
+                const deltaCur = row.deltaCur ?? row.cur;
+                const deltaPrev = row.deltaPrev ?? row.prev;
+                const rawDelta = deltaPrev === 0 ? 0 : ((deltaCur - deltaPrev) / deltaPrev) * 100;
                 const delta = Math.round(rawDelta * 10) / 10;
                 const isPositive = row.invert ? delta < 0 : delta > 0;
                 const trendTone: TrendTone = delta === 0 ? "neutral" : isPositive ? "positive" : "negative";
@@ -1614,13 +1616,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                         <div style={{ fontSize: "22px", fontWeight: 700, color: "var(--heading)" }}>{dispCur}</div>
                         <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>
                           {prv ? `was ${dispPrev}` : '— no comparison data'}
-                          {row.curSub && ` · ${row.curSub}`}
                         </div>
-                        {row.prevSub && (
-                          <div className="text-[9px] mt-0.5" style={{ color: 'var(--t4)', opacity: 0.7 }}>
-                            was: {row.prevSub}
-                          </div>
-                        )}
                       </div>
                       {prv && row.prev > 0 && (
                         <div
@@ -1658,20 +1654,27 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       {(() => {
         // Determine window dates as ISO datetime strings. Backend Zod
         // validation requires .datetime() so naked YYYY-MM-DD fails.
-        const toIsoDt = (s: string | undefined, fallback: Date): string => {
+        const toStartIsoDt = (s: string | undefined, fallback: Date): string => {
           if (!s) return fallback.toISOString();
           // periodDates uses YYYY-MM-DD; append start-of-day UTC.
           return new Date(`${s}T00:00:00.000Z`).toISOString();
         };
+        const toEndIsoDt = (s: string | undefined, fallback: Date): string => {
+          if (!s) return fallback.toISOString();
+          // The drawer endpoint treats endDate as exclusive. Use the end of
+          // the selected day so the visible period is not missing its last day.
+          return new Date(`${s}T23:59:59.999Z`).toISOString();
+        };
         const now = new Date();
-        const start = toIsoDt(
+        const start = toStartIsoDt(
           periodDates.dateFrom,
           new Date(now.getTime() - 90 * 86400000),
         );
-        const end = toIsoDt(periodDates.dateTo, now);
-        const windowDays =
+        const end = toEndIsoDt(periodDates.dateTo, now);
+        const windowDays = Math.floor(
           (new Date(end).getTime() - new Date(start).getTime()) /
-          86400000;
+          86400000,
+        );
         const bucket: 'week' | 'month' = windowDays > 90 ? 'month' : 'week';
         return (
           <PeriodComparisonDrawer
