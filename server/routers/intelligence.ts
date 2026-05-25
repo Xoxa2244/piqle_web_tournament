@@ -7064,6 +7064,94 @@ export const intelligenceRouter = createTRPCRouter({
     }),
 
   // ─────────────────────────────────────────────────────────────────────
+  // Tier Constructor — suggestion engine.
+  //
+  // Lists session titles (plus their format) that currently fall to
+  // T1_CORE through the default classifier after the club's saved
+  // custom_rules are applied. These are the titles an operator is most
+  // likely to want to re-map: "X happens 6 times a week and we're
+  // calling it T1, but really it's a T6 private clinic" — that kind of
+  // catch.
+  //
+  // Excludes equipment bookings (ball machine etc) because they're not
+  // a tier at all and we don't want the operator to mis-bucket them.
+  //
+  // Frequency threshold defaults to 3 sessions in the lookback window —
+  // anything rarer is noise. Lookback defaults to 30 days.
+  //
+  // Returned sorted by sessions DESC so the most common patterns
+  // surface first. The UI hangs an "Add rule" button off each row that
+  // pre-fills the rule creation form with `name_pattern` = exact title.
+  // ─────────────────────────────────────────────────────────────────────
+  getFrequentUntaggedTitles: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      lookbackDays: z.number().int().min(1).max(180).default(30),
+      minFrequency: z.number().int().min(1).max(50).default(3),
+      limit: z.number().int().min(1).max(200).default(50),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { isEquipmentBooking } = await import('@/lib/ai/programming-tier-classifier')
+
+      // Load saved rules so the suggestion reflects the *current* state —
+      // titles already mapped by a custom rule don't show up.
+      const customRules = await loadClubCustomRules(ctx.prisma, input.clubId)
+
+      // Group sessions by (title, format) in one shot. We don't dedupe
+      // by category because category is rare in CR data and keeping it
+      // attached lets the classifier match category-driven patterns
+      // properly.
+      const since = new Date(Date.now() - input.lookbackDays * 86_400_000)
+      const rows = await ctx.prisma.$queryRaw<Array<{
+        title: string | null
+        format: string | null
+        sessions: bigint
+      }>>`
+        SELECT ps.title,
+               ps.format::text AS format,
+               COUNT(*)::bigint AS sessions
+        FROM play_sessions ps
+        WHERE ps."clubId" = ${input.clubId}
+          AND ps.date >= ${since}
+          AND ps.title IS NOT NULL
+          AND length(trim(ps.title)) > 0
+        GROUP BY ps.title, ps.format
+        HAVING COUNT(*) >= ${input.minFrequency}
+        ORDER BY COUNT(*) DESC
+        LIMIT ${input.limit}
+      `
+
+      // Classify under current rules + skip equipment. Keep only the
+      // rows that land in T1_CORE (the default fallback) — those are
+      // the candidates an operator might want to re-tier.
+      const candidates: Array<{
+        title: string
+        format: string | null
+        sessions: number
+        currentTier: string
+      }> = []
+      for (const r of rows) {
+        const sessionInput = { title: r.title, format: r.format, category: null }
+        if (isEquipmentBooking(sessionInput)) continue
+        const tier = classifyProgrammingTierWithRules(sessionInput, customRules)
+        if (tier !== 'T1_CORE') continue
+        candidates.push({
+          title: r.title ?? '',
+          format: r.format,
+          sessions: Number(r.sessions),
+          currentTier: tier,
+        })
+      }
+
+      return {
+        candidates,
+        lookbackDays: input.lookbackDays,
+        minFrequency: input.minFrequency,
+      }
+    }),
+
+  // ─────────────────────────────────────────────────────────────────────
   // Period Comparison drawer — Step 8 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
   // §3.3.
   // ─────────────────────────────────────────────────────────────────────
