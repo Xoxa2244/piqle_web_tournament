@@ -1597,26 +1597,6 @@ enum PlaySessionFormat {
   SOCIAL
 }
 
-// Programming tier classification — IPC's Programming Operating System v1.0.
-// Distinct from `PlaySessionFormat` (CR-derived technical type). Tier is the
-// *business* categorization used by Programming Health and Action Center.
-// Populated by lib/ai/programming-tier-classifier.ts (roadmap P1.4).
-//
-// UNCLASSIFIED is the default for newly-synced sessions before the classifier
-// runs, and for historical sessions before the backfill job. The intelligence
-// engine treats UNCLASSIFIED separately from any tier so operators can spot
-// classification gaps.
-enum ProgrammingTier {
-  T1_CORE
-  T2_LEAGUE
-  T3_SIGNATURE
-  T4_SOCIAL
-  T5_TOURNAMENT
-  T6_PREMIUM
-  T7_YOUTH
-  UNCLASSIFIED
-}
-
 enum PlaySessionSkillLevel {
   BEGINNER
   INTERMEDIATE
@@ -1710,11 +1690,6 @@ model PlaySession {
   startTime       String
   endTime         String
   format          PlaySessionFormat     @default(OPEN_PLAY)
-  // Programming tier — IPC's 7-tier business classification (T1-T7).
-  // Populated by programming-tier-classifier.ts based on title/format/etc.
-  // Defaults to UNCLASSIFIED so newly-synced sessions are visible as
-  // "needs classification" until the classifier runs.
-  programmingTier ProgrammingTier       @default(UNCLASSIFIED) @map("programming_tier")
   category        String?
   skillLevel      PlaySessionSkillLevel @default(ALL_LEVELS)
   maxPlayers      Int                   @default(8)
