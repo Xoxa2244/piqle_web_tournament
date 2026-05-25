@@ -106,7 +106,9 @@ export function PeriodComparisonDrawer({
   }
   const formatDelta = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v * 10) / 10}%`
 
-  // Chart data = bars + trend evaluated at the same x positions.
+  // Chart data = bars + one regression segment. Do not put a rounded
+  // predicted value on every bucket: Recharts will draw a polyline through
+  // those points, which makes a linear trend look broken.
   const chartData = useMemo(() => {
     if (!query.data) return []
     const { bars, trend } = query.data
@@ -115,7 +117,9 @@ export function PeriodComparisonDrawer({
     return bars.map((b, i) => ({
       label: formatBucketLabel(new Date(b.bucketStart), bucket, windowStart, windowEnd),
       value: b.value,
-      trend: Math.round((trend.intercept + trend.slope * i) * 10) / 10,
+      trend: i === 0 || i === bars.length - 1
+        ? trend.intercept + trend.slope * i
+        : null,
     }))
   }, [query.data, bucket, startDate, endDate])
 
@@ -302,6 +306,7 @@ export function PeriodComparisonDrawer({
                         stroke="#06B6D4"
                         strokeWidth={2}
                         dot={false}
+                        connectNulls
                         strokeDasharray="4 4"
                       />
                     </ComposedChart>
