@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client'
 import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { detectLeagueFamily } from '@/lib/ai/league-family-detector'
-import { classifyProgrammingTier, isEquipmentBooking } from '@/lib/ai/programming-tier-classifier'
+import { isEquipmentBooking } from '@/lib/ai/programming-tier-classifier'
 import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
@@ -28,6 +28,7 @@ import { runOperationalSignals } from '@/lib/ai/operational-signals-engine'
 import {
   ALL_TIER_KEYS,
   classifyProgrammingTierWithRules,
+  loadClubCustomRules,
   type ClassifierRule,
   type TierConfig,
   type TierOverride,
@@ -913,6 +914,10 @@ async function applyAttendanceCohortFilters(
 
   const since = new Date(Date.now() - 180 * 86400000)
 
+  // Load this club's per-club tier rules once, before the booking loop —
+  // see classifyProgrammingTierWithRules() below.
+  const customRules = await loadClubCustomRules(prisma, clubId)
+
   const bookings = await prisma.$queryRaw<Array<{
     user_id: string
     title: string | null
@@ -944,7 +949,12 @@ async function applyAttendanceCohortFilters(
     if (isEquipmentBooking({ title: b.title, format: b.format, category: b.category })) {
       continue
     }
-    const tier = classifyProgrammingTier({ title: b.title, format: b.format, category: b.category })
+    // Use the per-club rules variant so a club's custom mappings (set
+    // in Tier Constructor) override the default regex classifier.
+    const tier = classifyProgrammingTierWithRules(
+      { title: b.title, format: b.format, category: b.category },
+      customRules,
+    )
     let tbucket = tiers.get(b.user_id)
     if (!tbucket) { tbucket = new Set(); tiers.set(b.user_id, tbucket) }
     tbucket.add(tier)
@@ -1810,7 +1820,10 @@ export const intelligenceRouter = createTRPCRouter({
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const { classifyProgrammingTier, isEquipmentBooking, PROGRAMMING_TIER_META } = await import('@/lib/ai/programming-tier-classifier')
+      const { isEquipmentBooking, PROGRAMMING_TIER_META } = await import('@/lib/ai/programming-tier-classifier')
+
+      // Per-club rules — fetched once, reused inside the session loop.
+      const customRules = await loadClubCustomRules(ctx.prisma, input.clubId)
 
       const sinceDate = new Date(Date.now() - input.windowDays * 86400000)
 
@@ -1837,11 +1850,16 @@ export const intelligenceRouter = createTRPCRouter({
         if (isEquipmentBooking({ title: s.title, format: s.format, category: s.category })) {
           continue
         }
-        const tier = classifyProgrammingTier({
-          title: s.title,
-          format: s.format,
-          category: s.category,
-        })
+        // Per-club rules variant: a club's custom mappings (configured
+        // in Tier Constructor) override the default regex classifier.
+        const tier = classifyProgrammingTierWithRules(
+          {
+            title: s.title,
+            format: s.format,
+            category: s.category,
+          },
+          customRules,
+        )
         buckets[tier].count += 1
         buckets[tier].registrations += s.registered_count ?? 0
         buckets[tier].capacity += s.max_players ?? 0
@@ -2039,8 +2057,9 @@ export const intelligenceRouter = createTRPCRouter({
   // summary and 4 execution-check yes/no flags.
   //
   // Source data: PlaySession + PlaySessionBooking + ClubFollower for the
-  // chosen ISO week. Tiers are derived via classifyProgrammingTier;
-  // intro funnel reuses isIntroSession + cross-references against
+  // chosen ISO week. Tiers are derived via classifyProgrammingTierWithRules
+  // (per-club custom rules + default regex fallback); intro funnel
+  // reuses isIntroSession + cross-references against
   // current users.membership_status. League continuity uses the same
   // family detector as the league catalog.
   //
@@ -2060,6 +2079,12 @@ export const intelligenceRouter = createTRPCRouter({
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Load this club's per-club classifier rules once. Used below
+      // when bucketing each session into a tier so a club's custom
+      // mappings (configured in Tier Constructor) take effect on the
+      // Programming Health rollup, not just on the preview endpoint.
+      const customRules = await loadClubCustomRules(ctx.prisma, input.clubId)
 
       // Resolve week window. weekStart anchors a Mon 00:00 → Sun 23:59 span.
       let weekStart: Date
@@ -2129,7 +2154,12 @@ export const intelligenceRouter = createTRPCRouter({
         if (isEquipmentBooking({ title: s.title, format: s.format, category: s.category })) {
           continue
         }
-        const tier = classifyProgrammingTier({ title: s.title, format: s.format, category: s.category })
+        // Per-club rules variant: custom mappings from Tier Constructor
+        // win over the default regex classifier.
+        const tier = classifyProgrammingTierWithRules(
+          { title: s.title, format: s.format, category: s.category },
+          customRules,
+        )
         buckets[tier].sessions.push(s)
       }
 
