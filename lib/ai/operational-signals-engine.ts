@@ -24,7 +24,11 @@ import type { PrismaClient } from '@prisma/client'
 
 import { normalizeMembership } from './membership-intelligence'
 import type { UnifiedAction } from './business-insights-engine'
-import { classifyProgrammingTier } from './programming-tier-classifier'
+import { isEquipmentBooking } from './programming-tier-classifier'
+import {
+  classifyProgrammingTierWithRules,
+  loadClubCustomRules,
+} from './tier-classifier-extended'
 import { detectLeagueFamily } from './league-family-detector'
 
 // ─── Canon shape ────────────────────────────────────────────────────────
@@ -491,6 +495,11 @@ export async function scorecardExecutionSignals(
   const weekEnd = new Date(weekStart.getTime() + 7 * 86400_000)
   const weekLabel = weekStart.toISOString().slice(0, 10)
 
+  // Load this club's custom classifier rules once, before the bucketing
+  // loop. So the operational signals reflect the same per-club mapping
+  // that Programming Health uses.
+  const customRules = await loadClubCustomRules(prisma, clubId)
+
   // Pull all sessions in the window — we need title / format / category
   // for the tier classifier, and date so we can group T1 by day.
   const rows = (await prisma.$queryRawUnsafe(
@@ -527,11 +536,22 @@ export async function scorecardExecutionSignals(
     T7_YOUTH: [],
   }
   for (const s of rows) {
-    const tier = classifyProgrammingTier({
-      title: s.title,
-      format: s.format,
-      category: s.category,
-    })
+    // Skip equipment / ball machine rentals — they aren't part of any
+    // programming tier, so they shouldn't influence T1 daily-cadence or
+    // any other operational signal.
+    if (isEquipmentBooking({ title: s.title, format: s.format, category: s.category })) {
+      continue
+    }
+    // Per-club rules variant: custom mappings from Tier Constructor
+    // win over the default regex classifier.
+    const tier = classifyProgrammingTierWithRules(
+      {
+        title: s.title,
+        format: s.format,
+        category: s.category,
+      },
+      customRules,
+    )
     buckets[tier]?.push(s)
   }
 
