@@ -193,17 +193,19 @@ type PrismaQueryable = {
  * — don't call it inside a session-level loop; load it before the loop
  * and reuse the array.
  *
- * Note on the `$1::uuid` cast: tier_config.club_id is typed as UUID
- * even on Sol2 production (where clubs.id is TEXT) because the FK was
- * created with the UUID variant of the migration. The values are still
- * valid UUID strings, so the cast succeeds at query time.
+ * Schema note: the Prisma model declares `tier_config.club_id @db.Uuid`,
+ * but Sol2 production actually stores it as TEXT (longstanding schema
+ * vs. live-DB divergence flagged in CLAUDE.md — never use prisma db push).
+ * Casting `$1::uuid` here would raise "operator does not exist:
+ * text = uuid" on Sol2. Passing the raw string lets PostgreSQL compare
+ * TEXT to TEXT, which works on both schemas.
  */
 export async function loadClubCustomRules(
   prisma: PrismaQueryable,
   clubId: string,
 ): Promise<ClassifierRule[]> {
   const rows = (await prisma.$queryRawUnsafe(
-    `SELECT custom_rules FROM tier_config WHERE club_id = $1::uuid`,
+    `SELECT custom_rules FROM tier_config WHERE club_id = $1`,
     clubId,
   )) as Array<{ custom_rules: unknown }>
   const raw = rows[0]?.custom_rules
