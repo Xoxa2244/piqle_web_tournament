@@ -108,10 +108,28 @@ function SafetyAutoComplete({ onComplete }: { onComplete: () => void }) {
 }
 
 function getPeriodLabel(p: Period): { current: string; previous: string } {
-  if (p === "week") return { current: "Mar 10 – 17", previous: "Mar 3 – 10" };
-  if (p === "month") return { current: "March 2026", previous: "February 2026" };
-  if (p === "quarter") return { current: "Q1 2026", previous: "Q4 2025" };
+  if (p === "week") return { current: "Last 7 days", previous: "Previous 7 days" };
+  if (p === "month") return { current: "Last 30 days", previous: "Previous 30 days" };
+  if (p === "quarter") return { current: "Last 90 days", previous: "Previous 90 days" };
   return { current: "Selected range", previous: "Previous range" };
+}
+
+function formatPeriodRangeLabel(dateFrom?: string, dateTo?: string, fallback = "Selected range") {
+  if (!dateFrom || !dateTo) return fallback;
+
+  const start = new Date(`${dateFrom}T00:00:00.000Z`);
+  const end = new Date(`${dateTo}T00:00:00.000Z`);
+  const startMonth = start.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+  const endMonth = end.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+  const startDay = start.getUTCDate();
+  const endDay = end.getUTCDate();
+  const year = end.getUTCFullYear();
+
+  if (startMonth === endMonth) {
+    return `${startMonth} ${startDay}-${endDay}, ${year}`;
+  }
+
+  return `${startMonth} ${startDay}-${endMonth} ${endDay}, ${year}`;
 }
 
 type TrendTone = "positive" | "negative" | "neutral";
@@ -808,6 +826,12 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const data = realData || null;
   const isEmptyClub = !data;
   const labels = getPeriodLabel(period);
+  const currentComparisonLabel = formatPeriodRangeLabel(periodDates.dateFrom, periodDates.dateTo, labels.current);
+  const previousComparisonLabel = formatPeriodRangeLabel(
+    compDates.dateFrom,
+    compDates.dateTo,
+    compMode === 'prev_year' ? 'Same period last year' : labels.previous,
+  );
 
   // Map real heatmap data — use real timeSlots when available (hourly)
   const displayHeatmap: { day: string; slots: (number | { value: number; time?: string })[] }[] = heatmapData?.heatmap || [];
@@ -1469,8 +1493,8 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
               <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--heading)" }}>Period Comparison</h3>
               <p className="text-xs mt-0.5" style={{ color: "var(--t3)" }}>
                 {compMode === 'calendar'
-                  ? <>{calAFrom && calATo ? <span style={{ color: "var(--t2)", fontWeight: 500 }}>{calAFrom} – {calATo}</span> : <span style={{ color: "var(--t4)" }}>Period A</span>} vs {calBFrom && calBTo ? <span style={{ color: "var(--t2)", fontWeight: 500 }}>{calBFrom} – {calBTo}</span> : <span style={{ color: "var(--t4)" }}>Period B</span>}</>
-                  : <><span style={{ color: "var(--t2)", fontWeight: 500 }}>{labels.current}</span>{" vs "}<span style={{ color: "var(--t2)", fontWeight: 500 }}>{compMode === 'prev_period' ? labels.previous : 'Same period last year'}</span></>
+                  ? <>{calAFrom && calATo ? <span style={{ color: "var(--t2)", fontWeight: 500 }}>{formatPeriodRangeLabel(calAFrom, calATo)}</span> : <span style={{ color: "var(--t4)" }}>Period A</span>} vs {calBFrom && calBTo ? <span style={{ color: "var(--t2)", fontWeight: 500 }}>{formatPeriodRangeLabel(calBFrom, calBTo)}</span> : <span style={{ color: "var(--t4)" }}>Period B</span>}</>
+                  : <><span style={{ color: "var(--t2)", fontWeight: 500 }}>{currentComparisonLabel}</span>{" vs "}<span style={{ color: "var(--t2)", fontWeight: 500 }}>{previousComparisonLabel}</span></>
                 }
               </p>
             </div>
@@ -1559,7 +1583,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             deltaPrev?: number;
           }> = cur ? [
             {
-              label: "Player Registrations",
+              label: "Player Sessions",
               cur: toNum(cur.bookings?.value), prev: toNum(prv?.bookings?.value), format: 'number',
             },
             { label: "Court Occupancy", cur: toOcc(cur.occupancy?.value), prev: toOcc(prv?.occupancy?.value), format: 'percent' },
@@ -1582,7 +1606,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           // Step 8 of DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.3 — each
           // card click opens the drill-down drawer for that metric.
           const labelToMetric: Record<string, DrawerMetric> = {
-            "Player Registrations": 'player_registrations',
+            "Player Sessions": 'player_registrations',
             "Court Occupancy": 'court_occupancy',
             "Active Players": 'active_players',
             "Avg Sessions/Player": 'avg_sessions_per_player',

@@ -43,7 +43,7 @@ export type DrawerMetric =
   | 'avg_sessions_per_player'
 
 export const METRIC_LABEL: Record<DrawerMetric, string> = {
-  player_registrations: 'Player Registrations',
+  player_registrations: 'Player Sessions',
   court_occupancy: 'Court Occupancy',
   active_players: 'Active Players',
   avg_sessions_per_player: 'Avg Sessions / Player',
@@ -110,13 +110,14 @@ export function PeriodComparisonDrawer({
   const chartData = useMemo(() => {
     if (!query.data) return []
     const { bars, trend } = query.data
-    const start = new Date(startDate).getTime()
+    const windowStart = new Date(startDate).getTime()
+    const windowEnd = new Date(endDate).getTime()
     return bars.map((b, i) => ({
-      label: formatBucketLabel(new Date(Math.max(new Date(b.bucketStart).getTime(), start)), bucket),
+      label: formatBucketLabel(new Date(b.bucketStart), bucket, windowStart, windowEnd),
       value: b.value,
       trend: Math.round((trend.intercept + trend.slope * i) * 10) / 10,
     }))
-  }, [query.data, bucket, startDate])
+  }, [query.data, bucket, startDate, endDate])
 
   const summary = useMemo(() => {
     if (!query.data) return null
@@ -296,7 +297,7 @@ export function PeriodComparisonDrawer({
                       />
                       <Line
                         name="Trend line"
-                        type="monotone"
+                        type="linear"
                         dataKey="trend"
                         stroke="#06B6D4"
                         strokeWidth={2}
@@ -309,7 +310,7 @@ export function PeriodComparisonDrawer({
               </div>
 
               <p className="text-[10px]" style={{ color: 'var(--t4)' }}>
-                Vs previous compares the whole current period with the prior period. The dotted line shows the trend inside this window; edge buckets can be partial.
+                Each bar is one {bucket}. Vs previous compares the whole current period with the prior period. The dotted line shows the trend inside this window; edge buckets can be partial.
               </p>
             </div>
           </motion.div>
@@ -346,12 +347,37 @@ function Stat({
   )
 }
 
-function formatBucketLabel(d: Date, bucket: 'week' | 'month'): string {
-  // Compact label per bucket type. Week → "Mar 4" (start of ISO week);
-  // Month → "Mar". The drawer chart is narrow so we keep this short and
-  // let the tooltip show the full date on hover.
+function formatBucketLabel(
+  bucketStart: Date,
+  bucket: 'week' | 'month',
+  windowStartMs: number,
+  windowEndMs: number,
+): string {
   if (bucket === 'month') {
-    return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+    return bucketStart.toLocaleDateString('en-US', { month: 'short', year: '2-digit', timeZone: 'UTC' })
   }
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+  const bucketEnd = new Date(bucketStart)
+  bucketEnd.setUTCDate(bucketEnd.getUTCDate() + 6)
+
+  const start = new Date(Math.max(bucketStart.getTime(), windowStartMs))
+  const end = new Date(Math.min(bucketEnd.getTime(), windowEndMs))
+  return formatDateRange(start, end)
+}
+
+function formatDateRange(start: Date, end: Date): string {
+  const startMonth = start.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+  const endMonth = end.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })
+  const startDay = start.getUTCDate()
+  const endDay = end.getUTCDate()
+
+  if (startMonth === endMonth && startDay === endDay) {
+    return `${startMonth} ${startDay}`
+  }
+
+  if (startMonth === endMonth) {
+    return `${startMonth} ${startDay}-${endDay}`
+  }
+
+  return `${startMonth} ${startDay}-${endMonth} ${endDay}`
 }
