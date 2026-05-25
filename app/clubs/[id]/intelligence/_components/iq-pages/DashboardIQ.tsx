@@ -5,7 +5,7 @@ import { motion, useInView, AnimatePresence } from "motion/react";
 import { useRef } from "react";
 import {
   Users, CalendarDays, DollarSign, TrendingUp, TrendingDown,
-  Sparkles, ArrowUpRight, ArrowDownRight, Clock, Target,
+  Sparkles, ArrowUpRight, ArrowDownRight, Minus, Clock, Target,
   BarChart3, Zap, AlertTriangle, CheckCircle2, Brain,
   Upload, Heart, Activity, UserPlus, MapPin, Calendar,
 } from "lucide-react";
@@ -113,7 +113,38 @@ function getPeriodLabel(p: Period): { current: string; previous: string } {
   return { current: "Selected range", previous: "Previous range" };
 }
 
-type KpiItem = { label: string; value: string; change: string; up: boolean; icon: any; gradient: string; sparkData: number[]; tooltip?: string };
+type TrendTone = "positive" | "negative" | "neutral";
+type KpiItem = { label: string; value: string; change: string; trendTone: TrendTone; icon: any; gradient: string; tooltip?: string };
+
+function formatTrendMagnitude(value: number): string {
+  const rounded = Math.round(Math.abs(value) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+function formatKpiTrend(trend: any): Pick<KpiItem, "change" | "trendTone"> {
+  const raw = trend?.changePercent;
+  const parsed = typeof raw === "number"
+    ? raw
+    : parseFloat(String(raw ?? "").replace("%", ""));
+
+  if (!Number.isFinite(parsed)) {
+    return { change: "—", trendTone: "neutral" };
+  }
+
+  const magnitude = Math.round(Math.abs(parsed) * 10) / 10;
+  if (magnitude === 0) {
+    return { change: "0%", trendTone: "neutral" };
+  }
+
+  const direction = trend?.direction === "up" || trend?.direction === "down"
+    ? trend.direction
+    : parsed > 0 ? "up" : "down";
+
+  return {
+    change: `${direction === "up" ? "+" : "-"}${formatTrendMagnitude(magnitude)}%`,
+    trendTone: direction === "up" ? "positive" : "negative",
+  };
+}
 
 const emptyHealth = [
   { level: "Healthy", count: 0, pct: 0, color: "#10B981" },
@@ -195,21 +226,6 @@ function generateInsights(dashboardData: any, healthData: any, heatmapData: any,
   }
 
   return insights.slice(0, 4);
-}
-
-/* --- Sparkline Mini Chart --- */
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const w = 80;
-  const h = 32;
-  const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(" ");
-  return (
-    <svg width={w} height={h} className="opacity-60">
-      <polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
 }
 
 /* --- Card Wrapper --- */
@@ -305,35 +321,35 @@ function mapRealDataToPeriod(
       // Prefer explicit pricingModel from onboarding settings; fall back to heuristic detection
       // Default to membership when pricingModel not configured
       const isMembership = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
+      const memberTrend = formatKpiTrend(m.members.trend);
+      const occupancyTrend = formatKpiTrend(m.occupancy.trend);
+      const bookingsTrend = formatKpiTrend(m.bookings.trend);
       return [
         {
           label: "Active Players",
           value: m.members.value,
-          change: `${m.members.trend.direction === 'up' ? '+' : ''}${m.members.trend.changePercent}%`,
-          up: m.members.trend.direction === 'up',
+          change: memberTrend.change,
+          trendTone: memberTrend.trendTone,
           icon: Users,
           gradient: "from-violet-500 to-purple-600",
-          sparkData: m.members.trend.sparkline || [],
           tooltip: 'Members who booked at least one session in the dashboard period (default: last 30 days). Different from Active Subscribers (a billing metric, see Members page).',
         },
         {
           label: "Court Occupancy",
           value: m.occupancy.value,
-          change: `${m.occupancy.trend.direction === 'up' ? '+' : ''}${m.occupancy.trend.changePercent}%`,
-          up: m.occupancy.trend.direction === 'up',
+          change: occupancyTrend.change,
+          trendTone: occupancyTrend.trendTone,
           icon: Target,
           gradient: "from-cyan-500 to-teal-500",
-          sparkData: m.occupancy.trend.sparkline || [],
           tooltip: 'Average per-session occupancy — registered players ÷ max capacity, averaged across all sessions in the period. Same formula used by the Schedule page.',
         },
         {
           label: "Player Sessions",
           value: m.bookings.value,
-          change: `${m.bookings.trend.direction === 'up' ? '+' : ''}${m.bookings.trend.changePercent}%`,
-          up: m.bookings.trend.direction === 'up',
+          change: bookingsTrend.change,
+          trendTone: bookingsTrend.trendTone,
           icon: Activity,
           gradient: "from-emerald-500 to-green-500",
-          sparkData: m.bookings.trend.sparkline || [],
           tooltip: 'Total confirmed bookings in the dashboard period (one row per player per session). Counts all sessions, not just sessions that ran.',
         },
         // 4th KPI — "Inactive Players" per DASHBOARD_AND_ACTION_CENTER_SPEC.md
@@ -351,11 +367,10 @@ function mapRealDataToPeriod(
         {
           label: "Inactive Players",
           value: String(inactivePlayers30d ?? 0),
-          change: "",
-          up: false,
+          change: "—",
+          trendTone: "neutral",
           icon: UserPlus,
           gradient: "from-amber-500 to-orange-500",
-          sparkData: [],
           tooltip:
             "Players with ≥1 historical booking who haven't booked in the last 30 days. The win-back surface — these are people who used to engage and now don't. Excludes never-played users.",
         },
@@ -573,11 +588,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const [calBFrom, setCalBFrom] = useState("");
   const [calBTo, setCalBTo] = useState("");
 
-  // Compute data date bounds from sparkline or sessions for custom picker constraints
+  // Compute data date bounds for custom picker constraints.
   const dataDateBounds = useMemo(() => {
     // Use a wide range — club has data from import, so allow from 2020 to today
     const today = new Date().toISOString().slice(0, 10);
-    // Find earliest session from sparkline (7-point array covers last 7 periods)
     // As a reasonable approximation, allow any date up to today
     return { min: '2020-01-01', max: today };
   }, []);
@@ -1046,6 +1060,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         {(hasRealData && data ? data.kpis : PLACEHOLDER_KPIS).map((kpi: any, i: number) => {
           const Icon = kpi.icon;
           const isPlaceholder = !(hasRealData && data);
+          const trendTone: TrendTone = kpi.trendTone ?? "neutral";
+          const TrendIcon = trendTone === "positive"
+            ? ArrowUpRight
+            : trendTone === "negative" ? ArrowDownRight : Minus;
+          const trendColor = trendTone === "positive"
+            ? "#10B981"
+            : trendTone === "negative" ? "#EF4444" : "var(--t4)";
           return (
             <motion.div
               key={kpi.label}
@@ -1059,7 +1080,6 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient ?? 'from-slate-500/40 to-slate-600/40'} flex items-center justify-center`}>
                     <Icon className="w-5 h-5 text-white" />
                   </div>
-                  {!isPlaceholder && <Sparkline data={kpi.sparkData} color={kpi.up ? "#10B981" : "#EF4444"} />}
                 </div>
                 {isPlaceholder ? (
                   <div
@@ -1083,9 +1103,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                     )}
                   </span>
                   {!isPlaceholder && (
-                    <div className={`flex items-center gap-1 text-xs ${kpi.up ? "text-emerald-400" : "text-red-400"}`} style={{ fontWeight: 600 }}>
-                      {kpi.up ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                      {kpi.change}
+                    <div className="flex items-center gap-1 text-xs" style={{ fontWeight: 600, color: trendColor }}>
+                      <TrendIcon className="w-3.5 h-3.5" />
+                      {kpi.change || "—"}
                     </div>
                   )}
                 </div>
@@ -1572,6 +1592,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 const rawDelta = row.prev === 0 ? 0 : ((row.cur - row.prev) / row.prev) * 100;
                 const delta = Math.round(rawDelta * 10) / 10;
                 const isPositive = row.invert ? delta < 0 : delta > 0;
+                const trendTone: TrendTone = delta === 0 ? "neutral" : isPositive ? "positive" : "negative";
+                const TrendIcon = trendTone === "positive"
+                  ? ArrowUpRight
+                  : trendTone === "negative" ? ArrowDownRight : Minus;
                 const dispCur = row.format === 'percent' ? `${row.cur}%` : row.cur.toLocaleString();
                 const dispPrev = row.format === 'percent' ? `${row.prev}%` : row.prev.toLocaleString();
                 const metricKey = labelToMetric[row.label];
@@ -1602,12 +1626,16 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                         <div
                           className="flex items-center gap-0.5 text-xs px-2 py-1 rounded-md"
                           style={{
-                            background: isPositive ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)",
-                            color: isPositive ? "#10B981" : "#EF4444",
+                            background: trendTone === "positive"
+                              ? "rgba(16,185,129,0.1)"
+                              : trendTone === "negative" ? "rgba(239,68,68,0.1)" : "rgba(148,163,184,0.12)",
+                            color: trendTone === "positive"
+                              ? "#10B981"
+                              : trendTone === "negative" ? "#EF4444" : "var(--t4)",
                             fontWeight: 600,
                           }}
                         >
-                          {isPositive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+                          <TrendIcon className="w-3 h-3" />
                           {delta > 0 ? "+" : ""}{delta}%
                         </div>
                       )}
