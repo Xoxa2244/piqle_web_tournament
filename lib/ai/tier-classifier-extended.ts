@@ -170,3 +170,44 @@ export const ALL_TIER_KEYS: readonly TierKey[] = [
   'T6_PREMIUM',
   'T7_YOUTH',
 ]
+
+/**
+ * Narrowly-typed Prisma surface for `loadClubCustomRules` — only needs
+ * `$queryRawUnsafe`. Avoids importing the heavy `PrismaClient` type
+ * (and the implicit dependency cycle) into a utility module.
+ */
+type PrismaQueryable = {
+  $queryRawUnsafe: (sql: string, ...args: unknown[]) => Promise<unknown>
+}
+
+/**
+ * Loads a club's saved custom classifier rules from the `tier_config`
+ * table. Returns an empty array when no row exists, when the JSON
+ * column is null, or when the column doesn't validate as an array.
+ *
+ * Callers that need to classify sessions for a specific club should
+ * call this once per request, then pass the result to
+ * `classifyProgrammingTierWithRules` for every session in the loop.
+ *
+ * The single SELECT is cheap (1 row by PK) but it's still a round-trip
+ * — don't call it inside a session-level loop; load it before the loop
+ * and reuse the array.
+ *
+ * Schema note: the Prisma model declares `tier_config.club_id @db.Uuid`,
+ * but Sol2 production actually stores it as TEXT (longstanding schema
+ * vs. live-DB divergence flagged in CLAUDE.md — never use prisma db push).
+ * Casting `$1::uuid` here would raise "operator does not exist:
+ * text = uuid" on Sol2. Passing the raw string lets PostgreSQL compare
+ * TEXT to TEXT, which works on both schemas.
+ */
+export async function loadClubCustomRules(
+  prisma: PrismaQueryable,
+  clubId: string,
+): Promise<ClassifierRule[]> {
+  const rows = (await prisma.$queryRawUnsafe(
+    `SELECT custom_rules FROM tier_config WHERE club_id = $1`,
+    clubId,
+  )) as Array<{ custom_rules: unknown }>
+  const raw = rows[0]?.custom_rules
+  return Array.isArray(raw) ? (raw as ClassifierRule[]) : []
+}
