@@ -1144,6 +1144,36 @@ const ACTIVE_MEMBER_JOIN = `
   ) active ON active."userId"::text = u.id::text
 `
 
+/**
+ * Detects "frozen userId list" cohorts — those with a single filter
+ * `{ field: 'userId', op: 'in', value: [list] }`.
+ *
+ * These cohorts are produced by:
+ *   1. The Action Center bulk action (bulkCreateCohortFromSignals) —
+ *      operator clicks "Launch campaign (605)" on a per-member signal
+ *      group; we freeze every active subject into a userId IN [...]
+ *      cohort.
+ *   2. Bulk member-select UI (addMembersToCohort fallback) — operator
+ *      hand-picks members and the system collapses any predicate to an
+ *      explicit list.
+ *
+ * For these cohorts the operator's intent is "send to exactly these
+ * people". Applying ACTIVE_MEMBER_JOIN (≥1 confirmed booking) silently
+ * drops the most important targets: VIP-at-risk members are by
+ * definition the ones who *don't* play; member-health drops include
+ * users whose booking history may have just expired. Both segments
+ * have to reach inactive members.
+ *
+ * Predicate-based cohorts ("membershipType = VIP" + "city = NYC")
+ * continue to use ACTIVE_MEMBER_JOIN — there the filter is broad and
+ * we want to exclude users who signed up but never played.
+ */
+function isFrozenUserIdList(filters: CohortFilter[]): boolean {
+  if (filters.length !== 1) return false
+  const f = filters[0]
+  return f.field === 'userId' && f.op === 'in' && Array.isArray(f.value)
+}
+
 const EMPTY_RECENT_ACTIVITY_JOIN = `
   LEFT JOIN LATERAL (
     SELECT
@@ -1199,7 +1229,13 @@ async function fetchCohortBaseMembers(
         NULL::int as health_score,
         NULL::text as risk_level
     ) latest_health ON TRUE`
-  const activeMemberJoin = hasPlaySessions ? ACTIVE_MEMBER_JOIN : ''
+  // Skip the active-member join for frozen userId IN [...] cohorts —
+  // the operator already picked these people explicitly (see
+  // isFrozenUserIdList docstring). Predicate-based cohorts keep the
+  // join so e.g. "membershipType = VIP" still excludes signups who
+  // never played.
+  const activeMemberJoin =
+    hasPlaySessions && !isFrozenUserIdList(supportedFilters) ? ACTIVE_MEMBER_JOIN : ''
   const recentActivityJoin = hasPlaySessions
     ? `
     LEFT JOIN LATERAL (
@@ -1323,7 +1359,14 @@ async function countCohortMembers(prisma: any, clubId: string, filters: CohortFi
   // Fast path: no post-SQL filters → exact COUNT() in DB.
   if (enrichedFilters.length === 0 && attendanceFilters.length === 0) {
     const where = buildCohortWhereClause(sqlFilters)
-    const activeMemberJoin = hasPlaySessionSupport(capabilities) ? ACTIVE_MEMBER_JOIN : ''
+    // Match the join logic in fetchCohortBaseMembers — frozen userId
+    // lists from the Action Center bulk action skip the active filter
+    // so VIP-at-risk and similar "never played" targets are not
+    // dropped. See isFrozenUserIdList docstring.
+    const activeMemberJoin =
+      hasPlaySessionSupport(capabilities) && !isFrozenUserIdList(sqlFilters)
+        ? ACTIVE_MEMBER_JOIN
+        : ''
     const result: [{ count: bigint }] = await prisma.$queryRawUnsafe(`
       SELECT COUNT(DISTINCT cf.user_id) as count
       FROM club_followers cf
