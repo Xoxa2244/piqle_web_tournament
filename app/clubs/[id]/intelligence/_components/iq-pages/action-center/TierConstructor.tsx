@@ -9,7 +9,11 @@
  *   - 7-row distribution table (Step 19b)
  *     · per-tier active toggle (writes through `updateTierOverride`)
  *     · cadence + success-metric editor modal (Step 20)
- *   - "Apply Solomon Preset" / "Reset to defaults" buttons (Step 19b)
+ *   - "Apply default preset" / "Reset to defaults" buttons (Step 19b).
+ *     The preset is sourced from SOLOMON_PRESET in lib/ai/tier-preset.ts
+ *     (IPC's Programming Operating System v1.0); the operator-facing
+ *     label intentionally drops the "Solomon" naming which carries no
+ *     meaning outside the IPC context.
  *   - Custom Rules section (Step 20)
  *     · list rules with summary + delete
  *     · "Add custom rule" modal — name_pattern / CR reservation type id /
@@ -211,7 +215,7 @@ export function TierConstructor({ clubId }: Props) {
             <Sparkles className="w-3.5 h-3.5" />
             {applyPresetMutation.isPending
               ? 'Applying…'
-              : 'Apply Solomon Preset'}
+              : 'Apply default preset'}
           </button>
           <button
             type="button"
