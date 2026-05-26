@@ -12,10 +12,84 @@
  * this component fetches and renders signals through SignalCard.
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { trpc } from '@/lib/trpc'
-import { Filter, Inbox, RefreshCw } from 'lucide-react'
+import {
+  Activity,
+  BarChart3,
+  Calendar,
+  ChevronDown,
+  ChevronRight,
+  Crown,
+  Filter,
+  HeartPulse,
+  Inbox,
+  RefreshCw,
+  Trophy,
+} from 'lucide-react'
 import { SignalCard, type OperationalSignalRow } from './SignalCard'
+
+// ─── Source grouping metadata ─────────────────────────────────────────────
+//
+// signals fan out across 5 sources. We render them as collapsible groups
+// instead of a flat list — per-member groups (vip_at_risk, member_health,
+// membership_lifecycle) can blow out to dozens of entries each, and an
+// operator scanning the feed needs to see "47 VIPs at risk" before
+// drilling into individuals. Programming-level groups (scorecard,
+// league_gap) stay expanded by default because they have few items each
+// and each needs a unique decision.
+
+type SignalSource = OperationalSignalRow['source']
+
+interface SourceMeta {
+  label: string
+  // Initially expanded? Per-member groups start collapsed; per-program
+  // / per-league groups stay open.
+  defaultExpanded: boolean
+  // Order in the feed — programming gaps surface first (club-level
+  // structural), leagues next, then per-member which are bulk-able.
+  order: number
+  Icon: typeof Activity
+  tint: string
+}
+
+const SOURCE_META: Record<SignalSource, SourceMeta> = {
+  scorecard_execution: {
+    label: 'Programming gaps',
+    defaultExpanded: true,
+    order: 1,
+    Icon: BarChart3,
+    tint: '#A78BFA',
+  },
+  league_gap: {
+    label: 'League gaps',
+    defaultExpanded: true,
+    order: 2,
+    Icon: Trophy,
+    tint: '#F97316',
+  },
+  vip_at_risk: {
+    label: 'VIP at risk',
+    defaultExpanded: false,
+    order: 3,
+    Icon: Crown,
+    tint: '#FBBF24',
+  },
+  member_health: {
+    label: 'Member health drops',
+    defaultExpanded: false,
+    order: 4,
+    Icon: HeartPulse,
+    tint: '#F87171',
+  },
+  membership_lifecycle: {
+    label: 'Membership lifecycle',
+    defaultExpanded: false,
+    order: 5,
+    Icon: Calendar,
+    tint: '#60A5FA',
+  },
+}
 
 type SeverityFilter = 'all' | 'critical' | 'warning' | 'nudge'
 type SourceFilter =
@@ -49,6 +123,42 @@ export function SignalFeed({ clubId }: Props) {
   })
 
   const signals = (signalsQuery.data?.signals ?? []) as OperationalSignalRow[]
+
+  // Group signals by source. Within each group preserve the server's
+  // severity-then-recency ordering (critical first, then warning, then
+  // nudge — `getOperationalSignals` already returns rows that way).
+  const groups = useMemo(() => {
+    const map = new Map<SignalSource, OperationalSignalRow[]>()
+    for (const sig of signals) {
+      const bucket = map.get(sig.source) ?? []
+      bucket.push(sig)
+      map.set(sig.source, bucket)
+    }
+    // Stable order from SOURCE_META.order so the feed reads top-down
+    // the same way every time.
+    return Array.from(map.entries()).sort(
+      ([a], [b]) => SOURCE_META[a].order - SOURCE_META[b].order,
+    )
+  }, [signals])
+
+  // Collapsed/expanded state per group. Default comes from SOURCE_META
+  // (per-member groups collapsed). Operator can override per session.
+  const [collapsed, setCollapsed] = useState<Set<SignalSource>>(
+    () =>
+      new Set(
+        (Object.entries(SOURCE_META) as [SignalSource, SourceMeta][])
+          .filter(([, m]) => !m.defaultExpanded)
+          .map(([s]) => s),
+      ),
+  )
+  const toggleGroup = (source: SignalSource) => {
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      if (next.has(source)) next.delete(source)
+      else next.add(source)
+      return next
+    })
+  }
 
   return (
     <div className="space-y-3">
@@ -162,23 +272,97 @@ export function SignalFeed({ clubId }: Props) {
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {signals.map(sig => (
-            <SignalCard
-              key={sig.id}
-              signal={sig}
-              clubId={clubId}
-              onResolve={async (reason, snoozeUntil) => {
-                await resolveMutation.mutateAsync({
-                  clubId,
-                  signalId: sig.id,
-                  reason,
-                  snoozeUntil: snoozeUntil?.toISOString(),
-                })
-                signalsQuery.refetch()
-              }}
-            />
-          ))}
+        <div className="space-y-3">
+          {groups.map(([source, sourceSignals]) => {
+            const meta = SOURCE_META[source]
+            const isCollapsed = collapsed.has(source)
+            return (
+              <div
+                key={source}
+                className="rounded-xl overflow-hidden"
+                style={{
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--card-border)',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(source)}
+                  className="w-full flex items-center gap-3 px-4 py-3 transition-colors hover:opacity-90"
+                  style={{
+                    background: 'transparent',
+                    borderBottom: isCollapsed ? 'none' : '1px solid var(--card-border)',
+                  }}
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--t4)' }} />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--t4)' }} />
+                  )}
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: `${meta.tint}1f`,
+                      color: meta.tint,
+                    }}
+                  >
+                    <meta.Icon className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <div className="text-[13px] font-semibold" style={{ color: 'var(--t1)' }}>
+                      {meta.label}
+                    </div>
+                    <div className="text-[10px] mt-0.5" style={{ color: 'var(--t4)' }}>
+                      {sourceSignals.length} {sourceSignals.length === 1 ? 'item' : 'items'}
+                    </div>
+                  </div>
+                  {/* Severity dots — quick visual breakdown */}
+                  <div className="flex items-center gap-1.5">
+                    {(['critical', 'warning', 'nudge'] as const).map(sev => {
+                      const count = sourceSignals.filter(s => s.severity === sev).length
+                      if (count === 0) return null
+                      const dotColor =
+                        sev === 'critical' ? '#F87171' : sev === 'warning' ? '#FBBF24' : '#60A5FA'
+                      return (
+                        <span
+                          key={sev}
+                          className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                          style={{
+                            background: `${dotColor}1f`,
+                            color: dotColor,
+                          }}
+                          title={`${count} ${sev}`}
+                        >
+                          {count}
+                        </span>
+                      )
+                    })}
+                  </div>
+                </button>
+
+                {!isCollapsed && (
+                  <div className="space-y-2 p-3">
+                    {sourceSignals.map(sig => (
+                      <SignalCard
+                        key={sig.id}
+                        signal={sig}
+                        clubId={clubId}
+                        onResolve={async (reason, snoozeUntil) => {
+                          await resolveMutation.mutateAsync({
+                            clubId,
+                            signalId: sig.id,
+                            reason,
+                            snoozeUntil: snoozeUntil?.toISOString(),
+                          })
+                          signalsQuery.refetch()
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
