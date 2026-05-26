@@ -64,7 +64,7 @@ export async function createCohortDraft(
   await prisma.$executeRawUnsafe(
     `
     INSERT INTO cohort_draft (id, club_id, filters, suggested_name, source_insight_id)
-    VALUES ($1, $2::uuid, $3::jsonb, $4, $5)
+    VALUES ($1, $2, $3::jsonb, $4, $5)
     `,
     id,
     input.clubId,
@@ -125,7 +125,7 @@ export async function createCampaignDraft(
   await prisma.$executeRawUnsafe(
     `
     INSERT INTO campaign_draft (id, club_id, template_key, cohort_ref, channel_mix, source_insight_id)
-    VALUES ($1, $2::uuid, $3, $4, $5::jsonb, $6)
+    VALUES ($1, $2, $3, $4, $5::jsonb, $6)
     `,
     id,
     input.clubId,
@@ -189,7 +189,7 @@ export async function createProgrammingDraft(
   await prisma.$executeRawUnsafe(
     `
     INSERT INTO programming_draft (id, club_id, prefill, source_insight_id)
-    VALUES ($1, $2::uuid, $3::jsonb, $4)
+    VALUES ($1, $2, $3::jsonb, $4)
     `,
     id,
     input.clubId,

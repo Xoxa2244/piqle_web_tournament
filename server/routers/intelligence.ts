@@ -255,7 +255,7 @@ async function fetchFollowerBookingRows(
       LEFT JOIN play_session_bookings b ON b."userId" = cf.user_id
       LEFT JOIN play_sessions ps ON ps.id = b."sessionId" AND ps."clubId" = $1
       LEFT JOIN document_embeddings de
-        ON de.source_id::uuid = cf.user_id
+        ON de.source_id = cf.user_id
         AND de.content_type = 'member'
         AND de.source_table = 'csv_import'
         AND de.club_id = $1
@@ -6485,7 +6485,7 @@ export const intelligenceRouter = createTRPCRouter({
       // Build the WHERE clause incrementally. Always anchor on
       // active+snoozed; resolved/dismissed accumulate for audit.
       const where: string[] = [
-        `club_id = $1::uuid`,
+        `club_id = $1`,
         `status IN ('active', 'snoozed')`,
       ]
       const params: any[] = [input.clubId]
@@ -6499,7 +6499,7 @@ export const intelligenceRouter = createTRPCRouter({
       }
       if (input.locationId) {
         params.push(input.locationId)
-        where.push(`location_id = $${params.length}::uuid`)
+        where.push(`location_id = $${params.length}`)
       }
 
       const rows = (await ctx.prisma.$queryRawUnsafe(
@@ -6551,7 +6551,7 @@ export const intelligenceRouter = createTRPCRouter({
           `
           UPDATE operational_signal
           SET status = 'snoozed', snooze_until = $1
-          WHERE id = $2 AND club_id = $3::uuid
+          WHERE id = $2 AND club_id = $3
           `,
           new Date(input.snoozeUntil),
           input.signalId,
@@ -6565,7 +6565,7 @@ export const intelligenceRouter = createTRPCRouter({
         `
         UPDATE operational_signal
         SET status = $1, resolved_at = $2
-        WHERE id = $3 AND club_id = $4::uuid
+        WHERE id = $3 AND club_id = $4
         `,
         newStatus,
         new Date(),
@@ -6706,7 +6706,7 @@ export const intelligenceRouter = createTRPCRouter({
                updated_at   AS "updatedAt",
                updated_by   AS "updatedBy"
         FROM tier_config
-        WHERE club_id = $1::uuid
+        WHERE club_id = $1
         `,
         input.clubId,
       )) as Array<{
@@ -6752,7 +6752,7 @@ export const intelligenceRouter = createTRPCRouter({
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
       const cfgRows = (await ctx.prisma.$queryRawUnsafe(
-        `SELECT custom_rules FROM tier_config WHERE club_id = $1::uuid`,
+        `SELECT custom_rules FROM tier_config WHERE club_id = $1`,
         input.clubId,
       )) as Array<{ custom_rules: unknown }>
       const customRules: ClassifierRule[] = Array.isArray(cfgRows[0]?.custom_rules)
@@ -6766,7 +6766,7 @@ export const intelligenceRouter = createTRPCRouter({
                format::text AS format,
                category
         FROM play_sessions
-        WHERE "clubId" = $1::uuid
+        WHERE "clubId" = $1
           AND date >= NOW() - INTERVAL '30 days'
           AND date <= NOW()
         `,
@@ -6827,7 +6827,7 @@ export const intelligenceRouter = createTRPCRouter({
       } as TierOverride
 
       const rows = (await ctx.prisma.$queryRawUnsafe(
-        `SELECT overrides FROM tier_config WHERE club_id = $1::uuid`,
+        `SELECT overrides FROM tier_config WHERE club_id = $1`,
         input.clubId,
       )) as Array<{ overrides: unknown }>
 
@@ -6841,7 +6841,7 @@ export const intelligenceRouter = createTRPCRouter({
         await ctx.prisma.$executeRawUnsafe(
           `
           INSERT INTO tier_config (club_id, overrides, custom_rules, updated_at, updated_by)
-          VALUES ($1::uuid, $2::jsonb, '[]'::jsonb, $3, $4)
+          VALUES ($1, $2::jsonb, '[]'::jsonb, $3, $4)
           `,
           input.clubId,
           JSON.stringify(next),
@@ -6855,7 +6855,7 @@ export const intelligenceRouter = createTRPCRouter({
           SET overrides  = $1::jsonb,
               updated_at = $2,
               updated_by = $3
-          WHERE club_id = $4::uuid
+          WHERE club_id = $4
           `,
           JSON.stringify(next),
           now,
@@ -6877,7 +6877,7 @@ export const intelligenceRouter = createTRPCRouter({
       const presetJson = JSON.stringify(SOLOMON_PRESET)
 
       const exists = (await ctx.prisma.$queryRawUnsafe(
-        `SELECT 1 AS one FROM tier_config WHERE club_id = $1::uuid`,
+        `SELECT 1 AS one FROM tier_config WHERE club_id = $1`,
         input.clubId,
       )) as Array<{ one: number }>
 
@@ -6885,7 +6885,7 @@ export const intelligenceRouter = createTRPCRouter({
         await ctx.prisma.$executeRawUnsafe(
           `
           INSERT INTO tier_config (club_id, overrides, custom_rules, updated_at, updated_by)
-          VALUES ($1::uuid, $2::jsonb, '[]'::jsonb, $3, $4)
+          VALUES ($1, $2::jsonb, '[]'::jsonb, $3, $4)
           `,
           input.clubId,
           presetJson,
@@ -6899,7 +6899,7 @@ export const intelligenceRouter = createTRPCRouter({
           SET overrides  = $1::jsonb,
               updated_at = $2,
               updated_by = $3
-          WHERE club_id = $4::uuid
+          WHERE club_id = $4
           `,
           presetJson,
           now,
@@ -6961,7 +6961,7 @@ export const intelligenceRouter = createTRPCRouter({
       }
 
       const rows = (await ctx.prisma.$queryRawUnsafe(
-        `SELECT custom_rules FROM tier_config WHERE club_id = $1::uuid`,
+        `SELECT custom_rules FROM tier_config WHERE club_id = $1`,
         input.clubId,
       )) as Array<{ custom_rules: unknown }>
 
@@ -6974,7 +6974,7 @@ export const intelligenceRouter = createTRPCRouter({
         await ctx.prisma.$executeRawUnsafe(
           `
           INSERT INTO tier_config (club_id, overrides, custom_rules, updated_at, updated_by)
-          VALUES ($1::uuid, '[]'::jsonb, $2::jsonb, $3, $4)
+          VALUES ($1, '[]'::jsonb, $2::jsonb, $3, $4)
           `,
           input.clubId,
           JSON.stringify(next),
@@ -6988,7 +6988,7 @@ export const intelligenceRouter = createTRPCRouter({
           SET custom_rules = $1::jsonb,
               updated_at   = $2,
               updated_by   = $3
-          WHERE club_id = $4::uuid
+          WHERE club_id = $4
           `,
           JSON.stringify(next),
           now,
@@ -7012,7 +7012,7 @@ export const intelligenceRouter = createTRPCRouter({
       const userId = ctx.session.user.id
       const now = new Date()
       const rows = (await ctx.prisma.$queryRawUnsafe(
-        `SELECT custom_rules FROM tier_config WHERE club_id = $1::uuid`,
+        `SELECT custom_rules FROM tier_config WHERE club_id = $1`,
         input.clubId,
       )) as Array<{ custom_rules: unknown }>
 
@@ -7027,7 +7027,7 @@ export const intelligenceRouter = createTRPCRouter({
         SET custom_rules = $1::jsonb,
             updated_at   = $2,
             updated_by   = $3
-        WHERE club_id = $4::uuid
+        WHERE club_id = $4
         `,
         JSON.stringify(next),
         now,
@@ -7048,7 +7048,7 @@ export const intelligenceRouter = createTRPCRouter({
       await ctx.prisma.$executeRawUnsafe(
         `
         INSERT INTO tier_config (club_id, overrides, custom_rules, updated_at, updated_by)
-        VALUES ($1::uuid, '[]'::jsonb, '[]'::jsonb, $2, $3)
+        VALUES ($1, '[]'::jsonb, '[]'::jsonb, $2, $3)
         ON CONFLICT (club_id)
         DO UPDATE SET
           overrides    = '[]'::jsonb,
@@ -7441,7 +7441,7 @@ export const intelligenceRouter = createTRPCRouter({
                        COUNT(*)::int AS value
                 FROM play_session_bookings b
                 JOIN play_sessions ps ON ps.id = b."sessionId"
-                WHERE ps."clubId" = $1::uuid
+                WHERE ps."clubId" = $1
                   AND b.status::text = 'CONFIRMED'
                   AND ps.date >= $2 AND ps.date < $3
                 GROUP BY bucket_start
@@ -7468,7 +7468,7 @@ export const intelligenceRouter = createTRPCRouter({
                          END
                        )::float AS value
                 FROM play_sessions ps
-                WHERE ps."clubId" = $1::uuid
+                WHERE ps."clubId" = $1
                   AND ps.date >= $2 AND ps.date < $3
                   AND ps."maxPlayers" > 0
                 GROUP BY bucket_start
@@ -7495,7 +7495,7 @@ export const intelligenceRouter = createTRPCRouter({
                          b."userId" AS user_id
                   FROM play_session_bookings b
                   JOIN play_sessions ps ON ps.id = b."sessionId"
-                  WHERE ps."clubId" = $1::uuid
+                  WHERE ps."clubId" = $1
                     AND b.status::text = 'CONFIRMED'
                     AND ps.date >= $2 AND ps.date < $3
                   GROUP BY 1, 2
@@ -7521,7 +7521,7 @@ export const intelligenceRouter = createTRPCRouter({
                          COUNT(*) AS cnt
                   FROM play_session_bookings b
                   JOIN play_sessions ps ON ps.id = b."sessionId"
-                  WHERE ps."clubId" = $1::uuid
+                  WHERE ps."clubId" = $1
                     AND b.status::text = 'CONFIRMED'
                     AND ps.date >= $2 AND ps.date < $3
                   GROUP BY 1, 2
@@ -11143,7 +11143,7 @@ Generate 3 campaign strategies with different goals and timings based on the dat
           JOIN users u ON u.id = cf.user_id
           LEFT JOIN play_session_bookings b ON b."userId" = cf.user_id
           LEFT JOIN document_embeddings de
-            ON de.source_id::uuid = cf.user_id
+            ON de.source_id = cf.user_id
             AND de.content_type = 'member'
             AND de.source_table = 'csv_import'
             AND de.club_id = $1
