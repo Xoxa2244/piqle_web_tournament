@@ -1021,7 +1021,7 @@ export async function runBusinessInsights(
           status, created_at, last_seen_at
         )
         VALUES (
-          $1, $2::uuid, $3, $4, $5,
+          $1, $2, $3, $4, $5,
           $6, $7::jsonb, $8, $9::jsonb,
           'active', $10, $10
         )

@@ -510,7 +510,7 @@ export async function scorecardExecutionSignals(
            ps.category,
            ps.date
     FROM play_sessions ps
-    WHERE ps."clubId" = $1::uuid
+    WHERE ps."clubId" = $1
       AND ps.date >= $2
       AND ps.date <  $3
     `,
@@ -567,7 +567,7 @@ export async function scorecardExecutionSignals(
     `
     SELECT title, date
     FROM play_sessions
-    WHERE "clubId" = $1::uuid
+    WHERE "clubId" = $1
       AND date >= $2
       AND (format = 'LEAGUE_PLAY' OR LOWER(title) LIKE '%league%')
     `,
@@ -749,7 +749,7 @@ export async function leagueGapAlerts(
     `
     SELECT id, title, date, registered_count, "maxPlayers" AS max_players
     FROM play_sessions
-    WHERE "clubId" = $1::uuid
+    WHERE "clubId" = $1
       AND date >= $2
       AND (format = 'LEAGUE_PLAY' OR LOWER(title) LIKE '%league%')
     `,
@@ -927,7 +927,7 @@ export async function vipAtRiskAlerts(
         )::numeric                                                           AS "monthlyDues"
       FROM users u
       JOIN club_followers cf ON cf.user_id = u.id
-      WHERE cf.club_id = $1::uuid
+      WHERE cf.club_id = $1
         AND u.membership_status = 'Active'
         AND (
           u.membership_type ILIKE '%VIP%'
@@ -941,7 +941,7 @@ export async function vipAtRiskAlerts(
       SELECT b."userId", MAX(ps.date) AS "lastPlayed"
       FROM play_session_bookings b
       JOIN play_sessions ps ON ps.id = b."sessionId"
-      WHERE ps."clubId" = $1::uuid
+      WHERE ps."clubId" = $1
         AND b.status::text = 'CONFIRMED'
       GROUP BY b."userId"
     )
@@ -1074,7 +1074,7 @@ export async function runOperationalSignals(
     `
     SELECT id, dedupe_key
     FROM operational_signal
-    WHERE club_id = $1::uuid
+    WHERE club_id = $1
       AND status IN ('active', 'snoozed')
     `,
     clubId,
@@ -1121,7 +1121,7 @@ export async function runOperationalSignals(
           status, created_at, last_seen_at
         )
         VALUES (
-          $1, $2::uuid, $3, $4,
+          $1, $2, $3, $4,
           $5, $6, $7,
           $8, $9, $10::jsonb, $11::jsonb,
           'active', $12, $12
