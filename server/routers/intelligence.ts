@@ -688,7 +688,13 @@ export const cohortFilterSchema = z.object({
     'attendedLeagueFamily', 'attendedProgrammingTier', 'attendedIntroProgram',
   ]),
   op: z.enum(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
-  value: z.union([z.string().max(200), z.number(), z.array(z.string().max(200)).max(200)]),
+  // Array cap raised 200 → 2000 to accommodate bulk cohort creation
+  // from Action Center signal groups (e.g. "VIP at risk: 605 members").
+  // 2000 string IDs still fit comfortably under Postgres parameter
+  // limits (65535) and JSON column size; UI safety against accidental
+  // huge selections lives in the bulk action button (one click ⇒ one
+  // explicit source group, not arbitrary multi-select).
+  value: z.union([z.string().max(200), z.number(), z.array(z.string().max(200)).max(2000)]),
 })
 
 export function buildCohortWhereClause(filters: CohortFilter[]): string {
@@ -9862,6 +9868,91 @@ Spirit: ${guidance.spirit}`
           createdBy: ctx.session.user.id,
         },
       })
+    }),
+
+  /**
+   * Bulk-create a frozen cohort from all active signals of a given source.
+   *
+   * Use case: Action Center signal feed shows a per-member group (e.g.
+   * "VIP at risk: 605 members"). Operator clicks "Add all to cohort"
+   * once. We read every active signal of that source for the club,
+   * extract subject_entity_id (which is userId for member-scoped
+   * signals), and write a frozen `userId IN [...]` cohort.
+   *
+   * The resulting cohort is intentionally **frozen** (`isDynamic =
+   * false`) — the operator's intent was "these specific 605 members
+   * as of now", not "anyone matching some predicate later". Adding
+   * new VIPs to risk tomorrow should be a fresh cohort.
+   *
+   * Sources supported: member-scoped only (vip_at_risk, member_health,
+   * membership_lifecycle). Other sources (scorecard_execution,
+   * league_gap) don't have a member subject and 422 here.
+   *
+   * Default name format: "{Source label} — {YYYY-MM-DD}", overridable.
+   */
+  bulkCreateCohortFromSignals: protectedProcedure
+    .input(
+      z.object({
+        clubId: z.string().uuid(),
+        source: z.enum(['vip_at_risk', 'member_health', 'membership_lifecycle']),
+        name: z.string().min(1).max(100).optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Pull active+snoozed signals of this source. Resolved/dismissed
+      // are excluded because operator already triaged them.
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `
+        SELECT DISTINCT subject_entity_id
+        FROM operational_signal
+        WHERE club_id = $1
+          AND source = $2
+          AND status IN ('active', 'snoozed')
+          AND subject_entity_id IS NOT NULL
+        `,
+        input.clubId,
+        input.source,
+      )) as Array<{ subject_entity_id: string }>
+
+      const userIds = rows.map(r => r.subject_entity_id).filter(Boolean)
+      if (userIds.length === 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `No active ${input.source} signals to add to a cohort`,
+        })
+      }
+
+      const SOURCE_LABEL: Record<typeof input.source, string> = {
+        vip_at_risk: 'VIP at risk',
+        member_health: 'Member health drops',
+        membership_lifecycle: 'Membership lifecycle',
+      }
+      const dateStr = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+      const cohortName = input.name ?? `${SOURCE_LABEL[input.source]} — ${dateStr}`
+
+      const filters = [
+        { field: 'userId' as const, op: 'in' as const, value: userIds },
+      ]
+
+      const cohort = await ctx.prisma.clubCohort.create({
+        data: {
+          clubId: input.clubId,
+          name: cohortName,
+          description: `Bulk-created from Action Center ${SOURCE_LABEL[input.source]} signals on ${dateStr}. Frozen userId list (${userIds.length} members).`,
+          filters: filters as any,
+          memberCount: userIds.length,
+          isDynamic: false,
+          createdBy: ctx.session.user.id,
+        },
+      })
+
+      return {
+        cohortId: cohort.id,
+        cohortName: cohort.name,
+        memberCount: userIds.length,
+      }
     }),
 
   updateCohort: protectedProcedure
