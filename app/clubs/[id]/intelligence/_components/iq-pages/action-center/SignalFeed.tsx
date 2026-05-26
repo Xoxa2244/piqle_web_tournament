@@ -26,7 +26,9 @@ import {
   Inbox,
   RefreshCw,
   Trophy,
+  UsersRound,
 } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { SignalCard, type OperationalSignalRow } from './SignalCard'
 
 // ─── Source grouping metadata ─────────────────────────────────────────────
@@ -51,7 +53,15 @@ interface SourceMeta {
   order: number
   Icon: typeof Activity
   tint: string
+  // Member-scoped sources can be bulk-converted into a frozen cohort
+  // and then a campaign — one click instead of N individual clicks.
+  // Per-program/league sources don't have a member subject, so the
+  // bulk button doesn't apply.
+  bulkable: boolean
 }
+
+// Subset of sources that have member subjects and support bulk action.
+type BulkableSource = 'vip_at_risk' | 'member_health' | 'membership_lifecycle'
 
 const SOURCE_META: Record<SignalSource, SourceMeta> = {
   scorecard_execution: {
@@ -60,6 +70,7 @@ const SOURCE_META: Record<SignalSource, SourceMeta> = {
     order: 1,
     Icon: BarChart3,
     tint: '#A78BFA',
+    bulkable: false,
   },
   league_gap: {
     label: 'League gaps',
@@ -67,6 +78,7 @@ const SOURCE_META: Record<SignalSource, SourceMeta> = {
     order: 2,
     Icon: Trophy,
     tint: '#F97316',
+    bulkable: false,
   },
   vip_at_risk: {
     label: 'VIP at risk',
@@ -74,6 +86,7 @@ const SOURCE_META: Record<SignalSource, SourceMeta> = {
     order: 3,
     Icon: Crown,
     tint: '#FBBF24',
+    bulkable: true,
   },
   member_health: {
     label: 'Member health drops',
@@ -81,6 +94,7 @@ const SOURCE_META: Record<SignalSource, SourceMeta> = {
     order: 4,
     Icon: HeartPulse,
     tint: '#F87171',
+    bulkable: true,
   },
   membership_lifecycle: {
     label: 'Membership lifecycle',
@@ -88,6 +102,7 @@ const SOURCE_META: Record<SignalSource, SourceMeta> = {
     order: 5,
     Icon: Calendar,
     tint: '#60A5FA',
+    bulkable: true,
   },
 }
 
@@ -117,10 +132,38 @@ export function SignalFeed({ clubId }: Props) {
     { enabled: !!clubId },
   )
 
+  const router = useRouter()
   const resolveMutation = trpc.intelligence.resolveSignal.useMutation()
   const refreshMutation = trpc.intelligence.refreshOperationalSignals.useMutation({
     onSuccess: () => signalsQuery.refetch(),
   })
+  // Bulk: take all active member-scoped signals from a single source,
+  // freeze them into a userId IN [...] cohort, then send the operator
+  // to Campaigns with that cohort preselected. One click ⇒ outreach
+  // setup for hundreds of members.
+  const [bulkPending, setBulkPending] = useState<SignalSource | null>(null)
+  const bulkMutation = trpc.intelligence.bulkCreateCohortFromSignals.useMutation()
+  const handleBulk = async (source: BulkableSource) => {
+    if (bulkPending) return
+    setBulkPending(source)
+    try {
+      const result = await bulkMutation.mutateAsync({ clubId, source })
+      // Drop the operator straight into Campaigns with the freshly-
+      // created cohort already selected. They confirm the message and
+      // hit send — no manual cohort-picking step.
+      router.push(
+        `/clubs/${clubId}/intelligence/campaigns?cohortId=${result.cohortId}&fromSignals=${source}`,
+      )
+    } catch (err) {
+      console.error('[bulk cohort]', err)
+      // eslint-disable-next-line no-alert
+      window.alert(
+        `Couldn't create cohort: ${(err as Error)?.message ?? 'unknown error'}`,
+      )
+    } finally {
+      setBulkPending(null)
+    }
+  }
 
   const signals = (signalsQuery.data?.signals ?? []) as OperationalSignalRow[]
 
@@ -285,38 +328,46 @@ export function SignalFeed({ clubId }: Props) {
                   border: '1px solid var(--card-border)',
                 }}
               >
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(source)}
-                  className="w-full flex items-center gap-3 px-4 py-3 transition-colors hover:opacity-90"
+                {/* Header row — the toggle button is wrapped around the
+                    chevron+label only, NOT the entire row, so the bulk
+                    action button next to it doesn't double as expand. */}
+                <div
+                  className="w-full flex items-center gap-3 px-4 py-3"
                   style={{
-                    background: 'transparent',
                     borderBottom: isCollapsed ? 'none' : '1px solid var(--card-border)',
                   }}
                 >
-                  {isCollapsed ? (
-                    <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--t4)' }} />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--t4)' }} />
-                  )}
-                  <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                    style={{
-                      background: `${meta.tint}1f`,
-                      color: meta.tint,
-                    }}
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(source)}
+                    className="flex items-center gap-3 flex-1 text-left transition-colors hover:opacity-90"
+                    style={{ background: 'transparent' }}
                   >
-                    <meta.Icon className="w-4 h-4" />
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="text-[13px] font-semibold" style={{ color: 'var(--t1)' }}>
-                      {meta.label}
+                    {isCollapsed ? (
+                      <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--t4)' }} />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--t4)' }} />
+                    )}
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: `${meta.tint}1f`,
+                        color: meta.tint,
+                      }}
+                    >
+                      <meta.Icon className="w-4 h-4" />
                     </div>
-                    <div className="text-[10px] mt-0.5" style={{ color: 'var(--t4)' }}>
-                      {sourceSignals.length} {sourceSignals.length === 1 ? 'item' : 'items'}
+                    <div className="flex-1">
+                      <div className="text-[13px] font-semibold" style={{ color: 'var(--t1)' }}>
+                        {meta.label}
+                      </div>
+                      <div className="text-[10px] mt-0.5" style={{ color: 'var(--t4)' }}>
+                        {sourceSignals.length} {sourceSignals.length === 1 ? 'item' : 'items'}
+                      </div>
                     </div>
-                  </div>
-                  {/* Severity dots — quick visual breakdown */}
+                  </button>
+
+                  {/* Severity breakdown badges */}
                   <div className="flex items-center gap-1.5">
                     {(['critical', 'warning', 'nudge'] as const).map(sev => {
                       const count = sourceSignals.filter(s => s.severity === sev).length
@@ -338,7 +389,31 @@ export function SignalFeed({ clubId }: Props) {
                       )
                     })}
                   </div>
-                </button>
+
+                  {/* Bulk action — only on member-scoped groups. One click
+                      freezes the active subjects into a cohort and lands
+                      the operator on Campaigns ready to send. */}
+                  {meta.bulkable && (
+                    <button
+                      type="button"
+                      onClick={() => handleBulk(source as BulkableSource)}
+                      disabled={bulkPending !== null}
+                      className="flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-md transition-colors disabled:opacity-50 flex-shrink-0"
+                      style={{
+                        background: `${meta.tint}1f`,
+                        color: meta.tint,
+                        border: `1px solid ${meta.tint}40`,
+                        fontWeight: 600,
+                      }}
+                      title={`Create cohort from all ${sourceSignals.length} ${meta.label.toLowerCase()} signals and open Campaign Wizard`}
+                    >
+                      <UsersRound className="w-3.5 h-3.5" />
+                      {bulkPending === source
+                        ? 'Creating…'
+                        : `Launch campaign (${sourceSignals.length})`}
+                    </button>
+                  )}
+                </div>
 
                 {!isCollapsed && (
                   <div className="space-y-2 p-3">
