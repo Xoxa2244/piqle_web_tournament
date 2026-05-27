@@ -301,11 +301,11 @@ export async function POST(req: Request) {
     try {
       const cacheKey = `advisor_prefetch_${clubId}`
       const cached = advisorDataCache.get(cacheKey)
-      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, overnightSends: string, ratedPlayers: any, tierEconomics: any
+      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, overnightSends: string, ratedPlayers: any, tierEconomics: any, tierHealth: any
 
       if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
         // Use cached data (< 5 min old)
-        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics } = cached.data)
+        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics, tierHealth } = cached.data)
         outcomeInsightsBlock = outcomeInsights || ''
         overnightSendBlock = overnightSends || ''
         console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
@@ -321,7 +321,7 @@ export async function POST(req: Request) {
           ((club?.automationSettings as any)?.intelligence?.timezone as string | undefined) ||
           'America/New_York'
 
-        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics] = await Promise.all([
+        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics, tierHealth] = await Promise.all([
           exec(tools.getClubMetrics, {}),
           exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
           exec(tools.getCourtOccupancy, { days: 30 }),
@@ -339,10 +339,15 @@ export async function POST(req: Request) {
           // extra tool round-trip. getTierCatalog (descriptions, benefits,
           // policies) stays on-demand to keep this prefetch payload small.
           exec(tools.getTierEconomics, {}),
+          // Tier health — verdict per tier + MRR-at-risk + treatments.
+          // Prefetched so the Advisor can flag bleeding tiers proactively
+          // ('what's wrong with VIP', 'which tier should we fix first')
+          // without re-querying the bucket distribution.
+          exec(tools.getTierHealth, {}),
         ])
         outcomeInsightsBlock = outcomeInsights || ''
         overnightSendBlock = overnightSends || ''
-        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, overnightSends: overnightSendBlock, ratedPlayers, tierEconomics } })
+        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, overnightSends: overnightSendBlock, ratedPlayers, tierEconomics, tierHealth } })
         console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
       }
 
@@ -500,6 +505,56 @@ ${paidRows.length > 0
 ${freeRows.length > 0 ? `\nFree / comped / partner tiers (no MRR; included for completeness):\n${freeRows.map((t) => `- ${t.name}: ${t.activeMembers} active · ${t.bookings30d} bookings/30d (${t.bookingsPerActiveMember}/member)`).join('\n')}` : ''}
 
 NOTE: estimatedMRR = activeMembers × listed monthly price. It's the contracted recurring revenue, not actual CR transactions — Phase 2 will integrate the CR Transactions API for actuals. A low bookingsPerActiveMember on a paid tier (e.g. VIP) may indicate "paying but not playing" churn risk.`)
+        }
+      }
+
+      if (tierHealth && !('error' in tierHealth)) {
+        // Tier health verdicts + treatment recs surfaced in-line so the
+        // Advisor can flag bleeding tiers and propose actions without an
+        // extra tool call. Sorted critical → healthy by the helper.
+        const hRoll = tierHealth.rollup as
+          | {
+              clubMRRAtRiskUsd: number
+              clubUpsellPotentialMRRUsd: number
+              cheapestPaidMonthlyPrice: number
+              countByVerdict: Record<string, number>
+            }
+          | undefined
+        const hTiers = (tierHealth.tiers as Array<{
+          name: string
+          verdict: string
+          healthScore: number
+          monthlyPrice: number
+          isFreeTier: boolean
+          active: number
+          zombies?: number
+          zombieSharePct: number
+          powerUserSharePct: number
+          suspendedRatePct: number
+          mrrAtRiskUsd: number
+          upsellPotentialMRRUsd: number
+          diagnostics: string[]
+          treatments: Array<{ action: string; campaignHint: string; potentialMRRImpactUsd: number; targetMemberCount: number }>
+        }> | undefined) || []
+        // Surface the actionable buckets first; healthy / tiny tiers just
+        // get a one-liner so the LLM knows they exist without padding the
+        // prompt with their treatment-less detail.
+        const actionable = hTiers.filter((t) => t.verdict === 'critical' || t.verdict === 'at_risk' || t.verdict === 'watch')
+        const benign = hTiers.filter((t) => t.verdict === 'healthy' || t.verdict === 'tiny')
+        if (hRoll) {
+          parts.push(`## Tier Health (verdict per tier + treatment recommendations)
+Total MRR at risk (zombies × monthly price across paid tiers): $${hRoll.clubMRRAtRiskUsd.toLocaleString('en-US')}/month
+Total upsell potential (power-user free-tier holders → $${hRoll.cheapestPaidMonthlyPrice}/mo cheapest paid): $${hRoll.clubUpsellPotentialMRRUsd.toLocaleString('en-US')}/month
+Tier verdicts: ${hRoll.countByVerdict.critical || 0} critical · ${hRoll.countByVerdict.at_risk || 0} at_risk · ${hRoll.countByVerdict.watch || 0} watch · ${hRoll.countByVerdict.healthy || 0} healthy · ${hRoll.countByVerdict.tiny || 0} tiny
+
+${actionable.length > 0 ? `Actionable tiers (sorted by severity):\n${actionable.map((t) => `
+- ${t.name} → ${t.verdict.toUpperCase()} (score ${t.healthScore}/100)
+  Signals: ${t.active} active · ${t.zombieSharePct}% zombie · ${t.powerUserSharePct}% power · ${t.suspendedRatePct}% suspended${t.mrrAtRiskUsd > 0 ? ` · $${t.mrrAtRiskUsd.toLocaleString('en-US')} MRR at risk` : ''}${t.upsellPotentialMRRUsd > 0 ? ` · $${t.upsellPotentialMRRUsd.toLocaleString('en-US')} upsell potential` : ''}
+  Diagnostics:
+${t.diagnostics.map((d) => `    • ${d}`).join('\n')}${t.treatments.length > 0 ? `\n  Treatments:\n${t.treatments.map((tx) => `    → [${tx.campaignHint}] ${tx.action}`).join('\n')}` : ''}`).join('\n')}` : 'No actionable tier issues right now — all paid tiers are healthy.'}
+${benign.length > 0 ? `\nHealthy / tiny (no action needed): ${benign.map((t) => `${t.name} (${t.verdict})`).join(' · ')}` : ''}
+
+NOTE: MRR impact estimates use assumed conversion rates (50% for retention/upsell, 30% for billing winback). They're rough guides for prioritisation, not guarantees. To act on a treatment, point the user at Engage → Campaigns and use the campaignHint as the campaign type.`)
         }
       }
 

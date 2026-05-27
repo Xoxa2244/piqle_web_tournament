@@ -692,6 +692,56 @@ export function createChatTools(clubId: string) {
       },
     }),
 
+    getTierHealth: defineTool({
+      description:
+        "DIAGNOSTIC view of each membership tier — which tiers are healthy, which are bleeding MRR, and what to do about it. Per tier returns: verdict (healthy / watch / at_risk / critical / tiny), healthScore (0-100), zombie share (active subscribers with 0 bookings in 30d), power-user share (>=8 bookings), suspended rate, MRR at risk (zombies × monthlyPrice for paid tiers), upsell potential (power-user guests × cheapest paid price for free tiers), human-readable diagnostics, and concrete treatment recommendations with estimated MRR impact. PLUS a club-level rollup: total MRR at risk, total upsell potential, count of tiers by verdict. Use when the user asks 'which tiers are healthy / which are sick / what's wrong with X tier / how do we fix it / where's the biggest MRR leak / who should we upsell / paying but not playing / quality of our membership base'. Treatment hints map to campaignHint values: RETENTION_BOOST (re-engage zombies), UPSELL (convert free power users to paid), WINBACK (reactivate suspended), BILLING_AUDIT (suspended cluster likely billing failure), PRICE_REVIEW (under-priced tier). When the user asks to ACT on a finding, point them at Engage campaigns or surface the treatment.action verbatim.",
+      parameters: z.object({}),
+      execute: async () => {
+        try {
+          const { getTierHealth } = await import('@/lib/ai/membership-economics')
+          const result = await getTierHealth(clubId)
+          if (result.tiers.length === 0) {
+            return {
+              tiers: [],
+              note: 'No tier data available — CR sync may not have run yet for this club.',
+            }
+          }
+          return {
+            rollup: {
+              clubMRRAtRiskUsd: result.rollup.clubMRRAtRiskUsd,
+              clubUpsellPotentialMRRUsd: result.rollup.clubUpsellPotentialMRRUsd,
+              cheapestPaidMonthlyPrice: result.rollup.cheapestPaidMonthlyPrice,
+              countByVerdict: result.rollup.countByVerdict,
+            },
+            tiers: result.tiers.map((t) => ({
+              name: t.name,
+              monthlyPrice: t.monthlyPrice,
+              isFreeTier: t.isFreeTier,
+              verdict: t.verdict,
+              healthScore: t.healthScore,
+              active: t.active,
+              suspended: t.suspended,
+              expired: t.expired,
+              zombieSharePct: t.zombieSharePct,
+              powerUserSharePct: t.powerUserSharePct,
+              suspendedRatePct: t.suspendedRatePct,
+              bookings30d: t.bookings30d,
+              bookingsPerActive: t.bookingsPerActive,
+              estimatedMRR: t.estimatedMRR,
+              mrrAtRiskUsd: t.mrrAtRiskUsd,
+              upsellPotentialMRRUsd: t.upsellPotentialMRRUsd,
+              diagnostics: t.diagnostics,
+              treatments: t.treatments,
+            })),
+            methodology: 'Zombie = active subscriber with 0 confirmed bookings in last 30 days. Power user = active with ≥8 bookings. MRR at risk = zombies × monthly price (assumed 50% save rate in treatments). Upsell potential = power-user guests × cheapest paid monthly price (assumed 50% conversion). Suspended-rate >=10% flags likely billing-failure cluster. Verdict: paid tier zombieShare ≥65% = critical, 45-64% = at_risk, 25-44% = watch, <25% = healthy. Free tier: ≥5 power users = healthy, else watch/at_risk by score. <5 active = tiny (sample too small).',
+          }
+        } catch (err) {
+          console.error('[ChatTool] getTierHealth failed:', err)
+          return { error: 'Failed to load tier health diagnostics.' }
+        }
+      },
+    }),
+
     getTierEconomics: defineTool({
       description:
         "Get per-tier ECONOMICS: estimated monthly recurring revenue (MRR), active member count, 30-day booking volume, and bookings-per-active-member ratio. Plus a rollup with total MRR, paid vs free tier shares. Use when the user asks 'what's our MRR / monthly recurring revenue / revenue by tier / which tier brings the most money / which tier is most valuable / which tier is under-used / what % of members are on free vs paid / VIP members aren't using their booking allowance, are they?'. IMPORTANT: estimatedMRR = activeMembers × listed monthly price — it's the contracted recurring revenue, not actual CR transactions (CR transactions API integration is Phase 2). For tier descriptions, benefits, policies, age limits, call getTierCatalog instead.",
