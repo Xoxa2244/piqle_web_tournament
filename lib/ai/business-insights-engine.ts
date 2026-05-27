@@ -613,7 +613,7 @@ export async function pilotGuestPassUpsell(
     insight:
       'Guests at this booking volume have effectively converted in their ' +
       'heads — they just need the offer. A targeted "you played 5+ times, ' +
-      'here\'s X% off your first month" closes the gap.',
+      'here\'s 15% off your first month" closes the gap.',
     action: {
       primary: {
         type: 'create_cohort',
@@ -837,6 +837,15 @@ export async function pilotDormantActivation(
   prisma: PrismaClient,
   clubId: string,
 ): Promise<BusinessInsight | null> {
+  // EXCLUDE guest / drop-in / pay-per-play tiers — those members are in
+  // the system to drop in occasionally at non-member rates, not to
+  // become regulars. They will dominate the dormant pool by an order
+  // of magnitude (e.g. IPC North on prod: 9,423 of 10,235 "dormant"
+  // were guest-pass holders, only ~640 were paying subscribers).
+  // Surfacing them here mixes apples and oranges and tells the operator
+  // to chase 10K contacts when only 640 are real activation targets.
+  // Guests get their own insight (or no insight — they're behaving as
+  // designed). Surface only members on a recurring tier here.
   const rows = (await prisma.$queryRawUnsafe(
     `
     WITH played AS (
@@ -854,6 +863,9 @@ export async function pilotDormantActivation(
       AND p."userId" IS NULL
       AND cf.created_at <= NOW() - INTERVAL '1 day'
       AND u.membership_status = 'Active'
+      AND COALESCE(u.membership_type, '') NOT ILIKE '%guest%'
+      AND COALESCE(u.membership_type, '') NOT ILIKE '%pay per play%'
+      AND COALESCE(u.membership_type, '') NOT ILIKE '%drop%in%'
     `,
     clubId,
   )) as Array<{ userId: string }>
@@ -867,19 +879,22 @@ export async function pilotDormantActivation(
     severity: total >= 10 ? 'high' : 'medium',
 
     analysis:
-      `${total} active member${total > 1 ? 's' : ''} signed up but ` +
-      `${total > 1 ? "haven't" : "hasn't"} booked a single session yet.`,
+      `${total} paying subscriber${total > 1 ? 's' : ''} signed up but ` +
+      `${total > 1 ? "haven't" : "hasn't"} booked a single session yet — ` +
+      `they're paying every month for a court they never use.`,
 
     metrics: {
-      dormantMembers: total,
+      dormantPayingSubscribers: total,
     },
 
     insight:
-      'Registration without a first visit is a measurable leak in the ' +
-      'onboarding funnel — these members convert at roughly half the rate ' +
-      'of those who book within their first two weeks. The window for ' +
-      'a low-touch nudge stays open for about 30 days; after that you ' +
-      'need a stronger intervention.',
+      'Subscription dormancy is the silent revenue cliff — these members ' +
+      'pay every month for a court they never use, and they\'re the most ' +
+      'likely tier to cancel without warning. Members who don\'t book in ' +
+      'their first 30 days convert at roughly half the rate of those who ' +
+      'do; after 90 days the window shuts and a stronger intervention is ' +
+      'needed. Targeted "we noticed you haven\'t played yet — here\'s a ' +
+      'session your skill cohort books" closes the gap on first visit.',
 
     action: {
       primary: {
