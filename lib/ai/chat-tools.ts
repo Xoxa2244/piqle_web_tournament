@@ -607,6 +607,135 @@ export function createChatTools(clubId: string) {
       },
     }),
 
+    getTierCatalog: defineTool({
+      description:
+        "Get the club's membership tier CATALOG (what packages the club sells): name, monthly/annual price, benefits list, suspension and cancellation policies (days past due), and age range per tier. Sourced from CourtReserve's package list, synced daily. Two modes: (1) call with NO arguments → compact overview of every tier (description truncated to 240 chars, benefits capped at 8) — best for 'what tiers do we offer / what's the price of Y / list all packages'. (2) call with tierName → FULL untruncated detail for that one tier (case-insensitive substring match) — best for 'what does VIP include / tell me everything about Open Play Pass / what's the cancellation policy for X'. For revenue/MRR/'which tier is most valuable', call getTierEconomics instead.",
+      parameters: z.object({
+        tierName: z
+          .string()
+          .optional()
+          .describe(
+            "Optional case-insensitive substring of a tier name to return FULL untruncated detail for that single tier (e.g. 'VIP', 'Open Play Pass', 'Guest'). Omit to get the compact overview of every tier.",
+          ),
+      }),
+      execute: async ({ tierName }: { tierName?: string }) => {
+        try {
+          const { getTierCatalog } = await import('@/lib/ai/membership-economics')
+          const tiers = await getTierCatalog(clubId)
+          if (tiers.length === 0) {
+            return {
+              tiers: [],
+              note: 'No membership tier catalog has been synced from CourtReserve for this club yet. Connect the CR integration to populate this.',
+            }
+          }
+
+          // Detail mode: case-insensitive substring match. If the user names
+          // a tier specifically, return the full description + all benefits
+          // without any truncation. Multiple matches are returned together
+          // (e.g. "VIP" hits both "VIP PASS" and "Hero Discount VIP Pass").
+          if (tierName && tierName.trim()) {
+            const needle = tierName.trim().toLowerCase()
+            const matches = tiers.filter((t) => t.name.toLowerCase().includes(needle))
+            if (matches.length === 0) {
+              return {
+                requestedTierName: tierName,
+                matches: [],
+                availableTierNames: tiers.map((t) => t.name),
+                note: `No tier matched "${tierName}". Use one of the names from availableTierNames or call without tierName for the full catalog.`,
+              }
+            }
+            return {
+              requestedTierName: tierName,
+              catalogSyncedAt: matches[0].syncedAt,
+              matches: matches.map((t) => ({
+                name: t.name,
+                monthlyPrice: t.monthlyPrice,
+                annualPrice: t.annualPrice,
+                initiationPrice: t.initiationPrice,
+                isFreeTier: t.isFreeTier,
+                description: t.description,
+                benefits: t.benefits,
+                minAge: t.minAge,
+                maxAge: t.maxAge,
+                suspendDaysPastDue: t.suspendDays,
+                cancelDaysPastDue: t.cancelDays,
+              })),
+              note: 'Full detail mode — description and benefits are untruncated. For per-tier active count / MRR / 30-day bookings, call getTierEconomics.',
+            }
+          }
+
+          // Overview mode: every tier, with description / benefits trimmed
+          // to keep the payload manageable for clubs with 20+ packages.
+          return {
+            mode: 'overview',
+            count: tiers.length,
+            catalogSyncedAt: tiers[0].syncedAt,
+            tiers: tiers.map((t) => ({
+              name: t.name,
+              monthlyPrice: t.monthlyPrice,
+              annualPrice: t.annualPrice,
+              initiationPrice: t.initiationPrice,
+              isFreeTier: t.isFreeTier,
+              description: t.description.slice(0, 240),
+              benefits: t.benefits.slice(0, 8),
+              minAge: t.minAge,
+              maxAge: t.maxAge,
+              suspendDaysPastDue: t.suspendDays,
+              cancelDaysPastDue: t.cancelDays,
+            })),
+            note: 'Overview mode — description truncated to 240 chars, benefits capped at 8. For full untruncated detail on one tier, call again with tierName="<substring>". For MRR / active count / bookings per tier, call getTierEconomics. Free tiers (isFreeTier=true) include Guest Pass, comped friends & family, and partner programs like Silver Sneakers / Tivity Health — these do not contribute to MRR.',
+          }
+        } catch (err) {
+          console.error('[ChatTool] getTierCatalog failed:', err)
+          return { error: 'Failed to load membership tier catalog.' }
+        }
+      },
+    }),
+
+    getTierEconomics: defineTool({
+      description:
+        "Get per-tier ECONOMICS: estimated monthly recurring revenue (MRR), active member count, 30-day booking volume, and bookings-per-active-member ratio. Plus a rollup with total MRR, paid vs free tier shares. Use when the user asks 'what's our MRR / monthly recurring revenue / revenue by tier / which tier brings the most money / which tier is most valuable / which tier is under-used / what % of members are on free vs paid / VIP members aren't using their booking allowance, are they?'. IMPORTANT: estimatedMRR = activeMembers × listed monthly price — it's the contracted recurring revenue, not actual CR transactions (CR transactions API integration is Phase 2). For tier descriptions, benefits, policies, age limits, call getTierCatalog instead.",
+      parameters: z.object({}),
+      execute: async () => {
+        try {
+          const { getTierEconomics } = await import('@/lib/ai/membership-economics')
+          const result = await getTierEconomics(clubId)
+          if (result.tiers.length === 0) {
+            return {
+              rollup: result.rollup,
+              tiers: [],
+              note: 'No membership data found for this club. Either CR sync has not run or the club has no followers yet.',
+            }
+          }
+          return {
+            rollup: {
+              totalMRR: result.rollup.totalMRR,
+              totalActiveSubscribers: result.rollup.totalActiveSubscribers,
+              paidTierActiveCount: result.rollup.paidTierActiveCount,
+              freeTierActiveCount: result.rollup.freeTierActiveCount,
+              paidTierSharePct: Math.round(result.rollup.paidTierShare * 1000) / 10,
+              freeTierSharePct: Math.round(result.rollup.freeTierShare * 1000) / 10,
+              catalogSyncedAt: result.rollup.catalogSyncedAt,
+            },
+            tiers: result.tiers.map((t) => ({
+              name: t.name,
+              monthlyPrice: t.monthlyPrice,
+              isFreeTier: t.isFreeTier,
+              activeMembers: t.activeMembers,
+              totalMembers: t.totalMembers,
+              bookings30d: t.bookings30d,
+              estimatedMRR: t.estimatedMRR,
+              bookingsPerActiveMember: t.bookingsPerActiveMember,
+            })),
+            metricDefinition: 'estimatedMRR = activeMembers × monthlyPrice. Free tiers (Guest Pass, comped passes, partner programs) contribute $0 to MRR. bookings30d counts CONFIRMED play_session_bookings in the last 30 days. bookingsPerActiveMember is the usage ratio — VIP-style tiers with low usage may indicate "paying but not playing" churn risk.',
+          }
+        } catch (err) {
+          console.error('[ChatTool] getTierEconomics failed:', err)
+          return { error: 'Failed to load tier economics.' }
+        }
+      },
+    }),
+
     getRatedPlayers: defineTool({
       description:
         "Get players filtered by skill rating (DUPR for pickleball). Use when the user asks about rating brackets like '4.0+', '3.5-3.99', 'beginners', 'advanced players by rating', or 'how many players above X'. IMPORTANT: today we only ingest pickleball DUPR ratings from CourtReserve sync. UTR (tennis), Playtomic (padel), and other sport-specific rating systems are not yet integrated — for clubs whose primary sport is not pickleball, this tool returns an honest 'not yet integrated' notice instead of guessing.",

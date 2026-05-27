@@ -301,11 +301,11 @@ export async function POST(req: Request) {
     try {
       const cacheKey = `advisor_prefetch_${clubId}`
       const cached = advisorDataCache.get(cacheKey)
-      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, overnightSends: string, ratedPlayers: any
+      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, overnightSends: string, ratedPlayers: any, tierEconomics: any
 
       if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
         // Use cached data (< 5 min old)
-        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers } = cached.data)
+        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics } = cached.data)
         outcomeInsightsBlock = outcomeInsights || ''
         overnightSendBlock = overnightSends || ''
         console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
@@ -321,7 +321,7 @@ export async function POST(req: Request) {
           ((club?.automationSettings as any)?.intelligence?.timezone as string | undefined) ||
           'America/New_York'
 
-        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers] = await Promise.all([
+        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics] = await Promise.all([
           exec(tools.getClubMetrics, {}),
           exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
           exec(tools.getCourtOccupancy, { days: 30 }),
@@ -333,10 +333,16 @@ export async function POST(req: Request) {
           buildAdvisorOutcomeInsightsBlock({ prisma, clubId, days: 30 }).catch(() => ''),
           buildAdvisorRecentSendSnapshotBlock({ prisma, clubId, timeZone: clubTimeZone }).catch(() => ''),
           exec(tools.getRatedPlayers, { limit: 30 }),
+          // Tier economics — bakes MRR + per-tier revenue/active/booking
+          // numbers into the system prompt so the Advisor can answer
+          // "what's our MRR / which tier is most valuable" without an
+          // extra tool round-trip. getTierCatalog (descriptions, benefits,
+          // policies) stays on-demand to keep this prefetch payload small.
+          exec(tools.getTierEconomics, {}),
         ])
         outcomeInsightsBlock = outcomeInsights || ''
         overnightSendBlock = overnightSends || ''
-        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, overnightSends: overnightSendBlock, ratedPlayers } })
+        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, overnightSends: overnightSendBlock, ratedPlayers, tierEconomics } })
         console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
       }
 
@@ -446,6 +452,55 @@ NOTE: Membership subscription status is a different metric from recent play acti
 ${raw ? `\nRaw status values (full list — exact CR strings, with counts):\n${Object.entries(raw).sort(([, a], [, b]) => (b as number) - (a as number)).map(([status, count]) => `- ${status}: ${count}`).join('\n')}` : ''}
 ${allTiers?.length ? `\nReal CourtReserve membership tiers in this club (full breakdown — every distinct tier string with counts, sorted by size; use these EXACT strings when answering tier questions, not normalised buckets):\n${allTiers.map((t) => `- ${t.tier}: ${t.count}`).join('\n')}` : ''}
 ${types?.length ? `\nTier breakdown among ACTIVE subscriptions only (top 10):\n${types.map((t) => `- ${t.type}: ${t.count}`).join('\n')}` : ''}`)
+      }
+
+      if (tierEconomics && !('error' in tierEconomics)) {
+        // Tier economics rollup + per-tier breakdown so the Advisor can
+        // answer MRR / revenue-by-tier questions inline without re-calling
+        // the tool. estimatedMRR = listed monthly price × active subs (not
+        // actual CR transactions — Phase 2 will add the transactions API).
+        const r = tierEconomics.rollup as
+          | {
+              totalMRR: number
+              totalActiveSubscribers: number
+              paidTierActiveCount: number
+              freeTierActiveCount: number
+              paidTierSharePct: number
+              freeTierSharePct: number
+              catalogSyncedAt: Date | string | null
+            }
+          | undefined
+        const tierRows = (tierEconomics.tiers as Array<{
+          name: string
+          monthlyPrice: number
+          isFreeTier: boolean
+          activeMembers: number
+          totalMembers: number
+          bookings30d: number
+          estimatedMRR: number
+          bookingsPerActiveMember: number
+        }> | undefined) || []
+        const paidRows = tierRows.filter((t) => !t.isFreeTier && t.activeMembers > 0)
+        const freeRows = tierRows.filter((t) => t.isFreeTier && t.activeMembers > 0)
+        if (r) {
+          const syncedLabel = r.catalogSyncedAt
+            ? new Date(r.catalogSyncedAt).toLocaleString('en-US')
+            : 'unknown'
+          parts.push(`## Tier Economics (estimated MRR by tier, NOT actual CR transactions)
+Total estimated MRR: $${r.totalMRR.toLocaleString('en-US')}/month
+Active paying subscribers: ${r.paidTierActiveCount.toLocaleString('en-US')} (${r.paidTierSharePct}%)
+Active free / comped / guest holders: ${r.freeTierActiveCount.toLocaleString('en-US')} (${r.freeTierSharePct}%)
+Total active subscribers: ${r.totalActiveSubscribers.toLocaleString('en-US')}
+Catalog last synced from CourtReserve: ${syncedLabel}
+
+Paid tiers (sorted by MRR contribution):
+${paidRows.length > 0
+  ? paidRows.map((t) => `- ${t.name}: ${t.activeMembers} active × $${t.monthlyPrice}/mo = $${t.estimatedMRR.toLocaleString('en-US')} MRR · ${t.bookings30d} bookings/30d (${t.bookingsPerActiveMember}/member)`).join('\n')
+  : '- (none — no paid tiers in this club)'}
+${freeRows.length > 0 ? `\nFree / comped / partner tiers (no MRR; included for completeness):\n${freeRows.map((t) => `- ${t.name}: ${t.activeMembers} active · ${t.bookings30d} bookings/30d (${t.bookingsPerActiveMember}/member)`).join('\n')}` : ''}
+
+NOTE: estimatedMRR = activeMembers × listed monthly price. It's the contracted recurring revenue, not actual CR transactions — Phase 2 will integrate the CR Transactions API for actuals. A low bookingsPerActiveMember on a paid tier (e.g. VIP) may indicate "paying but not playing" churn risk.`)
+        }
       }
 
       if (ratedPlayers && !('error' in ratedPlayers)) {
