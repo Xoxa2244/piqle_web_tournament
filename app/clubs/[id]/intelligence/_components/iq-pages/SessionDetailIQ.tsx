@@ -63,7 +63,6 @@ interface SessionDetailIQProps {
 
 export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProps) {
   const { isDark } = useTheme()
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
 
   const sk = classifySkill(session.format, session.skillLevel)
@@ -129,14 +128,6 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
     { enabled: spotsLeft > 0 },
   )
   const recs = recsData?.recommendations ?? []
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id); else next.add(id)
-      return next
-    })
-  }
 
   const cardStyle: React.CSSProperties = {
     background: 'var(--card-bg)', border: '1px solid var(--card-border)',
@@ -262,14 +253,10 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
                 {recs.map((rec: any) => {
                   const id = rec.member?.id ?? rec.member?.email ?? ''
                   const name = rec.member?.name ?? 'Unknown'
-                  const isSelected = selectedIds.has(id)
                   const likelihood: string = rec.estimatedLikelihood ?? 'low'
                   const likelihoodColor = likelihood === 'high' ? '#10B981' : likelihood === 'medium' ? '#F59E0B' : '#94A3B8'
                   return (
-                    <div key={id} className="flex items-start gap-3 py-2 px-2 rounded-xl transition-colors" style={{ background: isSelected ? 'rgba(139,92,246,0.08)' : 'transparent' }}>
-                      <button onClick={() => toggleSelect(id)} className="w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition-colors" style={{ borderColor: isSelected ? '#8B5CF6' : 'var(--card-border)', background: isSelected ? '#8B5CF6' : 'transparent' }}>
-                        {isSelected && <Check className="w-3 h-3 text-white" />}
-                      </button>
+                    <div key={id} className="flex items-start gap-3 py-2 px-2 rounded-xl transition-colors">
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: 'rgba(139,92,246,0.15)', color: '#8B5CF6' }}>
                         {initials(name)}
                       </div>
@@ -291,13 +278,6 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
                   )
                 })}
               </div>
-              <button
-                disabled={selectedIds.size === 0}
-                className="w-full mt-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
-                style={{ background: selectedIds.size > 0 ? 'linear-gradient(135deg, #8B5CF6, #06B6D4)' : 'var(--subtle)' }}
-              >
-                Invite Selected ({selectedIds.size})
-              </button>
             </>
           )}
         </div>
@@ -425,28 +405,49 @@ function CreateCohortButton({ clubId, sessionId, playerCount }: { clubId: string
 
 // ── Fill This Session — Event Marketing Pipeline ──
 function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; sessionId: string; spotsLeft: number }) {
-  const STEP_LABELS = ['Audience', 'Message', 'Send']
+  const STEP_LABELS = ['Audience', 'Message', 'Launch']
+  const { isDark } = useTheme()
+  const utils = trpc.useUtils()
   const [open, setOpen] = useState(false)
+  const [step, setStep] = useState<0 | 1 | 2>(0)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
-  const [sent, setSent] = useState<{ sent: number; skipped: number; errors: number } | null>(null)
+  const [launchResult, setLaunchResult] = useState<{ campaignId: string; recipientCount: number; status: string } | null>(null)
+
+  const modalSurface = isDark ? '#0B1220' : '#FFFFFF'
+  const modalInset = isDark ? '#151D2E' : '#F8FAFC'
+  const modalBorder = isDark ? 'rgba(148,163,184,0.24)' : '#E2E8F0'
+  const truncateText = (value: string, max: number) => value.length > max ? value.slice(0, max).trimEnd() : value
 
   const generateMutation = trpc.intelligence.generateEventCampaign.useMutation({
     onSuccess: (data) => {
       setSubject(data.message.subject)
       setBody(data.message.body)
       setSelectedIds(new Set(data.audience.map(a => a.id)))
+      setStep(0)
     },
   })
 
-  const sendMutation = trpc.intelligence.sendEventCampaign.useMutation({
-    onSuccess: (result) => setSent(result),
+  const launchMutation = trpc.intelligence.launchCampaign.useMutation({
+    onSuccess: async (result) => {
+      setLaunchResult(result)
+      setStep(2)
+      await Promise.all([
+        utils.intelligence.getCampaignAnalytics.invalidate().catch(() => undefined),
+        utils.intelligence.getCampaignList.invalidate().catch(() => undefined),
+        utils.intelligence.listAgentDecisionRecords.invalidate().catch(() => undefined),
+      ])
+    },
   })
 
   const handleOpen = () => {
     setOpen(true)
-    setSent(null)
+    setStep(0)
+    setSelectedIds(new Set())
+    setSubject('')
+    setBody('')
+    setLaunchResult(null)
     generateMutation.mutate({ clubId, sessionId, maxRecipients: 20 })
   }
 
@@ -459,16 +460,29 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
   }
 
   const handleSend = () => {
-    sendMutation.mutate({
-      clubId, sessionId,
-      recipientIds: Array.from(selectedIds),
-      subject, body, channel: 'email',
+    const sessionTitle = sessionInfo?.title || 'Session'
+    const bookingUrl = generateMutation.data?.message?.bookingUrl
+    launchMutation.mutate({
+      clubId,
+      name: truncateText(`Fill open slots: ${sessionTitle}`, 100),
+      goal: 'Fill open slots',
+      subject: subject.trim(),
+      body: body.trim(),
+      channels: ['email' as const],
+      userIds: Array.from(selectedIds),
+      audienceLabel: truncateText(`${sessionTitle} selected slot-filler audience`, 120),
+      format: 'one_time' as const,
+      ...(bookingUrl ? { ctaLabel: 'Book this spot', ctaUrl: bookingUrl } : {}),
     })
   }
 
   const audience = generateMutation.data?.audience || []
+  const selectedAudience = audience.filter((a: any) => selectedIds.has(a.id))
   const sessionInfo = generateMutation.data?.session
-  const currentStep = sent ? 2 : generateMutation.data ? 1 : 0
+  const currentStep = launchResult ? 2 : step
+  const errorMessage = generateMutation.error?.message || launchMutation.error?.message
+  const canContinueToMessage = selectedIds.size > 0
+  const canReviewLaunch = subject.trim().length > 0 && body.trim().length > 0
 
   return (
     <>
@@ -479,27 +493,27 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
         className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm text-white"
         style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700, boxShadow: '0 4px 20px rgba(139,92,246,0.3)' }}
       >
-        <Send className="w-4 h-4" /> Fill Open Spots ({spotsLeft})
+        <Send className="w-4 h-4" /> Fill Open Slots ({spotsLeft})
       </motion.button>
 
       {/* Modal */}
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(2,6,23,0.86)' }}>
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', boxShadow: '0 25px 50px rgba(0,0,0,0.25)' }}
+            style={{ background: modalSurface, border: `1px solid ${modalBorder}`, boxShadow: '0 25px 50px rgba(0,0,0,0.35)' }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--card-border)' }}>
+            <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: `1px solid ${modalBorder}` }}>
               <div className="flex items-center gap-3">
-                <h2 className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Slot Filler Campaign</h2>
+                <h2 className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>One-Time Slot Filler</h2>
                 <div className="flex items-center gap-1.5">
                   {STEP_LABELS.map((label, i) => (
                     <div key={label} className="flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full" style={{ background: i <= currentStep ? '#8B5CF6' : 'var(--subtle)' }} />
-                      {i < STEP_LABELS.length - 1 && <div className="w-3 h-px" style={{ background: i < currentStep ? '#8B5CF6' : 'var(--subtle)' }} />}
+                      <div className="w-2 h-2 rounded-full" style={{ background: i <= currentStep ? '#8B5CF6' : modalInset }} />
+                      {i < STEP_LABELS.length - 1 && <div className="w-3 h-px" style={{ background: i < currentStep ? '#8B5CF6' : modalInset }} />}
                     </div>
                   ))}
                 </div>
@@ -514,25 +528,45 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
               {generateMutation.isPending ? (
                 <div className="flex flex-col items-center gap-3 py-12">
                   <Loader2 className="w-6 h-6 animate-spin" style={{ color: '#8B5CF6' }} />
-                  <p className="text-sm" style={{ color: 'var(--t3)' }}>Building slot-filler audience...</p>
+                  <p className="text-sm" style={{ color: 'var(--t3)' }}>Building one-time campaign audience...</p>
                 </div>
-              ) : sent ? (
+              ) : launchResult ? (
                 <div className="text-center py-8">
-                  <div className="text-3xl mb-3">✅</div>
-                  <p className="text-lg mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>Campaign Sent!</p>
+                  <div className="w-12 h-12 rounded-full mx-auto mb-3 flex items-center justify-center" style={{ background: 'rgba(16,185,129,0.14)', color: '#10B981' }}>
+                    <Check className="w-6 h-6" />
+                  </div>
+                  <p className="text-lg mb-1" style={{ fontWeight: 700, color: 'var(--heading)' }}>One-time campaign launched</p>
                   <p className="text-sm" style={{ color: 'var(--t3)' }}>
-                    {sent.sent} sent, {sent.skipped} skipped, {sent.errors} errors
+                    {launchResult.recipientCount} selected player{launchResult.recipientCount === 1 ? '' : 's'} will receive this email.
                   </p>
-                  <button onClick={() => setOpen(false)} className="mt-4 px-6 py-2 rounded-xl text-sm" style={{ background: 'var(--subtle)', color: 'var(--t2)', fontWeight: 600 }}>
+                  <button onClick={() => setOpen(false)} className="mt-4 px-6 py-2 rounded-xl text-sm" style={{ background: modalInset, color: 'var(--t2)', fontWeight: 600 }}>
                     Close
                   </button>
+                </div>
+              ) : errorMessage ? (
+                <div className="py-6">
+                  <div className="flex items-start gap-2.5 px-4 py-3 rounded-xl mb-4" style={{ background: isDark ? '#351A22' : '#FEF2F2', border: '1px solid rgba(239,68,68,0.28)' }}>
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#EF4444' }} />
+                    <div>
+                      <div className="text-xs" style={{ color: '#EF4444', fontWeight: 700 }}>Campaign could not be prepared</div>
+                      <div className="text-[11px] mt-0.5" style={{ color: '#EF4444' }}>{errorMessage}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-end gap-3">
+                    <button onClick={() => setOpen(false)} className="px-4 py-2 rounded-xl text-sm" style={{ background: modalInset, color: 'var(--t2)', fontWeight: 600 }}>
+                      Close
+                    </button>
+                    <button onClick={handleOpen} className="px-5 py-2.5 rounded-xl text-sm text-white" style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}>
+                      Try again
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <>
                 {/* Session info */}
                 {sessionInfo && (
-                  <div className="p-4 rounded-2xl mb-5" style={{ background: 'var(--subtle)' }}>
-                    <div className="text-[11px] uppercase tracking-[0.16em]" style={{ color: 'var(--t4)', fontWeight: 700 }}>Campaign target</div>
+                  <div className="p-4 rounded-2xl mb-5" style={{ background: modalInset, border: `1px solid ${modalBorder}` }}>
+                    <div className="text-[11px] uppercase tracking-[0.16em]" style={{ color: 'var(--t4)', fontWeight: 700 }}>One-time email campaign</div>
                     <div className="text-sm mt-2" style={{ fontWeight: 600, color: 'var(--heading)' }}>{sessionInfo.title}</div>
                     <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
                       {sessionInfo.date} · {sessionInfo.time} {sessionInfo.court ? `· ${sessionInfo.court}` : ''}
@@ -541,90 +575,190 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
                   </div>
                 )}
 
-                {/* Audience */}
-                <div className="mb-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Select audience</div>
-                      <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
-                        {selectedIds.size} selected out of {audience.length} matched players
+                {step === 0 && (
+                  <>
+                    <div className="mb-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <div>
+                          <div className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Select recipients</div>
+                          <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
+                            {selectedIds.size} selected out of {audience.length} matched players
+                          </div>
+                        </div>
+                        {audience.length > 0 && (
+                          <button
+                            onClick={() => setSelectedIds(selectedIds.size === audience.length ? new Set() : new Set(audience.map(a => a.id)))}
+                            className="text-[10px]" style={{ color: '#8B5CF6', fontWeight: 600 }}
+                          >
+                            {selectedIds.size === audience.length ? 'Deselect all' : 'Select all'}
+                          </button>
+                        )}
+                      </div>
+                      {audience.length === 0 ? (
+                        <p className="text-sm py-8 text-center rounded-xl" style={{ color: 'var(--t4)', background: modalInset, border: `1px solid ${modalBorder}` }}>
+                          No eligible recipients found for this session.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5 max-h-[280px] overflow-y-auto">
+                          {audience.map(a => (
+                            <div
+                              key={a.id}
+                              onClick={() => toggleRecipient(a.id)}
+                              className="flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all"
+                              style={{ background: selectedIds.has(a.id) ? 'rgba(139,92,246,0.14)' : modalInset, border: `1px solid ${selectedIds.has(a.id) ? 'rgba(139,92,246,0.45)' : modalBorder}` }}
+                            >
+                              <div className="w-4 h-4 rounded border flex items-center justify-center shrink-0" style={{
+                                borderColor: selectedIds.has(a.id) ? '#8B5CF6' : modalBorder,
+                                background: selectedIds.has(a.id) ? '#8B5CF6' : modalSurface,
+                              }}>
+                                {selectedIds.has(a.id) && <Check className="w-2.5 h-2.5 text-white" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs" style={{ fontWeight: 600, color: 'var(--t1)' }}>{a.name}</span>
+                                {a.socialProof && (
+                                  <span className="text-[10px] ml-2" style={{ color: '#8B5CF6' }}>{a.socialProof}</span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 text-[10px] shrink-0" style={{ color: 'var(--t4)' }}>
+                                {a.formatMatch > 0 && <Target className="w-3 h-3" style={{ color: '#06B6D4' }} />}
+                                {a.totalBookings} sessions
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <button
+                        onClick={() => setOpen(false)}
+                        className="px-4 py-2 rounded-xl text-sm"
+                        style={{ background: modalInset, color: 'var(--t2)', fontWeight: 600 }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => setStep(1)}
+                        disabled={!canContinueToMessage}
+                        className="px-5 py-3 rounded-xl text-sm text-white transition-all disabled:opacity-40"
+                        style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}
+                      >
+                        Continue to message
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {step === 1 && (
+                  <>
+                    <div className="mb-5">
+                      <div className="text-sm mb-2" style={{ fontWeight: 700, color: 'var(--heading)' }}>Review message</div>
+                      <div className="mb-3">
+                        <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Subject</label>
+                        <input
+                          value={subject} onChange={e => setSubject(e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg text-sm outline-none"
+                          style={{ background: modalInset, color: 'var(--t1)', border: `1px solid ${modalBorder}` }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Message</label>
+                        <textarea
+                          value={body} onChange={e => setBody(e.target.value)}
+                          rows={6}
+                          className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
+                          style={{ background: modalInset, color: 'var(--t1)', border: `1px solid ${modalBorder}` }}
+                        />
                       </div>
                     </div>
-                    <button
-                      onClick={() => setSelectedIds(selectedIds.size === audience.length ? new Set() : new Set(audience.map(a => a.id)))}
-                      className="text-[10px]" style={{ color: '#8B5CF6', fontWeight: 600 }}
-                    >
-                      {selectedIds.size === audience.length ? 'Deselect all' : 'Select all'}
-                    </button>
-                  </div>
-                  <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
-                    {audience.map(a => (
-                      <div
-                        key={a.id}
-                        onClick={() => toggleRecipient(a.id)}
-                        className="flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all"
-                        style={{ background: selectedIds.has(a.id) ? 'rgba(139,92,246,0.08)' : 'transparent' }}
+
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <button
+                        onClick={() => setStep(0)}
+                        className="px-4 py-2 rounded-xl text-sm"
+                        style={{ background: modalInset, color: 'var(--t2)', fontWeight: 600 }}
                       >
-                        <div className="w-4 h-4 rounded border flex items-center justify-center shrink-0" style={{
-                          borderColor: selectedIds.has(a.id) ? '#8B5CF6' : 'var(--card-border)',
-                          background: selectedIds.has(a.id) ? '#8B5CF6' : 'transparent',
-                        }}>
-                          {selectedIds.has(a.id) && <Check className="w-2.5 h-2.5 text-white" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-xs" style={{ fontWeight: 600, color: 'var(--t1)' }}>{a.name}</span>
-                          {a.socialProof && (
-                            <span className="text-[10px] ml-2" style={{ color: '#8B5CF6' }}>{a.socialProof}</span>
-                          )}
-                        </div>
-                        <div className="text-[10px] shrink-0" style={{ color: 'var(--t4)' }}>
-                          {a.formatMatch > 0 ? '🎯' : ''} {a.totalBookings} sessions
+                        Back
+                      </button>
+                      <button
+                        onClick={() => setStep(2)}
+                        disabled={!canReviewLaunch}
+                        className="px-5 py-3 rounded-xl text-sm text-white transition-all disabled:opacity-40"
+                        style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}
+                      >
+                        Review launch
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {step === 2 && (
+                  <>
+                    <div className="space-y-4 mb-5">
+                      <div className="rounded-xl p-4" style={{ background: modalInset, border: `1px solid ${modalBorder}` }}>
+                        <div className="grid grid-cols-3 gap-3 text-xs">
+                          <div>
+                            <div style={{ color: 'var(--t4)', fontWeight: 700 }}>Type</div>
+                            <div className="mt-1" style={{ color: 'var(--heading)', fontWeight: 700 }}>One-time</div>
+                          </div>
+                          <div>
+                            <div style={{ color: 'var(--t4)', fontWeight: 700 }}>Channel</div>
+                            <div className="mt-1" style={{ color: 'var(--heading)', fontWeight: 700 }}>Email</div>
+                          </div>
+                          <div>
+                            <div style={{ color: 'var(--t4)', fontWeight: 700 }}>Recipients</div>
+                            <div className="mt-1" style={{ color: 'var(--heading)', fontWeight: 700 }}>{selectedIds.size}</div>
+                          </div>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Message */}
-                <div className="mb-5">
-                  <div className="text-sm mb-2" style={{ fontWeight: 700, color: 'var(--heading)' }}>Review message</div>
-                  <div className="mb-3">
-                    <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Subject</label>
-                    <input
-                      value={subject} onChange={e => setSubject(e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-                      style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs mb-1 block" style={{ fontWeight: 600, color: 'var(--t2)' }}>Message</label>
-                    <textarea
-                      value={body} onChange={e => setBody(e.target.value)}
-                      rows={4}
-                      className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none"
-                      style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
-                    />
-                  </div>
-                </div>
+                      <div className="rounded-xl p-4" style={{ background: modalInset, border: `1px solid ${modalBorder}` }}>
+                        <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 700 }}>Selected recipients</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedAudience.slice(0, 8).map((a: any) => (
+                            <span key={a.id} className="px-2 py-1 rounded-lg text-[11px]" style={{ background: modalSurface, color: 'var(--t2)', border: `1px solid ${modalBorder}` }}>
+                              {a.name}
+                            </span>
+                          ))}
+                          {selectedAudience.length > 8 && (
+                            <span className="px-2 py-1 rounded-lg text-[11px]" style={{ background: modalSurface, color: 'var(--t3)', border: `1px solid ${modalBorder}` }}>
+                              +{selectedAudience.length - 8} more
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                <div className="flex items-center justify-between gap-3 pt-1">
-                  <button
-                    onClick={() => setOpen(false)}
-                    className="px-4 py-2 rounded-xl text-sm"
-                    style={{ background: 'var(--subtle)', color: 'var(--t2)', fontWeight: 600 }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSend}
-                    disabled={selectedIds.size === 0 || sendMutation.isPending || !subject.trim()}
-                    className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm text-white transition-all disabled:opacity-40"
-                    style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}
-                  >
-                    {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                    Send Campaign ({selectedIds.size})
-                  </button>
-                </div>
+                      <div className="rounded-xl p-4" style={{ background: modalInset, border: `1px solid ${modalBorder}` }}>
+                        <div className="text-[11px] mb-1" style={{ color: 'var(--t3)', fontWeight: 700 }}>Email subject</div>
+                        <div className="text-xs" style={{ color: 'var(--heading)', fontWeight: 700 }}>{subject}</div>
+                      </div>
+
+                      <div className="rounded-xl p-4" style={{ background: modalInset, border: `1px solid ${modalBorder}` }}>
+                        <div className="text-[11px] mb-2" style={{ color: 'var(--t3)', fontWeight: 700 }}>Email body</div>
+                        <div className="text-xs leading-relaxed whitespace-pre-wrap" style={{ color: 'var(--t2)' }}>{body}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-3 pt-1">
+                      <button
+                        onClick={() => setStep(1)}
+                        className="px-4 py-2 rounded-xl text-sm"
+                        style={{ background: modalInset, color: 'var(--t2)', fontWeight: 600 }}
+                      >
+                        Back
+                      </button>
+                      <button
+                        onClick={handleSend}
+                        disabled={selectedIds.size === 0 || launchMutation.isPending || !canReviewLaunch}
+                        className="flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm text-white transition-all disabled:opacity-40"
+                        style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}
+                      >
+                        {launchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                        Launch one-time campaign ({selectedIds.size})
+                      </button>
+                    </div>
+                  </>
+                )}
               </>
             )}
             </div>
