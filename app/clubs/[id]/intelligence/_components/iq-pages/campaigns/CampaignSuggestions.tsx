@@ -128,8 +128,8 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         title: 'Win Back Inactive Members',
         description: `${reactivationMembers.length} member${reactivationMembers.length !== 1 ? 's' : ''} haven't played in 21+ days. A personalized reactivation campaign can bring them back.`,
         count: reactivationMembers.length,
-        // Placeholder: ~$80/won-back member × 12% expected conversion (P3-T1 will compute real values)
-        estImpactCents: reactivationMembers.length * 8000 * 0.12 * 100,
+        // Placeholder: $80/won-back member (8000¢) × 12% expected conversion (P3-T1 will compute real values)
+        estImpactCents: reactivationMembers.length * 8000 * 0.12,
         channels: ['email', 'sms'],
       })
     }
@@ -144,7 +144,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         title: 'Boost Retention',
         description: `${atRiskMembers.length} member${atRiskMembers.length !== 1 ? 's are' : ' is'} showing declining activity. Reach out before they churn.`,
         count: atRiskMembers.length,
-        estImpactCents: atRiskMembers.length * 12000 * 0.18 * 100, // ~$120 LTV × 18% save rate
+        estImpactCents: atRiskMembers.length * 12000 * 0.18, // ~$120 LTV (12000¢) × 18% save rate
         channels: ['email'],
       })
     }
@@ -172,7 +172,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         title: 'Welcome New Members',
         description: `${newMembers.length} new member${newMembers.length !== 1 ? 's' : ''} joined recently. A welcome message drives early engagement.`,
         count: newMembers.length,
-        estImpactCents: newMembers.length * 60000 * 0.30 * 100, // ~$600 LTV boost × 30% engagement lift
+        estImpactCents: newMembers.length * 60000 * 0.30, // ~$600 LTV boost (60000¢) × 30% engagement lift
         channels: ['email'],
       })
     }
@@ -187,7 +187,7 @@ export function CampaignSuggestions({ clubId, onSelectType }: CampaignSuggestion
         title: 'Check In',
         description: `${watchMembers.length} member${watchMembers.length !== 1 ? 's' : ''} showing reduced activity. A quick check-in keeps them engaged.`,
         count: watchMembers.length,
-        estImpactCents: watchMembers.length * 8000 * 0.20 * 100, // ~$80 × 20% retention save
+        estImpactCents: watchMembers.length * 8000 * 0.20, // ~$80 (8000¢) × 20% retention save
         channels: ['email'],
       })
     }
