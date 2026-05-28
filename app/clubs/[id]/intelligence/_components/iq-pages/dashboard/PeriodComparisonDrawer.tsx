@@ -63,6 +63,13 @@ export type PeriodComparisonSnapshot = {
   trendTone: 'positive' | 'negative' | 'neutral'
 }
 
+/** Period and compare modes are mirrored from the Dashboard header so
+ *  clicks inside the drawer drive the same state. Custom / calendar
+ *  modes are Dashboard-only; they show as "Custom" / "Calendar" pills
+ *  here so the user knows they're inherited from the outer view. */
+export type DrawerPeriod = 'week' | 'month' | 'quarter' | 'custom'
+export type DrawerCompMode = 'prev_period' | 'prev_year' | 'calendar'
+
 interface Props {
   open: boolean
   metric: DrawerMetric | null
@@ -74,6 +81,12 @@ interface Props {
   /** 'week' (1m/3m windows) or 'month' (6m). */
   bucket: 'week' | 'month'
   comparison?: PeriodComparisonSnapshot | null
+  /** Current period selector — drives `startDate/endDate` via parent. */
+  period: DrawerPeriod
+  onChangePeriod: (p: DrawerPeriod) => void
+  /** Comparison mode — drives the snapshot passed via `comparison`. */
+  compMode: DrawerCompMode
+  onChangeCompMode: (m: DrawerCompMode) => void
   onClose: () => void
 }
 
@@ -85,6 +98,10 @@ export function PeriodComparisonDrawer({
   endDate,
   bucket,
   comparison,
+  period,
+  onChangePeriod,
+  compMode,
+  onChangeCompMode,
   onClose,
 }: Props) {
   const query = trpc.intelligence.getMetricTimeSeries.useQuery(
@@ -123,21 +140,10 @@ export function PeriodComparisonDrawer({
     }))
   }, [query.data, bucket, startDate, endDate])
 
-  const summary = useMemo(() => {
-    if (!query.data) return null
-    const { bars, trend } = query.data
-    if (bars.length === 0) return null
-    const first = bars[0].value
-    const last = bars[bars.length - 1].value
-    const sum = bars.reduce((a, b) => a + b.value, 0)
-    return {
-      first,
-      last,
-      total: sum,
-      avg: Math.round((sum / bars.length) * 10) / 10,
-      slopeSign: trend.slope > 0.01 ? 'up' : trend.slope < -0.01 ? 'down' : 'flat',
-    } as const
-  }, [query.data])
+  // (Removed in 2026-05-28 redesign: aggregate summary stats — Current
+  // period / Vs previous / Weekly trend — used to render as three
+  // KPI cards above the chart. Their info is now either inline next to
+  // the Compare toggles or implicit in the chart + trend line itself.)
 
   return (
     <AnimatePresence>
@@ -169,7 +175,7 @@ export function PeriodComparisonDrawer({
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 28, stiffness: 220 }}
-            className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-[560px] overflow-y-auto"
+            className="fixed top-0 right-0 bottom-0 z-50 w-full max-w-[720px] overflow-y-auto"
             style={{
               backgroundColor: 'var(--page-bg)',
               backgroundImage: 'linear-gradient(var(--card-bg), var(--card-bg))',
@@ -209,47 +215,97 @@ export function PeriodComparisonDrawer({
             </div>
 
             <div className="px-5 py-4 space-y-4">
-              {/* Summary row */}
-              {summary && (
-                <div className="grid grid-cols-3 gap-2">
-                  <Stat
-                    label="Current period"
-                    value={comparison ? formatValue(comparison.current) : formatValue(summary.avg)}
-                  />
-                  <Stat
-                    label="Vs previous"
-                    value={comparison ? formatDelta(comparison.delta) : '—'}
-                    icon={
-                      comparison?.trendTone === 'positive' ? (
-                        <TrendingUp className="w-3 h-3" style={{ color: '#10B981' }} />
-                      ) : comparison?.trendTone === 'negative' ? (
-                        <TrendingDown className="w-3 h-3" style={{ color: '#F87171' }} />
-                      ) : (
-                        <Minus className="w-3 h-3" style={{ color: 'var(--t4)' }} />
-                      )
-                    }
-                  />
-                  <Stat
-                    label={`${bucket === 'week' ? 'Weekly' : 'Monthly'} trend`}
-                    value={
-                      summary.slopeSign === 'up'
-                        ? 'Rising'
-                        : summary.slopeSign === 'down'
-                          ? 'Falling'
-                          : 'Flat'
-                    }
-                    icon={
-                      summary.slopeSign === 'up' ? (
-                        <TrendingUp className="w-3 h-3" style={{ color: '#10B981' }} />
-                      ) : summary.slopeSign === 'down' ? (
-                        <TrendingDown className="w-3 h-3" style={{ color: '#F87171' }} />
-                      ) : (
-                        <Minus className="w-3 h-3" style={{ color: 'var(--t4)' }} />
-                      )
-                    }
-                  />
-                </div>
-              )}
+              {/* Period + Compare controls — mirror the Dashboard header
+                  so the user can re-frame the window without closing
+                  the drawer. Clicking these drives the parent state via
+                  callbacks, which in turn updates startDate / endDate /
+                  comparison props flowing back here. */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+                  Period
+                </span>
+                {(['week', 'month', 'quarter'] as const).map((p) => {
+                  const isActive = period === p
+                  return (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => onChangePeriod(p)}
+                      className="px-3 py-1.5 rounded-lg text-xs capitalize transition-all"
+                      style={{
+                        background: isActive ? 'rgba(139,92,246,0.15)' : 'var(--subtle)',
+                        color: isActive ? '#8B5CF6' : 'var(--t3)',
+                        fontWeight: isActive ? 600 : 500,
+                        border: isActive ? '1px solid rgba(139,92,246,0.3)' : '1px solid transparent',
+                      }}
+                    >
+                      {p}
+                    </button>
+                  )
+                })}
+                {/* Inherited custom / calendar modes from Dashboard — non-interactive here. */}
+                {(period === 'custom' || compMode === 'calendar') && (
+                  <span
+                    className="px-3 py-1.5 rounded-lg text-xs"
+                    style={{
+                      background: 'var(--subtle)',
+                      color: 'var(--t4)',
+                      border: '1px dashed var(--card-border)',
+                    }}
+                    title="Set on Dashboard"
+                  >
+                    {period === 'custom' ? 'Custom' : 'Calendar'}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
+                  Compare
+                </span>
+                {([
+                  { key: 'prev_period', label: 'Prev period' },
+                  { key: 'prev_year', label: 'Last year' },
+                ] as const).map((opt) => {
+                  const isActive = compMode === opt.key
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => onChangeCompMode(opt.key)}
+                      className="px-3 py-1.5 rounded-lg text-xs transition-all"
+                      style={{
+                        background: isActive ? 'rgba(139,92,246,0.15)' : 'var(--subtle)',
+                        color: isActive ? '#8B5CF6' : 'var(--t3)',
+                        fontWeight: isActive ? 600 : 500,
+                        border: isActive ? '1px solid rgba(139,92,246,0.3)' : '1px solid transparent',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  )
+                })}
+                {/* Delta shown inline next to the controls — replaces the
+                    three KPI cards that used to live above the chart. */}
+                {comparison && (
+                  <span
+                    className="ml-auto inline-flex items-center gap-1 text-xs"
+                    style={{ color: 'var(--t3)' }}
+                  >
+                    {comparison.trendTone === 'positive' ? (
+                      <TrendingUp className="w-3.5 h-3.5" style={{ color: '#10B981' }} />
+                    ) : comparison.trendTone === 'negative' ? (
+                      <TrendingDown className="w-3.5 h-3.5" style={{ color: '#F87171' }} />
+                    ) : (
+                      <Minus className="w-3.5 h-3.5" style={{ color: 'var(--t4)' }} />
+                    )}
+                    <span style={{ fontWeight: 700, color: 'var(--heading)' }}>
+                      {formatValue(comparison.current)}
+                    </span>
+                    <span>vs prev {formatDelta(comparison.delta)}</span>
+                  </span>
+                )}
+              </div>
 
               {/* Chart */}
               <div
@@ -322,33 +378,6 @@ export function PeriodComparisonDrawer({
         </>
       )}
     </AnimatePresence>
-  )
-}
-
-function Stat({
-  label,
-  value,
-  icon,
-}: {
-  label: string
-  value: string
-  icon?: React.ReactNode
-}) {
-  return (
-    <div
-      className="rounded-lg px-3 py-2"
-      style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}
-    >
-      <div className="text-[10px] mb-0.5" style={{ color: 'var(--t4)' }}>
-        {label}
-      </div>
-      <div className="flex items-center gap-1.5">
-        {icon}
-        <div className="text-sm" style={{ color: 'var(--heading)', fontWeight: 700 }}>
-          {value}
-        </div>
-      </div>
-    </div>
   )
 }
 

@@ -8148,15 +8148,24 @@ export const intelligenceRouter = createTRPCRouter({
         gapRows,
       ] = await Promise.all([
         // 1. Player info
+        //   • lastPlayed: MAX(ps.date) of CONFIRMED bookings that have
+        //     ALREADY happened (ps.date <= today). Without the upper
+        //     bound, future-scheduled bookings (a player books a session
+        //     a week from now) leak through and "Last played" reports
+        //     a negative day count.
+        //   • totalSessions: same gate — only count sessions actually
+        //     played, not future bookings.
         db.$queryRawUnsafe<any[]>(`
           SELECT u.id, u.name, u.email, u.image,
             cf.created_at as "memberSince",
             (SELECT MAX(ps.date) FROM play_session_bookings b2
               JOIN play_sessions ps ON ps.id = b2."sessionId"
-              WHERE b2."userId"::text = $1 AND ps."clubId"::text = $2              AND b2.status::text = 'CONFIRMED') as "lastPlayed",
+              WHERE b2."userId"::text = $1 AND ps."clubId"::text = $2              AND b2.status::text = 'CONFIRMED'
+                AND ps.date <= CURRENT_DATE) as "lastPlayed",
             (SELECT COUNT(*)::int FROM play_session_bookings b3
               JOIN play_sessions ps2 ON ps2.id = b3."sessionId"
-              WHERE b3."userId"::text = $1 AND ps2."clubId"::text = $2              AND b3.status::text = 'CONFIRMED') as "totalSessions",
+              WHERE b3."userId"::text = $1 AND ps2."clubId"::text = $2              AND b3.status::text = 'CONFIRMED'
+                AND ps2.date <= CURRENT_DATE) as "totalSessions",
             (SELECT mhs.health_score FROM member_health_snapshots mhs
               WHERE mhs.user_id::text = $1 AND mhs.club_id::text = $2              ORDER BY mhs.date DESC LIMIT 1) as "healthScore"
           FROM users u
@@ -8164,22 +8173,30 @@ export const intelligenceRouter = createTRPCRouter({
           LIMIT 1
         `, userId, clubId),
 
-        // 2. Sessions per week (last 12 weeks / 90 days)
+        // 2. Sessions per week (last 12 weeks / 90 days). The upper
+        // bound `ps.date <= CURRENT_DATE` is important — without it,
+        // CONFIRMED bookings for sessions scheduled in the future show
+        // up as bars dated next Monday and beyond, which reads as
+        // "they already played in a future week".
         db.$queryRawUnsafe<any[]>(`
           SELECT DATE_TRUNC('week', ps.date)::date as week, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE b."userId"::text = $1 AND ps."clubId"::text = $2            AND b.status::text = 'CONFIRMED'
             AND ps.date >= NOW() - INTERVAL '90 days'
+            AND ps.date <= CURRENT_DATE
           GROUP BY week ORDER BY week
         `, userId, clubId),
 
-        // 3. Top formats
+        // 3. Top formats — favorite play patterns, based on sessions
+        // that have actually happened. Future bookings (intent) don't
+        // count toward "what this player likes to play".
         db.$queryRawUnsafe<any[]>(`
           SELECT ps.format::text as format, COUNT(*)::int as count
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE b."userId"::text = $1 AND ps."clubId"::text = $2            AND b.status::text = 'CONFIRMED'
+            AND ps.date <= CURRENT_DATE
           GROUP BY ps.format ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
@@ -8189,6 +8206,7 @@ export const intelligenceRouter = createTRPCRouter({
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE b."userId"::text = $1 AND ps."clubId"::text = $2            AND b.status::text = 'CONFIRMED'
+            AND ps.date <= CURRENT_DATE
           GROUP BY hour ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
@@ -8198,6 +8216,7 @@ export const intelligenceRouter = createTRPCRouter({
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE b."userId"::text = $1 AND ps."clubId"::text = $2            AND b.status::text = 'CONFIRMED'
+            AND ps.date <= CURRENT_DATE
           GROUP BY day ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
@@ -8209,10 +8228,13 @@ export const intelligenceRouter = createTRPCRouter({
           LEFT JOIN club_courts cc ON cc.id = ps."courtId"
           WHERE b."userId"::text = $1 AND ps."clubId"::text = $2            AND b.status::text = 'CONFIRMED'
             AND cc.name IS NOT NULL
+            AND ps.date <= CURRENT_DATE
           GROUP BY cc.name ORDER BY count DESC LIMIT 3
         `, userId, clubId),
 
-        // 7. Recent sessions (last 10)
+        // 7. Recent sessions (last 10) — actually-played sessions; the
+        // UI labels this "Recent Sessions" so we must exclude future
+        // scheduled bookings.
         db.$queryRawUnsafe<any[]>(`
           SELECT ps.date::text, ps.format::text as format,
             COALESCE(cc.name, 'N/A') as court,
@@ -8223,16 +8245,20 @@ export const intelligenceRouter = createTRPCRouter({
           JOIN play_sessions ps ON ps.id = b."sessionId"
           LEFT JOIN club_courts cc ON cc.id = ps."courtId"
           WHERE b."userId"::text = $1 AND ps."clubId"::text = $2            AND b.status::text = 'CONFIRMED'
+            AND ps.date <= CURRENT_DATE
           ORDER BY ps.date DESC, ps."startTime" DESC
           LIMIT 10
         `, userId, clubId),
 
-        // 8. Session dates for gap calculation
+        // 8. Session dates for gap calculation. Future bookings would
+        // make `currentGapDays` negative (today − future date < 0) and
+        // skew the risk-level threshold below.
         db.$queryRawUnsafe<any[]>(`
           SELECT ps.date::date as d
           FROM play_session_bookings b
           JOIN play_sessions ps ON ps.id = b."sessionId"
           WHERE b."userId"::text = $1 AND ps."clubId"::text = $2            AND b.status::text = 'CONFIRMED'
+            AND ps.date <= CURRENT_DATE
           ORDER BY ps.date DESC
         `, userId, clubId),
       ])

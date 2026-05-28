@@ -160,10 +160,14 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
     const end = new Date(start.getTime() + 6 * 86400000)
     const sameMonth = start.getMonth() === end.getMonth()
     const weekRange = sameMonth
-      ? `${fmtDay(start)} – ${end.getDate()}`
+      ? `${fmtDay(start)}–${end.getDate()}`
       : `${fmtDay(start)} – ${fmtDay(end)}`
     return {
-      week: fmtDay(start),
+      // X-axis label: show the explicit 7-day window so a bar is
+      // visually obvious as a week, not a single day. The compact form
+      // ("Apr 13–19") keeps 12 bars readable; cross-month windows
+      // ("Apr 27 – May 3") get a wider label, recharts auto-thins them.
+      week: weekRange,
       weekRange,
       count: w.count,
       isRecent: w.week >= fourWeeksAgo,

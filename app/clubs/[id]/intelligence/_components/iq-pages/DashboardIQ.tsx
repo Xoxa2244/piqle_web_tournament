@@ -1769,6 +1769,10 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             endDate={end}
             bucket={bucket}
             comparison={drawerComparison}
+            period={period}
+            onChangePeriod={(p) => setPeriod(p)}
+            compMode={compMode}
+            onChangeCompMode={(m) => setCompMode(m)}
             onClose={() => {
               setDrawerMetric(null);
               setDrawerComparison(null);
