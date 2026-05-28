@@ -171,34 +171,54 @@ Membership Health.
 
 ### 7.2 Family definition algorithm
 Группировку 44 titles → 7 families я сделал **руками**, глядя на данные.
-Автоматический алгоритм — отдельная задача. Варианты:
-- **Hardcode regex families** (как tier regexes) — families fixed, не per-club.
-- **Per-club derived** — генерировать families из реальных titles клуба
-  (сложнее, но честнее к «реальным программам клуба»).
-- **Operator-defined** — ручная настройка (как Tier Constructor custom rules).
+Автоматический алгоритм — отдельная задача.
 
-Определение family — **та же проблема** что определение тиров. Не решена,
-переименована. Это самый большой риск по объёму.
+**РЕШЕНО (2026-05-28): hardcode regex baseline + operator override.**
+- Дефолтные families через regex — `programming-tier-classifier` переименовать
+  (tier keys → family keys), работает из коробки для большинства клубов.
+- Operator override — `tier-classifier-extended` custom rules → family overrides
+  (инфраструктура `tier_config.customRules` уже есть).
+- Suggestion engine `getFrequentUntaggedTitles` → «непогруппированные программы,
+  добавь правило» (уже есть).
+
+То есть почти весь код готов — переименование tier→family + новый dynamics слой,
+не переписывание. Остаётся **title normalization (§7.1)** как реальный новый код.
 
 ---
 
 ## 8. Фазы
 
 ```
-Phase 1 — Programming Health rebuild (descriptive base + actions)
+Phase 1 — Programming Health rebuild (numbers + full insights engine)
   1a. Title normalization layer (§7.1)
-  1b. Family classifier (§7.2) — решить hardcode vs per-club vs operator
+  1b. Family classifier (§7.2): hardcode regex + operator override
+      → переименовать programming-tier-classifier exports (tier→family)
+      → tier-classifier-extended custom rules → family overrides
   1c. Backend: families list + period dynamics + fill rate
   1d. UI: family list, inline expand (chevron), trend arrows ↗↘
   1e. Global period selector (7d/30d/90d/1y/custom)
   1f. Drill-down модалка с line-chart (3 metrics toggle)
-  1g. Часть 2 — treatments под цифрами (зеркало Соломона)
+  1g. ЧАСТЬ 2 — полный family-dynamics insights engine (см. §8b)
   1h. Hide tier UI (7 секций, execution check, Tier Constructor)
-
-Phase 2 — (опционально) program-level signals
-  • Новый тип инсайта «family declining N% за M недель»
-  • Заменяет tier-based scorecard_execution signals
 ```
+
+### 8b. Family-dynamics insights engine (Часть 2, полный)
+
+Решено делать **полный** engine сразу, не minimal. Анализирует каждую
+family и генерит treatment-инсайты:
+
+| Детектор | Триггер | Treatment |
+|---|---|---|
+| **Declining family** | participants −N% за M недель подряд | → кампания этой аудитории |
+| **Low fill** | fill rate < порога для organized программ | → slot-filler кампания |
+| **Funnel leak** | вход (Beginner/Intro) падает, верх растёт | → intro-кампания / реклама новичкам |
+| **League gap** | лига без upcoming session 14-60d (УЖЕ есть) | → open enrollment |
+| **Dead family** | была активна, 0 sessions N недель | → перезапуск / снять с витрины |
+
+- Reuse `bulkCreateCohortFromSignals` (написан сегодня) для treatment→cohort→campaign.
+- Каждый инсайт привязан к family-карточке сверху (клик скроллит к ней).
+- Fill-rate детектор — только organized families (не Pickup/Equipment, §9).
+- History gating: declining/funnel детекторы молчат при < 6-8 недель данных.
 
 ---
 
@@ -214,16 +234,15 @@ Phase 2 — (опционально) program-level signals
 
 ---
 
-## 10. Открытые вопросы (решить до Phase 1)
+## 10. Решения (зафиксировано 2026-05-28)
 
-1. **Family definition** (§7.2): hardcode regex / per-club derived / operator-defined?
-2. **Court Bookings**: отдельная family / влить в Open Play / facility-блок?
-   (drill-down покажет детали — оператор сам увидит, но как группировать?)
-3. **Ball Machine**: facility-блок отдельно от programming, или просто скрыть?
-4. **Тиры в коде**: dormant (feature flag) или удалить? Рекомендация — dormant,
-   репурпоуз под families (classifier тот же).
-5. **Часть 2 инсайты**: откуда брать? Tier-based scorecard signals исчезают.
-   Нужен новый «family dynamics» engine (Phase 2) или MVP без Части 2?
+| # | Вопрос | Решение |
+|---|---|---|
+| 1 | Family definition | **Hardcode regex + operator override.** Reuse classifier + custom rules + suggestion engine (всё написано сегодня). См. §7.2 |
+| 2 | Court Bookings | **Отдельная family «Pickup / Court Bookings»**, помечена self-serve. Не вливать в Open Play, не facility |
+| 3 | Ball Machine | **MVP — скрыть** (`isEquipmentBooking` уже есть). Facility-блок отдельной задачей позже |
+| 4 | Тиры в коде | **Dormant + репурпоуз**, не удалять. Убрать только UI (7 секций, Tier Constructor, execution check) |
+| 5 | Часть 2 инсайты | **Полный family-dynamics engine сразу** в Phase 1. См. §8b (5 детекторов) |
 
 ---
 
