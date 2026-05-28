@@ -364,11 +364,21 @@ export async function generateMemberProfilesForClub(
 
   if (scopedFollowers.length === 0) return result
 
-  // Get existing profiles to skip recently generated ones
+  // Get existing profiles to skip recently generated ones.
+  //
+  // COST LEVER: this window controls how often every member's profile is
+  // regenerated. It was 24h, which meant the CR sync (runs every 15 min)
+  // re-generated all ~19k profiles DAILY on gpt-4o-mini — ~95% of total AI
+  // spend (~$2-3/day). Widened to 7d so profiles refresh weekly instead,
+  // a ~7x cut. New members are unaffected (no profile row → never in this
+  // skip set → still generated on the next sync). The time-sensitive risk
+  // score is recomputed live by getMemberHealth, so a slightly older
+  // profile only means the pre-written outreach copy is up to a week stale.
+  const PROFILE_REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
   const existingProfiles = forceRegenerate ? [] : await prisma.memberAiProfile.findMany({
     where: {
       clubId,
-      generatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // within last 24h
+      generatedAt: { gte: new Date(Date.now() - PROFILE_REFRESH_WINDOW_MS) }, // within last 7d
     },
     select: { userId: true },
   })
