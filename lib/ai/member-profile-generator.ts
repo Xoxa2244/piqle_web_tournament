@@ -364,32 +364,67 @@ export async function generateMemberProfilesForClub(
 
   if (scopedFollowers.length === 0) return result
 
-  // Get existing profiles to skip recently generated ones.
+  // EVENT-DRIVEN regeneration. A member's profile only needs refreshing when
+  // their BEHAVIOUR changes — a new booking, a cancellation, a check-in.
+  // Risk score, preferred categories and outreach copy are all derived from
+  // booking activity, so a member who's done nothing since their last profile
+  // is still accurately described. The old time-window approach regenerated
+  // ALL ~19k profiles on a timer (24h → ~95% of AI spend, ~$2-3/day) for zero
+  // information gain on dormant members.
   //
-  // COST LEVER: this window controls how often every member's profile is
-  // regenerated. It was 24h, which meant the CR sync (runs every 15 min)
-  // re-generated all ~19k profiles DAILY on gpt-4o-mini — ~95% of total AI
-  // spend (~$2-3/day). Widened to 7d so profiles refresh weekly instead,
-  // a ~7x cut. New members are unaffected (no profile row → never in this
-  // skip set → still generated on the next sync). The time-sensitive risk
-  // score is recomputed live by getMemberHealth, so a slightly older
-  // profile only means the pre-written outreach copy is up to a week stale.
-  const PROFILE_REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
-  const existingProfiles = forceRegenerate ? [] : await prisma.memberAiProfile.findMany({
-    where: {
+  // Regenerate a member when:
+  //   1. they have no profile yet (new member / first run), OR
+  //   2. they have booking activity newer than their profile (a real event), OR
+  //   3. their profile is older than the safety window (catches slow drift —
+  //      e.g. "days since last visit" creeping up on a long-dormant member —
+  //      so everyone still refreshes at least monthly).
+  // The time-sensitive risk score is also recomputed live by getMemberHealth,
+  // so this only governs the cached profile copy.
+  const SAFETY_REFRESH_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+
+  let staleUserIds: Set<string>
+  if (forceRegenerate) {
+    staleUserIds = new Set<string>(scopedFollowers.map((f: any) => f.userId as string))
+  } else {
+    // One round-trip: per follower, their profile timestamp + latest booking
+    // event AT THIS CLUB. FILTER keeps cross-location bookings from counting.
+    // No ::uuid cast — Sol2 prod stores club_id columns as TEXT.
+    const activityRows = (await prisma.$queryRawUnsafe(
+      `SELECT
+         cf.user_id AS "userId",
+         map.generated_at AS "profileGeneratedAt",
+         MAX(GREATEST(psb."bookedAt", COALESCE(psb."cancelledAt", psb."bookedAt"), COALESCE(psb."checkedInAt", psb."bookedAt")))
+           FILTER (WHERE ps."clubId" = $1) AS "lastActivityAt"
+       FROM club_followers cf
+       LEFT JOIN member_ai_profiles map ON map.user_id = cf.user_id AND map.club_id = $1
+       LEFT JOIN play_session_bookings psb ON psb."userId" = cf.user_id
+       LEFT JOIN play_sessions ps ON ps.id = psb."sessionId"
+       WHERE cf.club_id = $1
+       GROUP BY cf.user_id, map.generated_at`,
       clubId,
-      generatedAt: { gte: new Date(Date.now() - PROFILE_REFRESH_WINDOW_MS) }, // within last 7d
-    },
-    select: { userId: true },
-  })
-  const recentlyGenerated = new Set(existingProfiles.map((p: any) => p.userId))
+    )) as Array<{
+      userId: string
+      profileGeneratedAt: Date | null
+      lastActivityAt: Date | null
+    }>
+    const now = Date.now()
+    staleUserIds = new Set<string>()
+    for (const row of activityRows) {
+      const gen = row.profileGeneratedAt ? new Date(row.profileGeneratedAt).getTime() : null
+      if (gen === null) { staleUserIds.add(row.userId); continue } // no profile yet
+      const act = row.lastActivityAt ? new Date(row.lastActivityAt).getTime() : null
+      const hasNewEvent = act !== null && act > gen
+      const tooOld = now - gen > SAFETY_REFRESH_MS
+      if (hasNewEvent || tooOld) staleUserIds.add(row.userId)
+    }
+  }
 
   const toGenerate = scopedFollowers
-    .filter((f: any) => !recentlyGenerated.has(f.userId))
+    .filter((f: any) => staleUserIds.has(f.userId))
     .slice(0, limit ?? undefined) // if limit set, process only first N pending members
   result.skipped = scopedFollowers.length - toGenerate.length
 
-  console.log(`[MemberAiProfile] Club ${clubId}: ${toGenerate.length} to generate, ${result.skipped} skipped (recent)${targetUserIds ? `, scoped to ${scopedFollowers.length} user(s)` : ''}`)
+  console.log(`[MemberAiProfile] Club ${clubId}: ${toGenerate.length} to generate, ${result.skipped} skipped (no new activity)${targetUserIds ? `, scoped to ${scopedFollowers.length} user(s)` : ''}`)
 
   // Process in batches
   for (let i = 0; i < toGenerate.length; i += batchSize) {
