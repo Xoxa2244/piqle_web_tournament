@@ -36,6 +36,11 @@ const STANDALONE_PATHS = new Set([
   // Health Overview / VIP at-risk chip).
   'intelligence.getMemberHealth',          // 3s on prod (slim summary path)
   'intelligence.getVipAtRiskPercent',      // 2.7s on prod
+  // Membership Health page — getTierHealth walks bookings for per-tier
+  // bucketing. Isolated it's ~0.4s, but bundled in the page-load batch with
+  // club/notification/settings it stretched the whole batch to ~7s under
+  // load. Standalone so it only blocks its own page, not the shell.
+  'intelligence.getMembershipHealth',
 ])
 
 export function Providers({ children }: { children: React.ReactNode }) {
