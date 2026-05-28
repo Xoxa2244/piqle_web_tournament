@@ -615,6 +615,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   const convIdRef = useRef<string | null>(null);
   const activeConvIdRef = useRef<string | null>(null);
   const streamConvIdRef = useRef<string | null>(null);
+  // Tracks the previous useChat status so the stream-sync effect can tell a
+  // real "stream just finished" (streaming→idle) from a spurious idle render
+  // caused by setMessages() priming. Without this, the priming call in
+  // handleSend nulled streamConvIdRef before the follow-up stream began.
+  const prevStatusRef = useRef<string>('ready');
   const pendingConvIdRef = useRef<string | null>(null);
   const appliedPromptRef = useRef<string | null>(null);
   const pendingGuestTrialContextRef = useRef<GuestTrialExecutionContext | null>(null);
@@ -753,6 +758,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
   }, [isBusy, refreshConversations]);
 
   useEffect(() => {
+    // Capture the status transition up front (before any early return) so we
+    // can distinguish a real stream completion from an idle re-render.
+    const prevStatus = prevStatusRef.current;
+    prevStatusRef.current = status;
+
     const streamConvId = streamConvIdRef.current;
     if (!streamConvId) return;
     if ((messages as AdvisorUiMessage[]).length === 0) return;
@@ -762,7 +772,16 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
       setVisibleMessages(messages as AdvisorUiMessage[]);
     }
 
-    if (status !== 'submitted' && status !== 'streaming') {
+    // Only tear down the stream pointer once a stream has ACTUALLY finished —
+    // i.e. status just transitioned out of submitted/streaming. The old code
+    // cleared it on any idle render, so the setMessages(baseMessages) priming
+    // call in handleSend (used for every follow-up in an existing chat) nulled
+    // streamConvIdRef before sendMessage even started — and the streamed reply
+    // then bailed at the `if (!streamConvId) return` guard above, so follow-up
+    // suggestions never rendered. New chats happened to work only because their
+    // baseMessages were empty (early return at the length check).
+    const wasStreaming = prevStatus === 'submitted' || prevStatus === 'streaming';
+    if (wasStreaming && status !== 'submitted' && status !== 'streaming') {
       streamConvIdRef.current = null;
       refreshConversations();
     }
