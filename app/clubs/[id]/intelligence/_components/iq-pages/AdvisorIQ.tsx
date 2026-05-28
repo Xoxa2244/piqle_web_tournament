@@ -420,7 +420,7 @@ function AdvisorClarificationCard({
       }}
     >
       <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: "#06B6D4", fontWeight: 700 }}>
-        Decision Card
+        Needs your decision
       </div>
       <div className="text-sm mt-1" style={{ fontWeight: 700, color: "var(--heading)" }}>
         {pending.question}

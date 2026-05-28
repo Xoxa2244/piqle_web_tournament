@@ -308,10 +308,9 @@ export function SignalFeed({ clubId }: Props) {
             Inbox zero — no active signals.
           </p>
           <p className="text-[11px] mt-1 max-w-md" style={{ color: 'var(--t4)' }}>
-            Once Member Health, Membership Lifecycle, Scorecard Execution,
-            League gap, and VIP at-risk sources are wired (Steps 16-18 of
-            the Action Center spec), per-subject signals will appear here
-            with one-click actions.
+            As data flows in from your club — member health, membership changes,
+            programming gaps, and VIP risk — flagged items will appear here,
+            each with a one-click action. Nothing needs your attention right now.
           </p>
         </div>
       ) : (

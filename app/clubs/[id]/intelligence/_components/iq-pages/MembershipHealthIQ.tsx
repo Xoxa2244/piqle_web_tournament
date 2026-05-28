@@ -28,6 +28,17 @@ const CAMPAIGN_HINT_LABEL: Record<string, string> = {
   PRICE_REVIEW: 'Pricing',
 }
 
+// Maps a treatment's campaignHint to a Campaign Wizard goal so the
+// "Campaign" button lands on a pre-selected goal (which auto-builds the
+// matching audience) instead of an empty wizard.
+const CAMPAIGN_HINT_GOAL: Record<string, string> = {
+  RETENTION_BOOST: 'retention_boost',
+  UPSELL: 'upsell_tier',
+  WINBACK: 'reactivate_dormant',
+  BILLING_AUDIT: 'renewal_reminder',
+  PRICE_REVIEW: 'custom',
+}
+
 type Treatment = {
   action: string
   campaignHint: string
@@ -239,7 +250,7 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
                         <p className="text-xs" style={{ color: "var(--t2)", lineHeight: 1.5 }}>{tx.action}</p>
                       </div>
                       <Link
-                        href={`/clubs/${clubId}/intelligence/campaigns`}
+                        href={`/clubs/${clubId}/intelligence/campaigns?goal=${CAMPAIGN_HINT_GOAL[tx.campaignHint] || 'custom'}`}
                         className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs self-center"
                         style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600 }}
                       >

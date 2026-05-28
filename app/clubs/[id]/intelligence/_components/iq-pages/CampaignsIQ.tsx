@@ -339,13 +339,21 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
   const [wizardInitialTemplateKey, setWizardInitialTemplateKey] = useState<string | null>(null)
   useEffect(() => {
     const cohortIdFromUrl = wizardSearchParams?.get('cohortId') ?? null
-    if (cohortIdFromUrl && !showWizard) {
-      setWizardInitialCohortId(cohortIdFromUrl)
+    // ?goal= lets other pages (e.g. Membership Health treatments) open the
+    // wizard with the Goal step pre-selected instead of an empty wizard.
+    const goalFromUrl = wizardSearchParams?.get('goal') ?? null
+    const VALID_GOALS = ['reactivate_dormant', 'check_in', 'retention_boost', 'onboard_new', 'promote_event', 'upsell_tier', 'renewal_reminder', 'custom']
+    if ((cohortIdFromUrl || goalFromUrl) && !showWizard) {
+      if (cohortIdFromUrl) setWizardInitialCohortId(cohortIdFromUrl)
+      if (goalFromUrl && VALID_GOALS.includes(goalFromUrl)) {
+        setWizardInitialGoal(goalFromUrl as typeof wizardInitialGoal)
+      }
       setShowWizard(true)
-      // Strip the param after we've consumed it.
+      // Strip the params after we've consumed them.
       if (wizardPathname) {
         const next = new URLSearchParams(wizardSearchParams.toString())
         next.delete('cohortId')
+        next.delete('goal')
         const qs = next.toString()
         wizardRouter.replace(qs ? `${wizardPathname}?${qs}` : wizardPathname, { scroll: false })
       }

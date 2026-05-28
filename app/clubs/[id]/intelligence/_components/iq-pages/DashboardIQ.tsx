@@ -1306,7 +1306,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   Business Insights
                 </h3>
                 <p className="text-[10px]" style={{ color: "var(--t4)" }}>
-                  Canon-driven · action-first · persisted
+                  Action-ready insights from your live club data
                 </p>
               </div>
             </div>

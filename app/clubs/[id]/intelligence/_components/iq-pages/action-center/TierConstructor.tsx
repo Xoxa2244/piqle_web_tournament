@@ -312,8 +312,9 @@ export function TierConstructor({ clubId }: Props) {
               Custom classifier rules
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>
-              Map sessions by name pattern or CR reservation/event id when
-              the regex layer misses them. Highest-priority match wins.
+              Tag sessions by a word in their title or a CourtReserve booking
+              type, for anything the automatic tagger misses. If several rules
+              match, the top one wins.
             </p>
           </div>
           <button
@@ -664,10 +665,10 @@ function ClassifierRuleEntry({
 }) {
   const matchLabel =
     rule.match.kind === 'name_pattern'
-      ? `name matches /${rule.match.regex}/i`
+      ? `title matches "${rule.match.regex}"`
       : rule.match.kind === 'cr_reservation_type_id'
-        ? `CR reservation_type_id = ${rule.match.id}`
-        : `CR event_category_id = ${rule.match.id}`
+        ? `CourtReserve booking type #${rule.match.id}`
+        : `CourtReserve event category #${rule.match.id}`
   const meta = PROGRAMMING_TIER_META[rule.targetTier]
   return (
     <div
