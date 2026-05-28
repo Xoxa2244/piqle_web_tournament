@@ -283,14 +283,37 @@ export function PeriodComparisonDrawer({
                         axisLine={{ stroke: 'var(--divider)' }}
                       />
                       <Tooltip
-                        contentStyle={{
-                          background: 'var(--card-bg)',
-                          border: '1px solid var(--card-border)',
-                          borderRadius: 8,
-                          fontSize: 12,
-                          color: 'var(--heading)',
+                        // Custom renderer — strips the Trend-line series
+                        // from the tooltip. The trend is a linear
+                        // regression, so its value at a given bucket is
+                        // "intercept + slope · i" — can be negative
+                        // even when all bars are positive (steep slope
+                        // + sparse early data extrapolates the line
+                        // below zero). That's mathematically right but
+                        // reads as a UI bug. The line itself is purely
+                        // a visual cue; users don't need to see the
+                        // regression's predicted value per bucket.
+                        content={({ active, payload, label }) => {
+                          if (!active || !payload?.length) return null
+                          const actual = payload.find((p: any) => p.dataKey === 'value')
+                          if (!actual) return null
+                          return (
+                            <div
+                              className="rounded-lg px-3 py-2"
+                              style={{
+                                background: 'var(--card-bg)',
+                                border: '1px solid var(--card-border)',
+                                fontSize: 12,
+                                color: 'var(--heading)',
+                              }}
+                            >
+                              <div className="mb-0.5" style={{ fontWeight: 600 }}>{label}</div>
+                              <div style={{ color: 'var(--t3)' }}>
+                                <span style={{ color: '#8B5CF6' }}>●</span> {formatValue(Number(actual.value))}
+                              </div>
+                            </div>
+                          )
                         }}
-                        formatter={(v: any) => formatValue(Number(v))}
                       />
                       <Bar
                         name="Actual"
