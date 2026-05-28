@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getModel, getFallbackModel } from '@/lib/ai/llm/provider';
+import { trackUsage } from '@/lib/ai/llm/usage-tracker';
 import { ADVISOR_SYSTEM_PROMPT, buildClubContextPrompt } from '@/lib/ai/llm/prompts';
 import { retrieveContext, buildRAGContext } from '@/lib/ai/rag/retriever';
 import { detectLanguage, getLanguageInstruction, type SupportedLanguage } from '@/lib/ai/llm/language';
@@ -701,6 +702,18 @@ When answering about sessions with open spots today or tonight:
 
     // 9. Persistence callback
     const persistMessages = async (event: { text: string; usage: { inputTokens: number | undefined; outputTokens: number | undefined } }, modelName: string, isFallback = false) => {
+      // Track cost FIRST, before the convId guard — a chat still burns tokens
+      // even when it isn't tied to a saved conversation. Fire-and-forget:
+      // trackUsage swallows its own errors and never blocks the response.
+      void trackUsage({
+        clubId,
+        model: modelName,
+        operation: 'advisor_chat',
+        promptTokens: event.usage.inputTokens ?? 0,
+        completionTokens: event.usage.outputTokens ?? 0,
+        metadata: { ragChunksUsed: ragChunks.length, language: conversationLanguage, ...(isFallback ? { fallback: true } : {}) },
+      });
+
       if (!convId) return;
       try {
         const advisorState = clearAdvisorPendingClarification(

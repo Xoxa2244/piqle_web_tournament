@@ -388,7 +388,7 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
   return { action: 'none', usePreviousCohort: false }
 }
 
-export async function planAdvisorActionIntent(message: string): Promise<AdvisorIntentPlan> {
+export async function planAdvisorActionIntent(message: string, clubId?: string): Promise<AdvisorIntentPlan> {
   const fallback = heuristicPlan(message)
 
   // Fast-path: when the regex/keyword heuristic already matched a concrete
@@ -421,6 +421,11 @@ export async function planAdvisorActionIntent(message: string): Promise<AdvisorI
       prompt: message,
       tier: 'fast',
       maxTokens: 300,
+      // Usage tracking is opt-in on (clubId + operation). Passing them here
+      // means every intent-plan call lands in ai_usage_logs as 'advisor_plan'
+      // — the gpt-4o-mini cost that fires on every advisor message.
+      clubId,
+      operation: 'advisor_plan',
     })
     const parsed = advisorIntentSchema.safeParse(JSON.parse(cleanJson(result.text)))
     return parsed.success ? parsed.data : fallback

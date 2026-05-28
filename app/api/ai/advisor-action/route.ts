@@ -2156,7 +2156,7 @@ export async function POST(req: Request) {
     let effectiveMessage = message
     let plan = memory.state?.pendingClarification
       ? null
-      : await profiler.span('planIntent', () => planAdvisorActionIntent(message))
+      : await profiler.span('planIntent', () => planAdvisorActionIntent(message, clubId))
     let assistantMessage = ''
     const copy = getAdvisorActionCopy(language)
     let assistantState: AdvisorConversationState | null = null
@@ -2212,7 +2212,7 @@ export async function POST(req: Request) {
     }
 
     if (!plan) {
-      plan = await profiler.span('planIntent:afterClarif', () => planAdvisorActionIntent(effectiveMessage))
+      plan = await profiler.span('planIntent:afterClarif', () => planAdvisorActionIntent(effectiveMessage, clubId))
     }
     // Narrow plan to non-null for TS (profiler.span wraps lose inference).
     const resolvedPlan: AdvisorIntentPlan = plan
