@@ -1694,6 +1694,56 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
+  // ── Membership Health: all tiers + verdict + recommendations (ANALYTICS page) ──
+  //
+  // Surfaces the same tier intelligence the AI Advisor uses (getTierHealth +
+  // getTierCatalog) as a structured page payload. Per-tier verdict, signals,
+  // estimated MRR, diagnostics and treatment recommendations, enriched with
+  // catalog detail (price, benefits, suspension policy) for the expand view.
+  getMembershipHealth: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { getTierHealth, getTierCatalog } = await import('@/lib/ai/membership-economics')
+      const [health, catalog] = await Promise.all([
+        getTierHealth(input.clubId),
+        getTierCatalog(input.clubId),
+      ])
+
+      const catalogByName = new Map(catalog.map((c) => [c.name, c]))
+      const tiers = health.tiers.map((t) => {
+        const spec = catalogByName.get(t.name)
+        return {
+          ...t,
+          annualPrice: spec?.annualPrice ?? 0,
+          description: spec?.description ?? '',
+          benefits: spec?.benefits ?? [],
+          suspendDays: spec?.suspendDays ?? null,
+          cancelDays: spec?.cancelDays ?? null,
+          minAge: spec?.minAge ?? null,
+          maxAge: spec?.maxAge ?? null,
+        }
+      })
+
+      // Derive economics rollup from the per-tier numbers getTierHealth already
+      // computed — avoids a second pass over the data.
+      const totalMRR = tiers.reduce((sum, t) => sum + t.estimatedMRR, 0)
+      const totalActiveSubscribers = tiers.reduce((sum, t) => sum + t.active, 0)
+      const catalogSyncedAt = catalog.length > 0
+        ? catalog.reduce<Date>((max, c) => (c.syncedAt > max ? c.syncedAt : max), catalog[0].syncedAt)
+        : null
+
+      return {
+        tiers,
+        rollup: {
+          ...health.rollup,
+          totalMRR,
+          totalActiveSubscribers,
+          catalogSyncedAt: catalogSyncedAt ? catalogSyncedAt.toISOString() : null,
+        },
+      }
+    }),
+
   // ── Club Data Status: Check if club has AI data ──
   getClubDataStatus: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))

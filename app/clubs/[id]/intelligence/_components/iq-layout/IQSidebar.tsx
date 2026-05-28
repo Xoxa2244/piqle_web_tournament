@@ -9,7 +9,7 @@ import {
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
   Menu, X, CreditCard, Plug, Activity, Bot, Mail, Rocket, Sparkles,
-  FileBarChart, Inbox,
+  FileBarChart, Inbox, Heart,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -61,6 +61,7 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
       // Customer Health, easier to grasp than the spreadsheet metaphor.
       // URL stays /scorecard for backwards compatibility.
       { icon: FileBarChart, label: "Programming Health", path: "/scorecard" },
+      { icon: Heart, label: "Membership Health", path: "/membership-health" },
     ],
   },
   {
