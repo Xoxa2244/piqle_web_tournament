@@ -1606,6 +1606,78 @@ export const intelligenceRouter = createTRPCRouter({
       return subscription
     }),
 
+  // ── AI Usage Summary (customer-facing, credits-based) ──
+  //
+  // Clubs pay for their own AI usage. This powers the "AI Usage" card on the
+  // Billing page: this-month credit consumption vs the plan allowance, broken
+  // down by feature. Credits abstract the raw provider cost (see
+  // lib/ai/usage-credits.ts). Visibility + soft alert only — never blocks here.
+  //
+  // No ::uuid cast on club_id: Sol2 prod stores it as TEXT (schema/live-DB
+  // divergence flagged in CLAUDE.md). $queryRawUnsafe with $1 mirrors the
+  // working getAIRevenueAttribution query above.
+  getAIUsageSummary: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { costToCredits, getPlanCreditAllowance, operationLabel } = await import('@/lib/ai/usage-credits')
+
+      // Billing period = calendar month (UTC), matching club.aiSpendMonthStart.
+      const now = new Date()
+      const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
+      const periodResetAt = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+
+      type UsageRow = { operation: string; cost: number; calls: number }
+      const rows = await ctx.prisma.$queryRawUnsafe<UsageRow[]>(
+        `SELECT operation, COALESCE(SUM(cost_usd), 0)::float AS cost, COUNT(*)::int AS calls
+         FROM ai_usage_logs
+         WHERE club_id = $1 AND created_at >= $2
+         GROUP BY operation`,
+        input.clubId,
+        periodStart,
+      )
+
+      const subscription = await ctx.prisma.subscription.findUnique({
+        where: { clubId: input.clubId },
+        select: { plan: true },
+      })
+      const plan = subscription?.plan || 'free'
+      const creditsAllowance = getPlanCreditAllowance(plan) // null = unlimited
+
+      let creditsUsed = 0
+      const byOperation = rows
+        .map((r) => {
+          const credits = costToCredits(Number(r.cost))
+          creditsUsed += credits
+          return { operation: r.operation, label: operationLabel(r.operation), credits, calls: Number(r.calls) }
+        })
+        .filter((o) => o.credits > 0)
+        .sort((a, b) => b.credits - a.credits)
+
+      const percentUsed = creditsAllowance && creditsAllowance > 0
+        ? Math.min(100, Math.round((creditsUsed / creditsAllowance) * 100))
+        : 0
+      const alertLevel: 'ok' | 'warn' | 'over' =
+        creditsAllowance == null
+          ? 'ok'
+          : creditsUsed >= creditsAllowance
+            ? 'over'
+            : creditsUsed >= creditsAllowance * 0.8
+              ? 'warn'
+              : 'ok'
+
+      return {
+        plan,
+        creditsUsed,
+        creditsAllowance,
+        percentUsed,
+        alertLevel,
+        periodStart: periodStart.toISOString(),
+        periodResetAt: periodResetAt.toISOString(),
+        byOperation,
+      }
+    }),
+
   // ── Club Data Status: Check if club has AI data ──
   getClubDataStatus: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))

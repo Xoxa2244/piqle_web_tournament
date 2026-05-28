@@ -7,6 +7,7 @@ import {
   ArrowRight, Sparkles, ExternalLink, Loader2,
 } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
+import { trpc } from "@/lib/trpc";
 
 // ── Price IDs ──
 const PRICE_IDS = {
@@ -117,6 +118,13 @@ export function BillingIQ({ subscription, isLoading, clubId }: BillingIQProps) {
   const { isDark } = useTheme();
   const [annual, setAnnual] = useState(true);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+
+  // AI usage (credits this billing month vs plan allowance)
+  const usageQuery = trpc.intelligence.getAIUsageSummary.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 60_000 },
+  );
+  const usage = usageQuery.data;
 
   const currentPlan = subscription?.plan || 'free';
   const status = subscription?.status || 'none';
@@ -280,6 +288,105 @@ export function BillingIQ({ subscription, isLoading, clubId }: BillingIQProps) {
           )}
         </div>
       </Card>
+
+      {/* AI Usage Card — credits this billing month vs plan allowance */}
+      {usage && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4" style={{ color: "#8B5CF6" }} />
+              <h2 style={{ fontSize: "16px", fontWeight: 700, color: "var(--heading)" }}>
+                AI Usage
+              </h2>
+            </div>
+            <span className="text-xs" style={{ color: "var(--t4)" }}>
+              Resets {new Date(usage.periodResetAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            </span>
+          </div>
+
+          {/* Usage headline + progress */}
+          <div className="flex items-end justify-between mb-2">
+            <div>
+              <span style={{ fontSize: "28px", fontWeight: 800, color: "var(--heading)" }}>
+                {usage.creditsUsed.toLocaleString()}
+              </span>
+              <span className="text-sm ml-1" style={{ color: "var(--t3)" }}>
+                {usage.creditsAllowance != null
+                  ? `/ ${usage.creditsAllowance.toLocaleString()} credits`
+                  : "credits · Unlimited"}
+              </span>
+            </div>
+            {usage.creditsAllowance != null && (
+              <span
+                className="text-sm"
+                style={{
+                  fontWeight: 700,
+                  color: usage.alertLevel === "over" ? "#EF4444" : usage.alertLevel === "warn" ? "#F59E0B" : "var(--t3)",
+                }}
+              >
+                {usage.percentUsed}%
+              </span>
+            )}
+          </div>
+
+          {usage.creditsAllowance != null && (
+            <div
+              className="h-2 rounded-full overflow-hidden mb-3"
+              style={{ background: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }}
+            >
+              <div
+                className="h-full rounded-full transition-all"
+                style={{
+                  width: `${usage.percentUsed}%`,
+                  background:
+                    usage.alertLevel === "over"
+                      ? "#EF4444"
+                      : usage.alertLevel === "warn"
+                        ? "#F59E0B"
+                        : "linear-gradient(135deg, #8B5CF6, #06B6D4)",
+                }}
+              />
+            </div>
+          )}
+
+          {/* Soft alert — visibility only, never blocks */}
+          {usage.alertLevel !== "ok" && usage.creditsAllowance != null && (
+            <div
+              className="text-xs rounded-lg px-3 py-2 mb-3"
+              style={{
+                background: usage.alertLevel === "over" ? "rgba(239,68,68,0.1)" : "rgba(245,158,11,0.1)",
+                color: usage.alertLevel === "over" ? "#EF4444" : "#F59E0B",
+                border: `1px solid ${usage.alertLevel === "over" ? "rgba(239,68,68,0.25)" : "rgba(245,158,11,0.25)"}`,
+              }}
+            >
+              {usage.alertLevel === "over"
+                ? "You've used your monthly AI credits. The AI keeps working — overage may apply. Upgrade for a higher allowance."
+                : "You're approaching your monthly AI credit limit. Consider upgrading if you need more headroom."}
+            </div>
+          )}
+
+          {/* Breakdown by feature */}
+          {usage.byOperation.length > 0 ? (
+            <div className="space-y-1.5">
+              {usage.byOperation.map((op) => (
+                <div key={op.operation} className="flex items-center justify-between text-sm">
+                  <span style={{ color: "var(--t2)" }}>{op.label}</span>
+                  <span style={{ color: "var(--t3)" }}>
+                    {op.credits.toLocaleString()} cr
+                    <span className="text-xs ml-1" style={{ color: "var(--t4)" }}>
+                      ({op.calls.toLocaleString()} {op.calls === 1 ? "call" : "calls"})
+                    </span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm" style={{ color: "var(--t4)" }}>
+              No AI usage yet this month.
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* Billing Toggle */}
       <div className="flex items-center justify-center gap-3">
