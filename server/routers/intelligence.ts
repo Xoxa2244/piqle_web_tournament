@@ -1454,7 +1454,7 @@ Return ONLY valid JSON: {"name": "...", "description": "...", "filters": [...]}
 Each filter: {"field": "...", "op": "...", "value": ...}
 Value must be number for age, string or string[] for others.`
 
-async function parseCohortPrompt(prompt: string): Promise<{ name: string; description: string; filters: CohortFilter[] } | null> {
+async function parseCohortPrompt(prompt: string, clubId?: string): Promise<{ name: string; description: string; filters: CohortFilter[] } | null> {
   try {
     const { generateWithFallback } = await import('@/lib/ai/llm/provider')
     const result = await generateWithFallback({
@@ -1462,6 +1462,8 @@ async function parseCohortPrompt(prompt: string): Promise<{ name: string; descri
       prompt,
       tier: 'fast',
       maxTokens: 500,
+      clubId,
+      operation: 'cohort_parse',
     })
     const text = result.text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     return JSON.parse(text)
@@ -10265,7 +10267,7 @@ Spirit: ${guidance.spirit}`
     }))
     .mutation(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const parsed = await parseCohortPrompt(input.text)
+      const parsed = await parseCohortPrompt(input.text, input.clubId)
       if (!parsed || !parsed.filters?.length) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Could not parse cohort description. Try being more specific.' })
       }

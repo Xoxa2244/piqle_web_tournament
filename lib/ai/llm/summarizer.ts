@@ -34,11 +34,18 @@ export async function generateConversationSummary(conversationId: string): Promi
     ? transcript.slice(0, maxTranscriptLen) + '\n\n[...conversation truncated...]'
     : transcript;
 
+  const conv = await prisma.aIConversation.findUnique({
+    where: { id: conversationId },
+    select: { clubId: true },
+  });
+
   const result = await generateWithFallback({
     system: SUMMARY_SYSTEM_PROMPT,
     prompt: trimmedTranscript,
     tier: 'fast',
     maxTokens: 250,
+    clubId: conv?.clubId,
+    operation: 'summary',
   });
 
   await prisma.aIConversation.update({

@@ -30,6 +30,7 @@ export interface WeeklySummaryContent {
 }
 
 interface WeeklySummaryInput {
+  clubId?: string
   clubName: string
   weekLabel: string
   weekStart: Date
@@ -270,6 +271,7 @@ export async function collectWeeklySummaryData(
   }
 
   return {
+    clubId,
     clubName,
     weekLabel: formatWeekLabel(weekStart, weekEnd),
     weekStart,
@@ -364,6 +366,8 @@ SEQUENCE CHAINS:
       prompt,
       tier: 'fast',
       maxTokens: 800,
+      clubId: input.clubId,
+      operation: 'weekly_summary',
     })
 
     // Parse JSON — handle markdown fences

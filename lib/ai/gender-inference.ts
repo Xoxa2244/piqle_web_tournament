@@ -115,12 +115,14 @@ Example:
 Input: ["John", "Sarah", "Pat", "Maria", "Chris"]
 Output: [{"name":"John","gender":"M","confidence":99},{"name":"Sarah","gender":"F","confidence":99},{"name":"Pat","gender":null,"confidence":45},{"name":"Maria","gender":"F","confidence":97},{"name":"Chris","gender":null,"confidence":40}]`
 
-async function classifyNames(names: string[]): Promise<GenderResult[]> {
+async function classifyNames(names: string[], clubId?: string): Promise<GenderResult[]> {
   const { text } = await generateWithFallback({
     system: SYSTEM_PROMPT,
     prompt: JSON.stringify(names),
     tier: 'fast',
     maxTokens: 4000,
+    clubId,
+    operation: 'gender_inference',
   })
 
   try {
@@ -162,7 +164,7 @@ async function inferFromNames(clubId: string): Promise<{ total: number; inferred
     const uniqueNames = Array.from(new Set(batch.map(b => b.firstName)))
 
     try {
-      const results = await classifyNames(uniqueNames)
+      const results = await classifyNames(uniqueNames, clubId)
       const nameToGender = new Map<string, GenderResult>()
       for (const r of results) {
         nameToGender.set(r.name.toLowerCase(), r)

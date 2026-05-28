@@ -796,8 +796,9 @@ export async function maybeEditAdvisorDraft(opts: {
   lastAction?: AdvisorAction | null
   sessions?: AdvisorSlotSessionOption[]
   timeZone?: string | null
+  clubId?: string
 }): Promise<AdvisorAction | null> {
-  const { message, state, lastAction, sessions, timeZone } = opts
+  const { message, state, lastAction, sessions, timeZone, clubId } = opts
   const activeFillSession = getActiveFillSessionAction(lastAction)
   const activeReactivation = getActiveReactivationAction(lastAction)
   const activeMembershipLifecycle = getActiveMembershipLifecycleAction(lastAction)
@@ -837,6 +838,8 @@ export async function maybeEditAdvisorDraft(opts: {
       }),
       tier: 'fast',
       maxTokens: 1400,
+      clubId,
+      operation: 'advisor_draft_edit',
     })
 
     const parsed = advisorEditResultSchema.safeParse(JSON.parse(cleanJson(result.text)))

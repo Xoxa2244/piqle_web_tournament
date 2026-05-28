@@ -284,6 +284,11 @@ export async function generateSingleMemberProfile(
       prompt,
       tier: 'fast',
       maxTokens: 400,
+      // Cost tracking — this is the heaviest recurring AI consumer (the
+      // nightly profile-regeneration cron: ~1,900 profiles/day = the bulk
+      // of daily OpenAI spend). Without this it was invisible in ai_usage_logs.
+      clubId,
+      operation: 'member_profile',
     })
     const generationMs = Date.now() - startMs
 

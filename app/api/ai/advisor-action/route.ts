@@ -2367,6 +2367,7 @@ export async function POST(req: Request) {
           lastAction: memory.lastAction,
           sessions: fillSessionEditSessions,
           timeZone: clubTimeZone,
+          clubId,
         })
 
         if (editedAction) {
