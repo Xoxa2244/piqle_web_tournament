@@ -32,7 +32,6 @@ import { BusinessInsightCard, type BusinessInsightRow } from "./dashboard/Busine
 import {
   PeriodComparisonDrawer,
   type DrawerMetric,
-  type PeriodComparisonSnapshot,
 } from "./dashboard/PeriodComparisonDrawer";
 
 type ExcelFileSlot = { type: 'members' | 'reservations' | 'events'; name: string; rows: Record<string, any>[] }
@@ -729,7 +728,6 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   // card opens this drawer for the selected metric, scoped to the
   // current period window.
   const [drawerMetric, setDrawerMetric] = useState<DrawerMetric | null>(null);
-  const [drawerComparison, setDrawerComparison] = useState<PeriodComparisonSnapshot | null>(null);
   const [importModal, setImportModal] = useState<"closed" | "upload" | "processing" | "done">("closed");
   const [importProgress, setImportProgress] = useState(0);
   const [importStatus, setImportStatus] = useState("");
@@ -1683,12 +1681,6 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                     onClick={() => {
                       if (!metricKey) return;
                       setDrawerMetric(metricKey);
-                      setDrawerComparison({
-                        current: row.cur,
-                        previous: row.prev,
-                        delta,
-                        trendTone,
-                      });
                     }}
                     className="text-left rounded-xl p-4 relative overflow-hidden transition-transform hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-purple-500/40"
                     style={{ background: "var(--subtle)" }}
@@ -1768,15 +1760,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             startDate={start}
             endDate={end}
             bucket={bucket}
-            comparison={drawerComparison}
             period={period}
             onChangePeriod={(p) => setPeriod(p)}
-            compMode={compMode}
-            onChangeCompMode={(m) => setCompMode(m)}
-            onClose={() => {
-              setDrawerMetric(null);
-              setDrawerComparison(null);
-            }}
+            onClose={() => setDrawerMetric(null)}
           />
         );
       })()}

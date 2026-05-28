@@ -22,7 +22,7 @@
 
 import { useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { X, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { X } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -63,12 +63,12 @@ export type PeriodComparisonSnapshot = {
   trendTone: 'positive' | 'negative' | 'neutral'
 }
 
-/** Period and compare modes are mirrored from the Dashboard header so
- *  clicks inside the drawer drive the same state. Custom / calendar
- *  modes are Dashboard-only; they show as "Custom" / "Calendar" pills
- *  here so the user knows they're inherited from the outer view. */
+/** Period is mirrored from the Dashboard header — clicking the
+ *  pills inside the drawer drives the parent state so the
+ *  startDate/endDate window updates without closing the drawer.
+ *  Custom mode is Dashboard-only (it needs a date picker); it shows
+ *  as a non-interactive pill here. */
 export type DrawerPeriod = 'week' | 'month' | 'quarter' | 'custom'
-export type DrawerCompMode = 'prev_period' | 'prev_year' | 'calendar'
 
 interface Props {
   open: boolean
@@ -80,13 +80,9 @@ interface Props {
   endDate: string
   /** 'week' (1m/3m windows) or 'month' (6m). */
   bucket: 'week' | 'month'
-  comparison?: PeriodComparisonSnapshot | null
   /** Current period selector — drives `startDate/endDate` via parent. */
   period: DrawerPeriod
   onChangePeriod: (p: DrawerPeriod) => void
-  /** Comparison mode — drives the snapshot passed via `comparison`. */
-  compMode: DrawerCompMode
-  onChangeCompMode: (m: DrawerCompMode) => void
   onClose: () => void
 }
 
@@ -97,11 +93,8 @@ export function PeriodComparisonDrawer({
   startDate,
   endDate,
   bucket,
-  comparison,
   period,
   onChangePeriod,
-  compMode,
-  onChangeCompMode,
   onClose,
 }: Props) {
   const query = trpc.intelligence.getMetricTimeSeries.useQuery(
@@ -121,7 +114,6 @@ export function PeriodComparisonDrawer({
     if (fmt === 'decimal') return v.toFixed(1)
     return v.toLocaleString()
   }
-  const formatDelta = (v: number) => `${v > 0 ? '+' : ''}${Math.round(v * 10) / 10}%`
 
   // Chart data = bars + one regression segment. Do not put a rounded
   // predicted value on every bucket: Recharts will draw a polyline through
@@ -243,8 +235,8 @@ export function PeriodComparisonDrawer({
                     </button>
                   )
                 })}
-                {/* Inherited custom / calendar modes from Dashboard — non-interactive here. */}
-                {(period === 'custom' || compMode === 'calendar') && (
+                {/* Inherited custom mode from Dashboard — non-interactive here. */}
+                {period === 'custom' && (
                   <span
                     className="px-3 py-1.5 rounded-lg text-xs"
                     style={{
@@ -254,55 +246,7 @@ export function PeriodComparisonDrawer({
                     }}
                     title="Set on Dashboard"
                   >
-                    {period === 'custom' ? 'Custom' : 'Calendar'}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
-                  Compare
-                </span>
-                {([
-                  { key: 'prev_period', label: 'Prev period' },
-                  { key: 'prev_year', label: 'Last year' },
-                ] as const).map((opt) => {
-                  const isActive = compMode === opt.key
-                  return (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      onClick={() => onChangeCompMode(opt.key)}
-                      className="px-3 py-1.5 rounded-lg text-xs transition-all"
-                      style={{
-                        background: isActive ? 'rgba(139,92,246,0.15)' : 'var(--subtle)',
-                        color: isActive ? '#8B5CF6' : 'var(--t3)',
-                        fontWeight: isActive ? 600 : 500,
-                        border: isActive ? '1px solid rgba(139,92,246,0.3)' : '1px solid transparent',
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  )
-                })}
-                {/* Delta shown inline next to the controls — replaces the
-                    three KPI cards that used to live above the chart. */}
-                {comparison && (
-                  <span
-                    className="ml-auto inline-flex items-center gap-1 text-xs"
-                    style={{ color: 'var(--t3)' }}
-                  >
-                    {comparison.trendTone === 'positive' ? (
-                      <TrendingUp className="w-3.5 h-3.5" style={{ color: '#10B981' }} />
-                    ) : comparison.trendTone === 'negative' ? (
-                      <TrendingDown className="w-3.5 h-3.5" style={{ color: '#F87171' }} />
-                    ) : (
-                      <Minus className="w-3.5 h-3.5" style={{ color: 'var(--t4)' }} />
-                    )}
-                    <span style={{ fontWeight: 700, color: 'var(--heading)' }}>
-                      {formatValue(comparison.current)}
-                    </span>
-                    <span>vs prev {formatDelta(comparison.delta)}</span>
+                    Custom
                   </span>
                 )}
               </div>
