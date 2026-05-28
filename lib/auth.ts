@@ -292,9 +292,26 @@ export const authOptions: NextAuthOptions = {
     error: '/auth/error',
   },
   callbacks: {
-    async jwt({ token, user }) {
-      if (user?.id) {
+    async jwt({ token, user, trigger, session: clientUpdate }) {
+      // On initial sign-in / OAuth callback, the `user` object is hydrated
+      // from the adapter. Snapshot display fields into the JWT so the
+      // session callback below does not need to hit the DB on every
+      // request. Header avatar / name will be slightly stale (until next
+      // sign-in or explicit `useSession().update()`), which is acceptable
+      // — they don't change often and the cost of a per-request
+      // findUnique was the root of the dashboard auth-storm (May 2026).
+      if (user) {
         token.sub = user.id
+        token.name = user.name ?? null
+        token.email = user.email ?? null
+        token.picture = user.image ?? null
+      }
+      // Allow client-side `session.update({ name, image })` to refresh
+      // the JWT without round-tripping through the DB.
+      if (trigger === 'update' && clientUpdate) {
+        if (typeof clientUpdate.name !== 'undefined') token.name = clientUpdate.name
+        if (typeof clientUpdate.image !== 'undefined') token.picture = clientUpdate.image
+        if (typeof clientUpdate.email !== 'undefined') token.email = clientUpdate.email
       }
       return token
     },
@@ -340,15 +357,18 @@ export const authOptions: NextAuthOptions = {
       const userId = session?.user?.id || user?.id || token?.sub
       if (session?.user && userId) {
         session.user.id = String(userId)
-        // Always load name/image/email from DB so profile updates show in header
-        const dbUser = await prisma.user.findUnique({
-          where: { id: String(userId) },
-          select: { name: true, image: true, email: true },
-        })
-        if (dbUser) {
-          session.user.name = dbUser.name ?? session.user.name ?? null
-          session.user.image = dbUser.image ?? session.user.image ?? null
-          session.user.email = dbUser.email ?? session.user.email ?? null
+        // Read display fields from JWT instead of hitting the DB on every
+        // session call. The JWT is refreshed on sign-in and on explicit
+        // `useSession().update()` — see the jwt callback above.
+        //
+        // Removing this DB query eliminated ~50% of the dashboard
+        // auth-storm load: every tRPC request was triggering a
+        // findUnique here PLUS a second one in protectedProcedure for
+        // isActive (server/trpc.ts).
+        if (token) {
+          session.user.name = (token.name as string | null) ?? session.user.name ?? null
+          session.user.image = (token.picture as string | null) ?? session.user.image ?? null
+          session.user.email = (token.email as string | null) ?? session.user.email ?? null
         }
       }
       return session

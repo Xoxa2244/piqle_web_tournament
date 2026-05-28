@@ -607,6 +607,21 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const [calBFrom, setCalBFrom] = useState("");
   const [calBTo, setCalBTo] = useState("");
 
+  // Defer secondary heavy queries (comparison period, calendar A) until
+  // after the main period query has had a chance to start. This avoids
+  // firing 3 concurrent `getDashboardV2` calls at t=0 — each is a 1-3s
+  // SQL aggregation, all of them on the same connection pool, and they
+  // were a major contributor to the dashboard auth-storm. After 1.2s
+  // the main period query is either already resolved or has its
+  // connection slot; the secondary queries then fire without
+  // contention. Period Comparison cards show a skeleton during this
+  // window.
+  const [secondaryQueriesEnabled, setSecondaryQueriesEnabled] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setSecondaryQueriesEnabled(true), 1200);
+    return () => clearTimeout(t);
+  }, []);
+
   // Compute data date bounds for custom picker constraints.
   const dataDateBounds = useMemo(() => {
     // Use a wide range — club has data from import, so allow from 2020 to today
@@ -661,13 +676,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
   const compQuery = trpc.intelligence.getDashboardV2.useQuery(
     { clubId, ...compDates },
-    { enabled: !!clubId && !externalLoading && !isDemo },
+    { enabled: !!clubId && !externalLoading && !isDemo && secondaryQueriesEnabled },
   );
 
   // Calendar mode — Period A (independent from main period tabs)
   const calAQuery = trpc.intelligence.getDashboardV2.useQuery(
     { clubId, dateFrom: calAFrom, dateTo: calATo },
-    { enabled: compMode === 'calendar' && !!calAFrom && !!calATo && !!clubId && !isDemo },
+    { enabled: compMode === 'calendar' && !!calAFrom && !!calATo && !!clubId && !isDemo && secondaryQueriesEnabled },
   );
   // Canon-driven business insights (DASHBOARD_AND_ACTION_CENTER_SPEC.md
   // §3.6). Replaced the legacy `getClubInsights` query in Step 9 of

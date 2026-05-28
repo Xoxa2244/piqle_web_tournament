@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { initTRPC, TRPCError } from '@trpc/server'
 import { type FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch'
 import { getServerSession } from 'next-auth'
@@ -6,6 +7,24 @@ import { prisma } from '@/lib/prisma'
 import type { Session } from 'next-auth'
 import { parse as parseCookie } from 'cookie'
 import { assertSuperadminAccess } from './utils/superadminAccess'
+
+// Per-request memoized session lookup. Within a single lambda invocation
+// — covering the whole tRPC batch and any Server Components rendered
+// alongside it — getServerSession() only runs once even if many code
+// paths call it. Each call decrypts the JWT cookie; the cached version
+// makes that a no-op after the first hit.
+//
+// Note: this does NOT dedupe across separate lambda invocations or
+// across separate HTTP requests. To dedupe across the dashboard mount
+// we rely on httpBatchLink (see components/providers.tsx).
+const getCachedSession = cache(async (): Promise<Session | null> => {
+  try {
+    return await getServerSession(authOptions)
+  } catch (error) {
+    console.error('[TRPC] getServerSession failed', error)
+    return null
+  }
+})
 
 interface CreateContextOptions {
   session: Session | null
@@ -54,15 +73,16 @@ const getSessionFromDb = async (sessionToken: string): Promise<Session | null> =
 
 export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
   // In App Router, getServerSession uses cookies() internally.
-  // If NextAuth is misconfigured (e.g. missing NEXTAUTH_SECRET in an env),
-  // do not break all TRPC requests; gracefully continue as anonymous/fallback.
-  let session: Session | null = null
-  try {
-    session = await getServerSession(authOptions)
-  } catch (error) {
-    console.error('[TRPC] getServerSession failed, falling back to DB session lookup', error)
-  }
+  // `getCachedSession` wraps it with React.cache so any other server-
+  // side caller in the same request (Server Components, middleware
+  // helpers) reuses the result.
+  let session: Session | null = await getCachedSession()
 
+  // Defensive fallback: if JWT decode failed for any reason, check the
+  // DB Session table directly using the raw cookie. NextAuth's JWT
+  // strategy doesn't normally populate that table, so this is almost
+  // always a no-op — but keeping it preserves the legacy behaviour
+  // for environments that switched strategy mid-flight.
   if (!session) {
     const sessionToken = getSessionTokenFromRequest(opts.req)
     if (sessionToken) {

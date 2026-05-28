@@ -8,39 +8,38 @@ import { SessionProvider } from 'next-auth/react'
 
 /**
  * tRPC procedures that should NEVER share an HTTP request with anything
- * else. Each of these is known-slow (multi-second SQL) on prod — when
- * they were inside the dashboard megabatch they pinned the entire 13-
- * procedure response time to their worst case, leaving fast tiles
- * (Customer Health, Business Insights, KPI placeholders) staring at
- * "Loading…" for the full duration.
+ * else. Each of these is *truly* multi-second on prod (10s+) and would
+ * otherwise pin a whole batch's response time.
  *
- * Routing them through `httpLink` (no batching) means:
- *  • Fast queries that fire in the same React render tick still batch
- *    together via httpBatchLink → one HTTP request, ~600ms response
- *  • Each slow query gets its own HTTP request in parallel → tiles
- *    fill in progressively as each query resolves
+ * IMPORTANT — auth-storm trade-off (May 2026):
+ * Every standalone HTTP request runs the full tRPC context init, which
+ * means one `getServerSession()` + one `protectedProcedure` DB hit per
+ * request. With 7 parallel standalone requests on dashboard mount, that
+ * is 14+ concurrent auth queries fighting for the pgbouncer pool — on a
+ * cold lambda this exhausts the pool and triggers 30s timeouts that
+ * surface as 401 UNAUTHORIZED to the client.
  *
- * Add a path here if you discover another slow procedure that's
- * blocking the dashboard. Removing one (or moving to fast batch) is
- * also safe — splitLink falls through to httpBatchLink by default.
+ * Rule of thumb: only add a path here if (a) it's genuinely slow (≥5s
+ * standalone) AND (b) you've also verified the page mounting it does
+ * not already fire 4+ parallel queries. Otherwise let it ride in the
+ * batch — the batch tail latency is bounded by the slowest query, but
+ * you save N-1 auth round-trips.
  */
 const STANDALONE_PATHS = new Set([
+  // Genuinely heavy (10s+) — keep isolated.
   'intelligence.getDashboardV2',           // KPI computer — large SQL JOIN over bookings
-  'intelligence.getAIRevenueAttribution',  // attribution + spend aggregate
-  'intelligence.getOccupancyHeatmap',      // 90-day session grid
-  'intelligence.getMemberGrowth',          // 6-month rollup
-  // The next two add ~5s to the dashboard "fast batch" when bundled —
-  // both walk play_session_bookings (~30k rows) for activity-based
-  // bucketing/risk computation. As standalone they fire in parallel
-  // with everything else and only block their own tile (Customer
-  // Health Overview / VIP at-risk chip).
-  'intelligence.getMemberHealth',          // 3s on prod (slim summary path)
-  'intelligence.getVipAtRiskPercent',      // 2.7s on prod
   // Membership Health page — getTierHealth walks bookings for per-tier
   // bucketing. Isolated it's ~0.4s, but bundled in the page-load batch with
   // club/notification/settings it stretched the whole batch to ~7s under
   // load. Standalone so it only blocks its own page, not the shell.
   'intelligence.getMembershipHealth',
+  // Pulled back into the batch (2026-05-28) — each adds <3s and the
+  // savings in auth round-trips outweighs the marginal tile-fill delay:
+  //   intelligence.getAIRevenueAttribution
+  //   intelligence.getOccupancyHeatmap
+  //   intelligence.getMemberGrowth
+  //   intelligence.getMemberHealth
+  //   intelligence.getVipAtRiskPercent
 ])
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -49,6 +48,26 @@ export function Providers({ children }: { children: React.ReactNode }) {
       queries: {
         cacheTime: 10 * 60 * 1000, // 10 min — keep cache longer to survive navigation
         refetchOnWindowFocus: false,
+        // Tight retry policy specifically for transient 401s caused by
+        // cold-start auth-storm: one fast retry, then exponential. The
+        // root cause (parallel auth checks exhausting pgbouncer) is
+        // being fixed server-side; this just keeps the UX from staring
+        // at N/A while React Query waits a full 30s before the first
+        // retry per its default exponential schedule.
+        retry: (failureCount, error: any) => {
+          const httpStatus = error?.data?.httpStatus ?? error?.shape?.data?.httpStatus
+          if (httpStatus === 401 || httpStatus === 503) {
+            return failureCount < 2 // 2 fast retries on auth/availability blips
+          }
+          return failureCount < 1 // default: 1 retry on anything else
+        },
+        retryDelay: (attemptIndex, error: any) => {
+          const httpStatus = error?.data?.httpStatus ?? error?.shape?.data?.httpStatus
+          if (httpStatus === 401 || httpStatus === 503) {
+            return 500 + attemptIndex * 500 // 500ms, 1000ms — fast catch-up
+          }
+          return Math.min(1000 * 2 ** attemptIndex, 8000)
+        },
       },
     },
   }))
