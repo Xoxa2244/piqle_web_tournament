@@ -4,6 +4,10 @@ import { createTRPCRouter, protectedProcedure, publicProcedure } from '../trpc'
 import { TRPCError } from '@trpc/server'
 import { detectLeagueFamily } from '@/lib/ai/league-family-detector'
 import { isEquipmentBooking } from '@/lib/ai/programming-tier-classifier'
+import {
+  aggregateProgramFamilies,
+  type AggregatorSessionRow,
+} from '@/lib/ai/program-family-aggregator'
 import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
@@ -2273,6 +2277,99 @@ export const intelligenceRouter = createTRPCRouter({
   //   - T6 pro-clinic flag     — regex on session title ("pro clinic" /
   //                              "specialty"); admins can refine later
   //   - T7 school partnerships — null (no SchoolPartnership entity yet)
+  // ── Programming Health v2 (redesign Phase 1, §1c-ii) ──
+  //
+  // Family-based programming health, replacing the tier scorecard.
+  // Returns visible program families (Open Play / Court Bookings /
+  // Clinics / Private / Leagues / Events / Youth — Equipment hidden),
+  // each with current-period sessions/participants/fill + trend vs the
+  // previous period, and a drill-down list of normalized programs.
+  //
+  // SQL uses Solomon's pre-aggregate pattern (booking_counts CTE) so a
+  // 2·periodDays window stays ~1s instead of a correlated-subquery
+  // explosion. All the family/normalization/trend logic lives in the
+  // pure aggregateProgramFamilies() so it's unit-tested without a DB.
+  getProgrammingFamilyHealth: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      periodDays: z.number().int().min(1).max(365).default(30),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const now = new Date()
+      // Load TWO periods so the aggregator can compute a trend.
+      const windowStart = new Date(now.getTime() - 2 * input.periodDays * 86_400_000)
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true },
+      })
+
+      // Pre-aggregate confirmed bookings for just the window's sessions,
+      // then LEFT JOIN — avoids the per-session correlated subquery.
+      // NB: clubId is TEXT on Sol2 prod — no ::uuid cast (see CLAUDE.md).
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `
+        WITH window_sessions AS (
+          SELECT ps.id,
+                 ps.title,
+                 ps.format::text AS format,
+                 ps.category,
+                 ps."maxPlayers" AS max_players,
+                 ps.date
+          FROM play_sessions ps
+          WHERE ps."clubId" = $1
+            AND ps.date >= $2
+            AND ps.date <  $3
+        ),
+        booking_counts AS (
+          SELECT psb."sessionId" AS session_id, COUNT(*)::int AS confirmed
+          FROM play_session_bookings psb
+          WHERE psb.status = 'CONFIRMED'
+            AND psb."sessionId" IN (SELECT id FROM window_sessions)
+          GROUP BY psb."sessionId"
+        )
+        SELECT ws.id,
+               ws.title,
+               ws.format,
+               ws.category,
+               ws.max_players,
+               ws.date,
+               COALESCE(bc.confirmed, 0)::int AS confirmed_count
+        FROM window_sessions ws
+        LEFT JOIN booking_counts bc ON bc.session_id = ws.id
+        `,
+        input.clubId,
+        windowStart,
+        now,
+      )) as Array<{
+        id: string
+        title: string | null
+        format: string | null
+        category: string | null
+        max_players: number | null
+        date: Date
+        confirmed_count: number
+      }>
+
+      const sessionRows: AggregatorSessionRow[] = rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        format: r.format,
+        category: r.category,
+        maxPlayers: r.max_players,
+        date: r.date,
+        confirmedCount: r.confirmed_count,
+      }))
+
+      return aggregateProgramFamilies(sessionRows, {
+        now,
+        periodDays: input.periodDays,
+        clubName: club?.name ?? null,
+      })
+    }),
+
   getWeeklyScorecard: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
