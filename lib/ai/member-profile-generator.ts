@@ -386,21 +386,27 @@ export async function generateMemberProfilesForClub(
   if (forceRegenerate) {
     staleUserIds = new Set<string>(scopedFollowers.map((f: any) => f.userId as string))
   } else {
-    // One round-trip: per follower, their profile timestamp + latest booking
-    // event AT THIS CLUB. FILTER keeps cross-location bookings from counting.
-    // No ::uuid cast — Sol2 prod stores club_id columns as TEXT.
+    // Pre-aggregate each user's latest booking event AT THIS CLUB into a small
+    // CTE first, then join to followers — avoids the all-bookings row explosion
+    // (LEFT JOIN per follower was ~100s on a 12k-follower club). No ::uuid cast
+    // — Sol2 prod stores club_id columns as TEXT.
     const activityRows = (await prisma.$queryRawUnsafe(
-      `SELECT
+      `WITH last_act AS (
+         SELECT psb."userId" AS uid,
+           MAX(GREATEST(psb."bookedAt", COALESCE(psb."cancelledAt", psb."bookedAt"), COALESCE(psb."checkedInAt", psb."bookedAt"))) AS last_at
+         FROM play_session_bookings psb
+         JOIN play_sessions ps ON ps.id = psb."sessionId"
+         WHERE ps."clubId" = $1
+         GROUP BY psb."userId"
+       )
+       SELECT
          cf.user_id AS "userId",
          map.generated_at AS "profileGeneratedAt",
-         MAX(GREATEST(psb."bookedAt", COALESCE(psb."cancelledAt", psb."bookedAt"), COALESCE(psb."checkedInAt", psb."bookedAt")))
-           FILTER (WHERE ps."clubId" = $1) AS "lastActivityAt"
+         la.last_at AS "lastActivityAt"
        FROM club_followers cf
        LEFT JOIN member_ai_profiles map ON map.user_id = cf.user_id AND map.club_id = $1
-       LEFT JOIN play_session_bookings psb ON psb."userId" = cf.user_id
-       LEFT JOIN play_sessions ps ON ps.id = psb."sessionId"
-       WHERE cf.club_id = $1
-       GROUP BY cf.user_id, map.generated_at`,
+       LEFT JOIN last_act la ON la.uid = cf.user_id
+       WHERE cf.club_id = $1`,
       clubId,
     )) as Array<{
       userId: string

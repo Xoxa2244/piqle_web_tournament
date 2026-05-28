@@ -156,25 +156,28 @@ type UsageRow = {
 export async function getTierEconomics(clubId: string): Promise<TierEconomicsResult> {
   const [catalog, usage] = await Promise.all([
     getTierCatalog(clubId),
-    // One pass over followers ⨯ bookings: counts per tier name. The booking
-    // join is LEFT (not INNER) so tiers with zero activity in the last 30d
-    // still surface with bookings_30d = 0. Active count uses CR's canonical
-    // 'Active' status — confirmed via prod query that all 3 IPC clubs use
-    // exactly that string (no 'Currently Active' variant on iqsport-prod).
+    // Pre-aggregate recent bookings (30d/club/confirmed) into one row per user
+    // BEFORE joining followers — avoids the all-bookings row explosion that
+    // made this ~100s on a 12k-follower club. Active count uses CR's canonical
+    // 'Active' status (verified all 3 IPC clubs use exactly that string).
     prisma.$queryRaw<UsageRow[]>`
+      WITH recent AS (
+        SELECT psb."userId" AS uid, COUNT(*)::int AS b30
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${clubId}
+          AND psb.status = 'CONFIRMED'
+          AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
+        GROUP BY psb."userId"
+      )
       SELECT
         u.membership_type,
-        COUNT(DISTINCT u.id) FILTER (WHERE u.membership_status = 'Active') AS active_members,
-        COUNT(DISTINCT u.id) AS total_members,
-        COUNT(DISTINCT psb.id) FILTER (
-          WHERE psb.status = 'CONFIRMED'
-          AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
-          AND ps."clubId" = ${clubId}
-        ) AS bookings_30d
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active') AS active_members,
+        COUNT(*) AS total_members,
+        COALESCE(SUM(r.b30), 0) AS bookings_30d
       FROM users u
       JOIN club_followers cf ON cf.user_id = u.id
-      LEFT JOIN play_session_bookings psb ON psb."userId" = u.id
-      LEFT JOIN play_sessions ps ON ps.id = psb."sessionId"
+      LEFT JOIN recent r ON r.uid = u.id
       WHERE cf.club_id = ${clubId}
       GROUP BY u.membership_type
     `,
@@ -371,37 +374,36 @@ const VERDICT_ORDER: Record<TierHealthVerdict, number> = {
 export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
   const [catalog, distribution] = await Promise.all([
     getTierCatalog(clubId),
+    // Pre-aggregate recent bookings FIRST (a small set — 30d/club/confirmed),
+    // then join one row per user. The earlier version LEFT JOINed every
+    // booking a follower ever made and filtered after, exploding to ~100s on
+    // a 12k-follower club. This form runs in ~1s (EXPLAIN ANALYZE verified).
     prisma.$queryRaw<HealthDistributionRow[]>`
-      WITH tier_users AS (
-        SELECT
-          u.id,
-          u.membership_type,
-          u.membership_status,
-          COUNT(psb.id) FILTER (
-            WHERE psb.status = 'CONFIRMED'
-            AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
-            AND ps."clubId" = ${clubId}
-          ) AS bookings_30d
-        FROM users u
-        JOIN club_followers cf ON cf.user_id = u.id
-        LEFT JOIN play_session_bookings psb ON psb."userId" = u.id
-        LEFT JOIN play_sessions ps ON ps.id = psb."sessionId"
-        WHERE cf.club_id = ${clubId}
-        GROUP BY u.id, u.membership_type, u.membership_status
+      WITH recent AS (
+        SELECT psb."userId" AS uid, COUNT(*)::int AS b30
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${clubId}
+          AND psb.status = 'CONFIRMED'
+          AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
+        GROUP BY psb."userId"
       )
       SELECT
-        membership_type,
-        COUNT(*) FILTER (WHERE membership_status = 'Active') AS active_count,
-        COUNT(*) FILTER (WHERE membership_status = 'Suspended') AS suspended_count,
-        COUNT(*) FILTER (WHERE membership_status = 'Expired') AS expired_count,
-        COUNT(*) FILTER (WHERE membership_status = 'Active' AND bookings_30d = 0) AS zombies,
-        COUNT(*) FILTER (WHERE membership_status = 'Active' AND bookings_30d BETWEEN 1 AND 3) AS light_users,
-        COUNT(*) FILTER (WHERE membership_status = 'Active' AND bookings_30d BETWEEN 4 AND 7) AS regular_users,
-        COUNT(*) FILTER (WHERE membership_status = 'Active' AND bookings_30d >= 8) AS power_users,
-        SUM(bookings_30d) FILTER (WHERE membership_status = 'Active') AS bookings_30d
-      FROM tier_users
-      WHERE membership_type IS NOT NULL
-      GROUP BY membership_type
+        u.membership_type,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active') AS active_count,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Suspended') AS suspended_count,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Expired') AS expired_count,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) = 0) AS zombies,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) BETWEEN 1 AND 3) AS light_users,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) BETWEEN 4 AND 7) AS regular_users,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) >= 8) AS power_users,
+        SUM(COALESCE(r.b30, 0)) FILTER (WHERE u.membership_status = 'Active') AS bookings_30d
+      FROM users u
+      JOIN club_followers cf ON cf.user_id = u.id
+      LEFT JOIN recent r ON r.uid = u.id
+      WHERE cf.club_id = ${clubId}
+        AND u.membership_type IS NOT NULL
+      GROUP BY u.membership_type
     `,
   ])
 
