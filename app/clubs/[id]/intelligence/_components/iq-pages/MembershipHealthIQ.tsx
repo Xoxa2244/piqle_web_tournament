@@ -140,7 +140,14 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
       {rollup && tiers.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatTile label="Est. MRR" value={usd(rollup.totalMRR)} sub={`${rollup.totalActiveSubscribers.toLocaleString()} active`} />
-          <StatTile label="MRR at risk" value={usd(rollup.clubMRRAtRiskUsd)} sub="zombies on paid tiers" color={rollup.clubMRRAtRiskUsd > 0 ? "#EF4444" : undefined} />
+          <StatTile
+            label="MRR at risk"
+            value={usd(rollup.clubMRRAtRiskUsd)}
+            sub={rollup.churnStats?.measured
+              ? `${100 - rollup.churnStats.returnRatePct}% of silent members churn (measured)`
+              : "zombies weighted by est. churn"}
+            color={rollup.clubMRRAtRiskUsd > 0 ? "#EF4444" : undefined}
+          />
           <StatTile label="Upsell potential" value={usd(rollup.clubUpsellPotentialMRRUsd)} sub="free power users" color={rollup.clubUpsellPotentialMRRUsd > 0 ? "#10B981" : undefined} />
           <StatTile
             label="Tier verdicts"
@@ -288,8 +295,11 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
       {tiers.length > 0 && (
         <p className="text-[11px] leading-relaxed" style={{ color: "var(--t4)" }}>
           Zombie = active subscriber with 0 bookings in 30 days. Power user = 8+ bookings. Est. MRR = active × monthly price
-          (contracted, not actual transactions). Treatment $ uses conservative recovery rates (50% re-engage/upsell, 30% billing winback) —
-          rough guides for prioritisation, not guarantees.
+          (contracted, not actual transactions).{" "}
+          {rollup?.churnStats?.measured
+            ? `MRR at risk = zombies × this club's measured churn rate (${100 - rollup.churnStats.returnRatePct}% of silent members historically never return, from ${rollup.churnStats.sample} past cases), not a blanket assumption.`
+            : `MRR at risk weights zombies by an estimated churn rate (not enough booking history yet to measure this club's actual rate).`}{" "}
+          Treatment $ assumes a campaign recovers half of the at-risk — a rough guide for prioritisation, not a guarantee.
         </p>
       )}
     </motion.div>

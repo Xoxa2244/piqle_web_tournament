@@ -331,6 +331,8 @@ export type TierHealthResult = {
     clubUpsellPotentialMRRUsd: number
     cheapestPaidMonthlyPrice: number
     countByVerdict: Record<TierHealthVerdict, number>
+    /** Club-wide measured churn rate driving the MRR-at-risk figures. */
+    churnStats: ZombieChurnStats
   }
   tiers: TierHealthSnapshot[] // sorted critical → healthy
 }
@@ -355,6 +357,69 @@ const VERDICT_ORDER: Record<TierHealthVerdict, number> = {
   tiny: 4,
 }
 
+export type ZombieChurnStats = {
+  /** % of historically-silent members who later booked again. */
+  returnRatePct: number
+  /** 1 − returnRate, clamped to [0.1, 0.9]. The probability a current zombie churns. */
+  churnProb: number
+  /** Number of historical zombies the rate is based on. */
+  sample: number
+  /** True when the sample is large enough to trust the measured rate. */
+  measured: boolean
+}
+
+const CHURN_MIN_SAMPLE = 40 // below this, fall back to the 0.5 default
+const CHURN_DEFAULT_PROB = 0.5
+
+/**
+ * Measure how often a member who goes silent actually churns, from this club's
+ * own booking history — so "MRR at risk" is grounded in evidence, not a guess.
+ *
+ * Retrospective cohort, pooled over 3 monthly cutoffs (60/90/120d ago) to
+ * smooth seasonality: take members who were established (booked before the
+ * window) but had 0 bookings in a 30-day window ending at the cutoff
+ * ("historical zombies"), then check whether they booked again in the 60 days
+ * after. returnRate = came-back / total. churnProb = 1 − returnRate.
+ *
+ * Returns the 0.5 default (measured:false) when the sample is too small to
+ * trust (new clubs, thin history).
+ */
+export async function getZombieChurnRate(clubId: string): Promise<ZombieChurnStats> {
+  try {
+    const rows = await prisma.$queryRaw<Array<{ zombies: bigint | number; returned: bigint | number }>>`
+      WITH bk AS (
+        SELECT psb."userId" AS uid, psb."bookedAt" AS at
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${clubId} AND psb.status = 'CONFIRMED'
+      ),
+      cohort AS (
+        SELECT c.days_ago, b.uid,
+          COUNT(*) FILTER (WHERE b.at <  NOW() - ((c.days_ago + 30) * INTERVAL '1 day')) AS before_cnt,
+          COUNT(*) FILTER (WHERE b.at >= NOW() - ((c.days_ago + 30) * INTERVAL '1 day') AND b.at < NOW() - (c.days_ago * INTERVAL '1 day')) AS window_cnt,
+          COUNT(*) FILTER (WHERE b.at >= NOW() - (c.days_ago * INTERVAL '1 day') AND b.at < NOW() - ((c.days_ago - 60) * INTERVAL '1 day')) AS after_cnt
+        FROM (SELECT unnest(ARRAY[60, 90, 120]) AS days_ago) c
+        CROSS JOIN bk b
+        GROUP BY c.days_ago, b.uid
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE before_cnt > 0 AND window_cnt = 0) AS zombies,
+        COUNT(*) FILTER (WHERE before_cnt > 0 AND window_cnt = 0 AND after_cnt > 0) AS returned
+      FROM cohort
+    `
+    const sample = Number(rows[0]?.zombies ?? 0)
+    const returned = Number(rows[0]?.returned ?? 0)
+    if (sample < CHURN_MIN_SAMPLE) {
+      return { returnRatePct: Math.round((1 - CHURN_DEFAULT_PROB) * 100), churnProb: CHURN_DEFAULT_PROB, sample, measured: false }
+    }
+    const returnRate = returned / sample
+    const churnProb = Math.max(0.1, Math.min(0.9, 1 - returnRate))
+    return { returnRatePct: Math.round(returnRate * 100), churnProb, sample, measured: true }
+  } catch {
+    return { returnRatePct: Math.round((1 - CHURN_DEFAULT_PROB) * 100), churnProb: CHURN_DEFAULT_PROB, sample: 0, measured: false }
+  }
+}
+
 /**
  * Per-tier health diagnosis. For each tier, computes:
  *   - distribution of Active subscribers across zombie/light/regular/power buckets
@@ -372,7 +437,7 @@ const VERDICT_ORDER: Record<TierHealthVerdict, number> = {
  * what they're betting on. Better than zero quantification — but not gospel.
  */
 export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
-  const [catalog, distribution] = await Promise.all([
+  const [catalog, distribution, churnStats] = await Promise.all([
     getTierCatalog(clubId),
     // Pre-aggregate recent bookings FIRST (a small set — 30d/club/confirmed),
     // then join one row per user. The earlier version LEFT JOINed every
@@ -405,6 +470,7 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
         AND u.membership_type IS NOT NULL
       GROUP BY u.membership_type
     `,
+    getZombieChurnRate(clubId),
   ])
 
   const catalogByName = new Map<string, TierSpec>()
@@ -455,10 +521,13 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
       : 0
     const estimatedMRR = isFreeTier ? 0 : Math.round(active * monthlyPrice)
 
-    // ── MRR at risk: zombies on paid tiers ────────────────────────────────
+    // ── MRR at risk: zombies on paid tiers, weighted by measured churn ─────
+    // Not every zombie churns — this club's history shows ~churnProb of
+    // silent members never return. So at-risk = zombies × churnProb × price,
+    // grounded in real data rather than assuming all zombies walk.
     const mrrAtRiskUsd = isFreeTier
       ? 0
-      : Math.round(zombies * monthlyPrice)
+      : Math.round(zombies * churnStats.churnProb * monthlyPrice)
     // ── Upsell potential: power users on free tiers → cheapest paid tier ──
     const upsellPotentialMRRUsd = isFreeTier
       ? Math.round(powerUsers * cheapestPaidPrice)
@@ -529,13 +598,16 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
             : verdict === 'at_risk'
               ? '🔴 At risk'
               : '🟡 Watch'
+        const churnNote = churnStats.measured
+          ? `this club's history shows ~${100 - churnStats.returnRatePct}% of silent members never return`
+          : `assuming ~${Math.round(churnStats.churnProb * 100)}% churn (not enough history to measure this club yet)`
         diagnostics.push(
-          `${severity}: ${zombies} of ${active} active subscribers (${zombieSharePct}%) have 0 bookings in the last 30 days. Estimated $${mrrAtRiskUsd.toLocaleString('en-US')}/mo MRR exposed to churn.`,
+          `${severity}: ${zombies} of ${active} active subscribers (${zombieSharePct}%) have 0 bookings in the last 30 days. At ~$${mrrAtRiskUsd.toLocaleString('en-US')}/mo MRR genuinely at risk (${churnNote}).`,
         )
         const saveRate = 0.5
         const recoverable = Math.round(mrrAtRiskUsd * saveRate)
         treatments.push({
-          action: `Send re-engagement campaign to ${zombies} zombie subscriber${zombies === 1 ? '' : 's'} on ${u.membership_type}. Assuming 50% of them re-engage = $${recoverable.toLocaleString('en-US')}/mo MRR saved.`,
+          action: `Send re-engagement campaign to ${zombies} zombie subscriber${zombies === 1 ? '' : 's'} on ${u.membership_type}. Recovering half of the at-risk MRR = $${recoverable.toLocaleString('en-US')}/mo saved.`,
           campaignHint: 'RETENTION_BOOST',
           potentialMRRImpactUsd: recoverable,
           targetMemberCount: zombies,
@@ -622,6 +694,7 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
       clubUpsellPotentialMRRUsd,
       cheapestPaidMonthlyPrice: cheapestPaidPrice,
       countByVerdict,
+      churnStats,
     },
     tiers: snapshots,
   }
