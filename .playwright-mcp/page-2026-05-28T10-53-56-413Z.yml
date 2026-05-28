@@ -1,0 +1,163 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e4]:
+      - complementary [ref=e5]:
+        - generic [ref=e6]:
+          - img [ref=e7]
+          - generic [ref=e18]:
+            - generic [ref=e19]: IQSport
+            - generic [ref=e20]: INTELLIGENCE
+        - navigation [ref=e21]:
+          - generic [ref=e22]:
+            - button "ANALYTICS" [ref=e23] [cursor=pointer]:
+              - img [ref=e24]
+              - generic [ref=e26]: ANALYTICS
+              - img [ref=e28]
+            - generic [ref=e30]:
+              - button "Dashboard" [ref=e31] [cursor=pointer]:
+                - img [ref=e32]
+                - generic [ref=e37]: Dashboard
+              - button "Schedule" [ref=e38] [cursor=pointer]:
+                - img [ref=e39]
+                - generic [ref=e41]: Schedule
+              - button "Programming Health" [ref=e42] [cursor=pointer]:
+                - img [ref=e43]
+                - generic [ref=e46]: Programming Health
+              - button "Membership Health" [ref=e47] [cursor=pointer]:
+                - img [ref=e48]
+                - generic [ref=e50]: Membership Health
+          - generic [ref=e51]:
+            - button "OPERATIONS" [ref=e52] [cursor=pointer]:
+              - img [ref=e53]
+              - generic [ref=e56]: OPERATIONS
+              - img [ref=e58]
+            - generic [ref=e60]:
+              - button "Action Center AI" [ref=e61] [cursor=pointer]:
+                - img [ref=e62]
+                - generic [ref=e65]: Action Center
+                - generic [ref=e66]: AI
+              - button "AI Advisor AI" [ref=e67] [cursor=pointer]:
+                - img [ref=e68]
+                - generic [ref=e71]: AI Advisor
+                - generic [ref=e72]: AI
+              - button "Programming IQ AI" [ref=e73] [cursor=pointer]:
+                - img [ref=e74]
+                - generic [ref=e76]: Programming IQ
+                - generic [ref=e77]: AI
+          - generic [ref=e78]:
+            - button "ENGAGE" [ref=e79] [cursor=pointer]:
+              - img [ref=e80]
+              - generic [ref=e84]: ENGAGE
+              - img [ref=e86]
+            - generic [ref=e88]:
+              - button "Members" [ref=e89] [cursor=pointer]:
+                - img [ref=e91]
+                - generic [ref=e96]: Members
+              - button "Cohorts" [ref=e97] [cursor=pointer]:
+                - img [ref=e98]
+                - generic [ref=e102]: Cohorts
+              - button "Campaigns" [ref=e103] [cursor=pointer]:
+                - img [ref=e104]
+                - generic [ref=e107]: Campaigns
+          - generic [ref=e108]:
+            - button "SYSTEM" [ref=e109] [cursor=pointer]:
+              - img [ref=e110]
+              - generic [ref=e113]: SYSTEM
+              - img [ref=e115]
+            - generic [ref=e117]:
+              - button "Launch" [ref=e118] [cursor=pointer]:
+                - img [ref=e119]
+                - generic [ref=e124]: Launch
+              - button "Billing" [ref=e125] [cursor=pointer]:
+                - img [ref=e126]
+                - generic [ref=e128]: Billing
+              - button "Integrations" [ref=e129] [cursor=pointer]:
+                - img [ref=e130]
+                - generic [ref=e132]: Integrations
+              - button "Email Domain" [ref=e133] [cursor=pointer]:
+                - img [ref=e134]
+                - generic [ref=e137]: Email Domain
+        - generic [ref=e138]:
+          - button "Light Mode" [ref=e139] [cursor=pointer]:
+            - img [ref=e140]
+            - generic [ref=e146]: Light Mode
+          - button "Settings" [ref=e147] [cursor=pointer]:
+            - img [ref=e148]
+            - generic [ref=e151]: Settings
+          - button "Collapse" [ref=e152] [cursor=pointer]:
+            - img [ref=e153]
+            - generic [ref=e155]: Collapse
+      - generic [ref=e156]:
+        - generic [ref=e157]:
+          - generic [ref=e159]:
+            - img [ref=e160]
+            - textbox "Search anything... ⌘K" [ref=e163]
+          - generic [ref=e164]:
+            - button "Notifications" [ref=e166] [cursor=pointer]:
+              - img [ref=e167]
+            - button [ref=e170] [cursor=pointer]:
+              - img [ref=e171]
+            - button "U" [ref=e175] [cursor=pointer]
+        - main [ref=e176]:
+          - generic [ref=e177]:
+            - generic [ref=e178]:
+              - generic [ref=e179]:
+                - generic [ref=e180]:
+                  - heading "Members" [level=1] [ref=e181]
+                  - paragraph [ref=e182]: 360° member profiles with health scores and segments
+                - generic [ref=e183]:
+                  - button "Insights" [ref=e184] [cursor=pointer]:
+                    - img [ref=e185]
+                    - text: Insights
+                  - button "Add Member" [ref=e187] [cursor=pointer]:
+                    - img [ref=e188]
+                    - text: Add Member
+              - generic [ref=e191]:
+                - button "All Members" [ref=e192] [cursor=pointer]
+                - button "At-Risk" [ref=e193] [cursor=pointer]
+                - button "Reactivation" [ref=e194] [cursor=pointer]
+              - generic [ref=e196]:
+                - generic [ref=e197]:
+                  - img [ref=e198]
+                  - textbox "Search by name or email..." [ref=e201]
+                - generic [ref=e202]:
+                  - button "Filters" [ref=e203] [cursor=pointer]:
+                    - img [ref=e204]
+                    - text: Filters
+                  - button "All members" [ref=e207] [cursor=pointer]:
+                    - text: All members
+                    - img [ref=e208]
+                  - generic [ref=e210]:
+                    - generic [ref=e211]: "Sort:"
+                    - button "health" [ref=e212] [cursor=pointer]
+                    - button "revenue" [ref=e213] [cursor=pointer]
+                    - button "sessions" [ref=e214] [cursor=pointer]
+                    - button "name" [ref=e215] [cursor=pointer]
+                  - combobox [ref=e216]:
+                    - option "10 / page"
+                    - option "25 / page" [selected]
+                    - option "50 / page"
+                    - option "100 / page"
+                  - generic [ref=e217]:
+                    - button "List view (default)" [ref=e218] [cursor=pointer]:
+                      - img [ref=e219]
+                    - button "Grid view" [ref=e220] [cursor=pointer]:
+                      - img [ref=e221]
+                    - button "Cards view" [ref=e226] [cursor=pointer]:
+                      - img [ref=e227]
+              - generic [ref=e230]:
+                - checkbox "Select all on page" [ref=e232] [cursor=pointer]
+                - generic [ref=e233]: Member
+                - generic [ref=e234]: Segment
+                - generic [ref=e235]: Rating
+                - generic [ref=e236]: Sessions
+                - generic [ref=e237]: Revenue
+                - generic [ref=e238]: Health
+                - generic [ref=e239]: Last Active
+              - generic [ref=e241]: Showing 0–0 of 0 members
+            - button "AI" [ref=e242]:
+              - img [ref=e243]
+              - generic [ref=e245]: AI
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e246]

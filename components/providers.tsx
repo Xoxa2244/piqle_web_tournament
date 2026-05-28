@@ -26,19 +26,25 @@ import { SessionProvider } from 'next-auth/react'
  * you save N-1 auth round-trips.
  */
 const STANDALONE_PATHS = new Set([
-  // Genuinely heavy (10s+) — keep isolated.
+  // Genuinely heavy (5s+) — keep isolated.
   'intelligence.getDashboardV2',           // KPI computer — large SQL JOIN over bookings
   // Membership Health page — getTierHealth walks bookings for per-tier
   // bucketing. Isolated it's ~0.4s, but bundled in the page-load batch with
   // club/notification/settings it stretched the whole batch to ~7s under
   // load. Standalone so it only blocks its own page, not the shell.
   'intelligence.getMembershipHealth',
+  // getMemberHealth has two callers with very different cost profiles:
+  //   • Dashboard:    summaryOnly: true   → ~50ms, 100 B   (cheap)
+  //   • Members:      full member array   → ~5s, 3.6 MB    (expensive)
+  // Standalone-ing it costs the Dashboard one extra auth round-trip
+  // (~150ms cold) but saves the Members page from being gated by the
+  // full version's 5s tail-latency inside a 17-procedure batch.
+  'intelligence.getMemberHealth',
   // Pulled back into the batch (2026-05-28) — each adds <3s and the
   // savings in auth round-trips outweighs the marginal tile-fill delay:
   //   intelligence.getAIRevenueAttribution
   //   intelligence.getOccupancyHeatmap
   //   intelligence.getMemberGrowth
-  //   intelligence.getMemberHealth
   //   intelligence.getVipAtRiskPercent
 ])
 

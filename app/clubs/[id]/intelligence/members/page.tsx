@@ -150,8 +150,23 @@ export default function MembersPage() {
 
   const sendOutreach = useSendOutreach()
   const sendReactivation = useSendReactivation()
-  const { data: reactivationData } = useReactivationCandidates(clubId, 21)
-  const { data: aiProfilesRaw } = useMemberAiProfiles(clubId)
+
+  // Reactivation data and AI profiles are heavy (~3.6 MB and ~6.9 MB
+  // respectively on IPC East) and are only consumed by the
+  // Reactivation tab inside MembersIQ — not the default "all" view.
+  // Defer the fetch by 2 s so the critical path (member list,
+  // membership facets, KPI deltas) renders first; the user almost
+  // always sees the default view for several seconds before clicking
+  // Reactivation, by which time the data has already loaded in the
+  // background.
+  const [heavyQueriesEnabled, setHeavyQueriesEnabled] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setHeavyQueriesEnabled(true), 2000)
+    return () => clearTimeout(t)
+  }, [])
+
+  const { data: reactivationData } = useReactivationCandidates(clubId, 21, { enabled: heavyQueriesEnabled })
+  const { data: aiProfilesRaw } = useMemberAiProfiles(clubId, undefined, undefined, { enabled: heavyQueriesEnabled })
   const regenerateProfiles = useRegenerateMemberProfiles()
   const aiProfilesMap = useMemo(() => {
     if (!aiProfilesRaw?.length) return {}

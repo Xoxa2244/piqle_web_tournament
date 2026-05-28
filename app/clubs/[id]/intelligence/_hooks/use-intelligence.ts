@@ -94,11 +94,18 @@ export function useSlotFillerRecommendations(sessionId: string | null, limit: nu
 }
 
 // ── Reactivation ──
-export function useReactivationCandidates(clubId: string, inactivityDays: number, options?: IntelligenceQueryOptions) {
+export function useReactivationCandidates(clubId: string, inactivityDays: number, options?: IntelligenceQueryOptions & { limit?: number }) {
   const isDemo = useIsDemo()
 
+  // Initial load defaults to 300 candidates — the Reactivation drawer
+  // virtualizes the list but typically displays the top 50 by risk
+  // score. 5000 was a vestige from before pagination existed and
+  // returned 3.6MB on a club of 6858 members. Callers needing the
+  // full set (e.g. CSV export, bulk-segment builder) pass `limit`
+  // explicitly.
+  const limit = options?.limit ?? 300
   const query = trpc.intelligence.getReactivationCandidates.useQuery(
-    { clubId, inactivityDays, limit: 5000 },
+    { clubId, inactivityDays, limit },
     { enabled: !!clubId && !isDemo && (options?.enabled ?? true), staleTime: 5 * 60 * 1000 }
   )
 
@@ -807,12 +814,22 @@ export function useGenerateNotifyMeLink() {
 }
 
 // ── Member AI Profiles ──
-export function useMemberAiProfiles(clubId: string, userIds?: string[], refetchInterval?: number) {
+export function useMemberAiProfiles(
+  clubId: string,
+  userIds?: string[],
+  refetchInterval?: number,
+  options?: IntelligenceQueryOptions,
+) {
   const isDemo = useIsDemo()
+  // This endpoint can return 6+ MB of AI profile data for a club of
+  // 6858 members. Heavy use cases (Reactivation view) pass `enabled:
+  // false` and flip it on when the section becomes visible, instead of
+  // paying the cost on every Members-page mount. Falls open by default
+  // to keep existing callers working.
   const query = trpc.intelligence.getMemberAiProfiles.useQuery(
     { clubId, userIds },
     {
-      enabled: !!clubId && !isDemo,
+      enabled: !!clubId && !isDemo && (options?.enabled ?? true),
       staleTime: 10 * 60 * 1000,
       refetchInterval: refetchInterval ?? false,
     }
