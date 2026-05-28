@@ -329,6 +329,14 @@ export function BillingIQ({ subscription, isLoading, clubId }: BillingIQProps) {
             )}
           </div>
 
+          {/* Actual $ spend this month */}
+          <div className="text-sm mb-3" style={{ color: "var(--t3)" }}>
+            <span style={{ fontWeight: 700, color: "var(--heading)" }}>
+              {usage.totalCostUsd < 1 ? `$${usage.totalCostUsd.toFixed(4)}` : `$${usage.totalCostUsd.toFixed(2)}`}
+            </span>
+            <span className="ml-1">AI cost this month</span>
+          </div>
+
           {usage.creditsAllowance != null && (
             <div
               className="h-2 rounded-full overflow-hidden mb-3"
@@ -372,9 +380,9 @@ export function BillingIQ({ subscription, isLoading, clubId }: BillingIQProps) {
                 <div key={op.operation} className="flex items-center justify-between text-sm">
                   <span style={{ color: "var(--t2)" }}>{op.label}</span>
                   <span style={{ color: "var(--t3)" }}>
-                    {op.credits.toLocaleString()} cr
+                    {op.costUsd < 1 ? `$${op.costUsd.toFixed(4)}` : `$${op.costUsd.toFixed(2)}`}
                     <span className="text-xs ml-1" style={{ color: "var(--t4)" }}>
-                      ({op.calls.toLocaleString()} {op.calls === 1 ? "call" : "calls"})
+                      ({op.credits.toLocaleString()} cr)
                     </span>
                   </span>
                 </div>

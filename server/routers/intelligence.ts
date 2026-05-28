@@ -1647,14 +1647,24 @@ export const intelligenceRouter = createTRPCRouter({
       const creditsAllowance = getPlanCreditAllowance(plan) // null = unlimited
 
       let creditsUsed = 0
+      let totalCostUsd = 0
       const byOperation = rows
         .map((r) => {
           const credits = costToCredits(Number(r.cost))
+          const costUsd = Number(r.cost)
           creditsUsed += credits
-          return { operation: r.operation, label: operationLabel(r.operation), credits, calls: Number(r.calls) }
+          totalCostUsd += costUsd
+          return {
+            operation: r.operation,
+            label: operationLabel(r.operation),
+            credits,
+            costUsd: Math.round(costUsd * 1e6) / 1e6,
+            calls: Number(r.calls),
+          }
         })
         .filter((o) => o.credits > 0)
         .sort((a, b) => b.credits - a.credits)
+      totalCostUsd = Math.round(totalCostUsd * 1e6) / 1e6
 
       const percentUsed = creditsAllowance && creditsAllowance > 0
         ? Math.min(100, Math.round((creditsUsed / creditsAllowance) * 100))
@@ -1674,6 +1684,10 @@ export const intelligenceRouter = createTRPCRouter({
         creditsAllowance,
         percentUsed,
         alertLevel,
+        // Actual provider cost this month (USD). Customer-facing $ figure.
+        // To bill clubs at a marked-up price instead, multiply by a sell
+        // rate here (or in usage-credits.ts) — see USD_PER_CREDIT.
+        totalCostUsd,
         periodStart: periodStart.toISOString(),
         periodResetAt: periodResetAt.toISOString(),
         byOperation,
