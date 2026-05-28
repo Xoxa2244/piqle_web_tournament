@@ -26,6 +26,11 @@ interface CampaignWizardProps {
   clubId: string
   /** Open from Members bulk-select with hand-picked userIds. */
   initialUserIds?: string[]
+  /** Display label for the initialUserIds audience. When omitted the audience
+   *  reads "Hand-picked (N)". Membership Health passes the tier + bucket here
+   *  (e.g. "Open Play Pass · inactive subscribers") so the pre-scoped segment
+   *  is self-explanatory. */
+  initialUserIdsLabel?: string | null
   /** Open from "Save + Create campaign" with a freshly-saved cohort. */
   initialCohortId?: string | null
   /** Open from AI-Suggested card with a generated cohort already chosen. */
@@ -51,6 +56,7 @@ const STEPS: Array<{ n: WizardStep; label: string }> = [
 export function CampaignWizard({
   clubId,
   initialUserIds,
+  initialUserIdsLabel,
   initialCohortId,
   initialSuggestedCohort,
   initialGoal,
@@ -226,7 +232,7 @@ export function CampaignWizard({
         setState((s) => ({ ...s, audience: { kind: 'saved_cohort', cohortId: match.id, cohortName: match.name, userIds: [], memberCount: match.memberCount } }))
       }
     } else if (initialUserIds?.length) {
-      setState((s) => ({ ...s, audience: { kind: 'inline_userIds', cohortId: null, cohortName: `Hand-picked (${initialUserIds.length})`, userIds: initialUserIds, memberCount: initialUserIds.length } }))
+      setState((s) => ({ ...s, audience: { kind: 'inline_userIds', cohortId: null, cohortName: initialUserIdsLabel || `Hand-picked (${initialUserIds.length})`, userIds: initialUserIds, memberCount: initialUserIds.length } }))
     }
     if (initialGoal) {
       setState((s) => ({ ...s, goal: initialGoal }))
@@ -501,6 +507,7 @@ export function CampaignWizard({
                 suggestedAudiences={suggestedAudiences}
                 suggestedAudiencesLoading={suggestedAudiencesLoading}
                 initialUserIds={initialUserIds}
+                initialUserIdsLabel={initialUserIdsLabel}
               />
             ) : step === 2 ? (
               <Step2Goal

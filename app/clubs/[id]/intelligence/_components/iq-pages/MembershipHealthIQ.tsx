@@ -39,6 +39,19 @@ const CAMPAIGN_HINT_GOAL: Record<string, string> = {
   PRICE_REVIEW: 'custom',
 }
 
+// Maps a treatment's campaignHint to the tier member bucket it targets, so
+// the wizard pre-scopes its audience to exactly those members (not the goal's
+// club-wide default). Buckets mirror getTierHealth's targetMemberCount:
+// RETENTION_BOOST→zombies, UPSELL→power users, BILLING_AUDIT→suspended,
+// PRICE_REVIEW→all active. Defaults to 'active' for any unmapped hint.
+const CAMPAIGN_HINT_BUCKET: Record<string, string> = {
+  RETENTION_BOOST: 'zombies',
+  UPSELL: 'power',
+  WINBACK: 'zombies',
+  BILLING_AUDIT: 'suspended',
+  PRICE_REVIEW: 'active',
+}
+
 type Treatment = {
   action: string
   campaignHint: string
@@ -250,7 +263,7 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
                         <p className="text-xs" style={{ color: "var(--t2)", lineHeight: 1.5 }}>{tx.action}</p>
                       </div>
                       <Link
-                        href={`/clubs/${clubId}/intelligence/campaigns?goal=${CAMPAIGN_HINT_GOAL[tx.campaignHint] || 'custom'}`}
+                        href={`/clubs/${clubId}/intelligence/campaigns?goal=${CAMPAIGN_HINT_GOAL[tx.campaignHint] || 'custom'}&tier=${encodeURIComponent(t.name)}&bucket=${CAMPAIGN_HINT_BUCKET[tx.campaignHint] || 'active'}`}
                         className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs self-center"
                         style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600 }}
                       >

@@ -38,6 +38,9 @@ interface Step1Props {
   suggestedAudiencesLoading?: boolean
   /** When opened from Members bulk-select, pre-populated userIds. */
   initialUserIds?: string[]
+  /** Display label for the initialUserIds audience (e.g. a tier + bucket from
+   *  Membership Health). Falls back to "Hand-picked selection (N)". */
+  initialUserIdsLabel?: string | null
 }
 
 export function Step1Audience({
@@ -49,6 +52,7 @@ export function Step1Audience({
   suggestedAudiences,
   suggestedAudiencesLoading = false,
   initialUserIds,
+  initialUserIdsLabel,
 }: Step1Props) {
   const [activeKind, setActiveKind] = useState<AudienceSourceKind>(
     audience?.kind ?? (initialUserIds?.length ? 'inline_userIds' : 'saved_cohort')
@@ -163,7 +167,7 @@ export function Step1Audience({
     if (audience?.kind === kind) return
 
     if (kind === 'inline_userIds' && initialUserIds?.length) {
-      onChange({ kind, cohortId: null, cohortName: `Hand-picked selection (${initialUserIds.length})`, userIds: initialUserIds, memberCount: initialUserIds.length })
+      onChange({ kind, cohortId: null, cohortName: initialUserIdsLabel || `Hand-picked selection (${initialUserIds.length})`, userIds: initialUserIds, memberCount: initialUserIds.length })
     } else {
       onChange(null)
     }
@@ -434,7 +438,7 @@ export function Step1Audience({
         <div className="rounded-xl p-3" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
           <div className="text-sm font-semibold" style={{ color: 'var(--heading)' }}>{audience.cohortName}</div>
           <div className="text-[11px] mt-1" style={{ color: 'var(--t4)' }}>
-            {audience.userIds.length} hand-picked recipients (from previous selection).
+            {audience.userIds.length} {audience.userIds.length === 1 ? 'recipient' : 'recipients'} in this audience.
           </div>
         </div>
       )}

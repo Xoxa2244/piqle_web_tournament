@@ -309,6 +309,19 @@ function matchesDraftText(draft: any, patterns: string[]) {
   return patterns.some((pattern) => text.includes(pattern))
 }
 
+// Tier-audience handoff (Membership Health treatment → tier-exact wizard
+// audience). Valid bucket values must match intelligence.getTierAudience's
+// enum; the label is shown as the pre-selected audience name in the wizard.
+const TIER_AUDIENCE_BUCKETS = ['zombies', 'power', 'suspended', 'active', 'all'] as const
+type TierAudienceBucket = (typeof TIER_AUDIENCE_BUCKETS)[number]
+const TIER_BUCKET_LABEL: Record<TierAudienceBucket, string> = {
+  zombies: 'inactive subscribers',
+  power: 'power users',
+  suspended: 'suspended subscribers',
+  active: 'active members',
+  all: 'members',
+}
+
 export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoading, campaignListLoading = false, clubId }: CampaignsIQProps) {
   // P4-T7: Campaign Wizard drawer (replaces "+ New Campaign" entry).
   const [showWizard, setShowWizard] = useState(false)
@@ -337,13 +350,50 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
   // in a follow-up commit; for now we open the wizard and stash the
   // payload so subsequent wizard steps can consume it.
   const [wizardInitialTemplateKey, setWizardInitialTemplateKey] = useState<string | null>(null)
+  // Tier-exact audience handoff: the tier's member ids for the targeted
+  // bucket, fed into the wizard's inline-audience path with a tier-specific
+  // label. Seeded once the getTierAudience fetch (below) resolves.
+  const [wizardInitialUserIds, setWizardInitialUserIds] = useState<string[] | null>(null)
+  const [wizardInitialUserIdsLabel, setWizardInitialUserIdsLabel] = useState<string | null>(null)
+  // Pending tier-audience request captured from ?tier=&bucket= in the URL.
+  // Unlike ?goal= alone, we can't open the wizard immediately — we first
+  // fetch the tier's member ids, then open with them pre-selected.
+  const [pendingTierAudience, setPendingTierAudience] = useState<
+    { tierName: string; bucket: TierAudienceBucket; goal: string | null } | null
+  >(null)
   useEffect(() => {
+    if (showWizard) return
     const cohortIdFromUrl = wizardSearchParams?.get('cohortId') ?? null
     // ?goal= lets other pages (e.g. Membership Health treatments) open the
     // wizard with the Goal step pre-selected instead of an empty wizard.
     const goalFromUrl = wizardSearchParams?.get('goal') ?? null
     const VALID_GOALS = ['reactivate_dormant', 'check_in', 'retention_boost', 'onboard_new', 'promote_event', 'upsell_tier', 'renewal_reminder', 'custom']
-    if ((cohortIdFromUrl || goalFromUrl) && !showWizard) {
+    // ?tier=&bucket= (Membership Health treatment → tier-exact audience).
+    // Take precedence over the goal-only path: stash the request, strip the
+    // params, and let the fetch effect open the wizard once members resolve.
+    const tierFromUrl = wizardSearchParams?.get('tier') ?? null
+    const bucketRaw = wizardSearchParams?.get('bucket') ?? null
+    if (tierFromUrl && !pendingTierAudience) {
+      const bucket = (bucketRaw && (TIER_AUDIENCE_BUCKETS as readonly string[]).includes(bucketRaw)
+        ? bucketRaw
+        : 'active') as TierAudienceBucket
+      setPendingTierAudience({
+        tierName: tierFromUrl,
+        bucket,
+        goal: goalFromUrl && VALID_GOALS.includes(goalFromUrl) ? goalFromUrl : null,
+      })
+      if (wizardPathname) {
+        const next = new URLSearchParams(wizardSearchParams.toString())
+        next.delete('cohortId')
+        next.delete('goal')
+        next.delete('tier')
+        next.delete('bucket')
+        const qs = next.toString()
+        wizardRouter.replace(qs ? `${wizardPathname}?${qs}` : wizardPathname, { scroll: false })
+      }
+      return
+    }
+    if (cohortIdFromUrl || goalFromUrl) {
       if (cohortIdFromUrl) setWizardInitialCohortId(cohortIdFromUrl)
       if (goalFromUrl && VALID_GOALS.includes(goalFromUrl)) {
         setWizardInitialGoal(goalFromUrl as typeof wizardInitialGoal)
@@ -360,6 +410,32 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wizardSearchParams])
+
+  // Resolve the tier's member ids, then open the wizard with them pre-selected
+  // as an AI-suggested audience + the treatment's goal. Falls back to a
+  // goal-only open if the tier/bucket has no members (empty audience is useless).
+  const tierAudienceQuery = trpc.intelligence.getTierAudience.useQuery(
+    {
+      clubId,
+      tierName: pendingTierAudience?.tierName ?? '',
+      bucket: pendingTierAudience?.bucket ?? 'active',
+    },
+    { enabled: !!pendingTierAudience },
+  )
+  useEffect(() => {
+    if (!pendingTierAudience || !tierAudienceQuery.data) return
+    const { userIds, tierName, bucket } = tierAudienceQuery.data
+    if (userIds.length > 0) {
+      setWizardInitialUserIds(userIds)
+      setWizardInitialUserIdsLabel(`${tierName} · ${TIER_BUCKET_LABEL[bucket as TierAudienceBucket] ?? 'members'}`)
+    }
+    if (pendingTierAudience.goal) {
+      setWizardInitialGoal(pendingTierAudience.goal as typeof wizardInitialGoal)
+    }
+    setShowWizard(true)
+    setPendingTierAudience(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTierAudience, tierAudienceQuery.data])
 
   // ?draftId prefill — Step 11 §8.1. Loads the campaign_draft row and
   // opens the wizard with templateKey + cohortRef applied. cohortRef
@@ -832,6 +908,8 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
         <CampaignWizard
           clubId={clubId}
           initialCohortId={wizardInitialCohortId}
+          initialUserIds={wizardInitialUserIds ?? undefined}
+          initialUserIdsLabel={wizardInitialUserIdsLabel}
           initialGoal={wizardInitialGoal}
           initialPlaybook={wizardInitialPlaybook}
           onClose={() => {
@@ -839,6 +917,8 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
             setWizardInitialCohortId(null)
             setWizardInitialGoal(null)
             setWizardInitialPlaybook(null)
+            setWizardInitialUserIds(null)
+            setWizardInitialUserIdsLabel(null)
           }}
         />
       )}

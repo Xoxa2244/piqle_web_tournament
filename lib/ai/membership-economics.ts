@@ -699,3 +699,67 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
     tiers: snapshots,
   }
 }
+
+/**
+ * The member segment a tier treatment targets. Each value mirrors a bucket
+ * counted in getTierHealth, so getTierAudience returns exactly the members
+ * behind a treatment's `targetMemberCount`:
+ *   - zombies   → Active subscribers with 0 confirmed bookings in 30d (RETENTION_BOOST)
+ *   - power     → Active subscribers with ≥8 confirmed bookings in 30d (UPSELL on free tiers)
+ *   - suspended → Suspended subscribers (BILLING_AUDIT)
+ *   - active    → all Active subscribers (PRICE_REVIEW)
+ *   - all       → the full tier inventory (Active + Suspended + Expired)
+ */
+export type TierAudienceBucket = 'zombies' | 'power' | 'suspended' | 'active' | 'all'
+
+export interface TierAudienceResult {
+  tierName: string
+  bucket: TierAudienceBucket
+  userIds: string[]
+  memberCount: number
+}
+
+/**
+ * Resolve the concrete member ids behind a tier + bucket, so the Campaign
+ * Wizard can pre-scope its audience to exactly the members a Membership
+ * Health treatment refers to (e.g. the 372 "zombie" subscribers on Open Play
+ * Pass), rather than the goal's club-wide default set.
+ *
+ * Uses the same CONFIRMED-30d `recent` CTE as getTierHealth so the returned
+ * count matches the treatment's targetMemberCount 1:1. `tierName` matches
+ * users.membership_type verbatim (CR is the single source of truth). No
+ * ::uuid cast — Sol2 stores club_id as TEXT.
+ */
+export async function getTierAudience(
+  clubId: string,
+  tierName: string,
+  bucket: TierAudienceBucket,
+): Promise<TierAudienceResult> {
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    WITH recent AS (
+      SELECT psb."userId" AS uid, COUNT(*)::int AS b30
+      FROM play_session_bookings psb
+      JOIN play_sessions ps ON ps.id = psb."sessionId"
+      WHERE ps."clubId" = ${clubId}
+        AND psb.status = 'CONFIRMED'
+        AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
+      GROUP BY psb."userId"
+    )
+    SELECT u.id
+    FROM users u
+    JOIN club_followers cf ON cf.user_id = u.id
+    LEFT JOIN recent r ON r.uid = u.id
+    WHERE cf.club_id = ${clubId}
+      AND u.membership_type = ${tierName}
+      AND (
+        (${bucket} = 'zombies'   AND u.membership_status = 'Active'    AND COALESCE(r.b30, 0) = 0)
+     OR (${bucket} = 'power'     AND u.membership_status = 'Active'    AND COALESCE(r.b30, 0) >= 8)
+     OR (${bucket} = 'suspended' AND u.membership_status = 'Suspended')
+     OR (${bucket} = 'active'    AND u.membership_status = 'Active')
+     OR (${bucket} = 'all'       AND u.membership_status IN ('Active', 'Suspended', 'Expired'))
+      )
+  `
+
+  const userIds = rows.map((r) => r.id).filter((id): id is string => typeof id === 'string' && id.length > 0)
+  return { tierName, bucket, userIds, memberCount: userIds.length }
+}

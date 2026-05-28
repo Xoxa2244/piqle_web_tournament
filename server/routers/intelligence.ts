@@ -1744,6 +1744,23 @@ export const intelligenceRouter = createTRPCRouter({
       }
     }),
 
+  // Resolves the concrete member ids behind a tier + bucket so the Campaign
+  // Wizard can pre-scope its audience to exactly the members a Membership
+  // Health treatment targets (e.g. the zombie subscribers on a paid tier),
+  // rather than the goal's club-wide default. Bucket counts match the
+  // treatment's targetMemberCount 1:1 (same CONFIRMED-30d logic as getTierHealth).
+  getTierAudience: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      tierName: z.string().min(1),
+      bucket: z.enum(['zombies', 'power', 'suspended', 'active', 'all']),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { getTierAudience } = await import('@/lib/ai/membership-economics')
+      return getTierAudience(input.clubId, input.tierName, input.bucket)
+    }),
+
   // ── Club Data Status: Check if club has AI data ──
   getClubDataStatus: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))
