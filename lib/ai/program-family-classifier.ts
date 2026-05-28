@@ -149,7 +149,7 @@ interface ClassifyInput {
 
 /** Regex sets — exported so the operator-override layer can extend. */
 export const FAMILY_PATTERNS = {
-  EQUIPMENT: /\b(ball\s*machine|equipment\s*rental|court\s*rental)\b/i,
+  EQUIPMENT: /\b((ball|volley)\s*machine|equipment\s*rental|court\s*rental)\b/i,
   YOUTH: /\b(youth|junior|kids?|teen|academy|jr)\b/i,
   PRIVATE_LESSON: /\b(private\s*lesson|1[\s-]?on[\s-]?1|private\s*coaching)\b/i,
   CLINIC:

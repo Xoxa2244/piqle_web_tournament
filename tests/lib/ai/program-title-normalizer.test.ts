@@ -39,6 +39,55 @@ describe('normalizeProgramTitle', () => {
     })
   })
 
+  describe('multi-court lists + bare court (real prod titles, 2026-05)', () => {
+    it('strips a multi-court list without leaving comma ghosts', () => {
+      expect(
+        normalizeProgramTitle(
+          'Doubles — Emilia Quinn - Court #1, Court #2 (IPC East), Court #3 (IPC East), Court #4 (IPC East)',
+          'IPC East',
+        ),
+      ).toBe('Doubles - Emilia Quinn')
+    })
+
+    it('one-, two- and four-court variants collapse to one program', () => {
+      const one = programGroupKey('Doubles — Emilia Quinn - Court #1', 'IPC East')
+      const two = programGroupKey('Doubles — Emilia Quinn - Court #1, Court #2 (IPC East)', 'IPC East')
+      const four = programGroupKey(
+        'Doubles — Emilia Quinn - Court #1, Court #2 (IPC East), Court #3 (IPC East), Court #4 (IPC East)',
+        'IPC East',
+      )
+      expect(one).toBe('doubles - emilia quinn')
+      expect(two).toBe(one)
+      expect(four).toBe(one)
+    })
+
+    it('strips a trailing bare "— Court" with no number', () => {
+      expect(normalizeProgramTitle('Singles — Court', 'IPC East')).toBe('Singles')
+      expect(normalizeProgramTitle('Doubles — Court', 'IPC East')).toBe('Doubles')
+      expect(normalizeProgramTitle('Private Lesson for 1 — Court', 'IPC East')).toBe('Private Lesson for 1')
+      expect(normalizeProgramTitle('Private Lesson Direct Pay — Court', 'IPC East')).toBe('Private Lesson Direct Pay')
+    })
+
+    it('bare-court variant groups with the numbered variant', () => {
+      expect(programGroupKey('Singles — Court', 'IPC East')).toBe(
+        programGroupKey('Singles — Court #4 (IPC East)', 'IPC East'),
+      )
+    })
+
+    it('strips trailing bare court after the ball-machine name', () => {
+      expect(
+        normalizeProgramTitle('Single Person - Ball Machine  — Court', 'IPC East'),
+      ).toBe('Single Person - Ball Machine')
+    })
+
+    it('does NOT strip "Court" from a real name (King of the Court)', () => {
+      // bare-court strip requires a leading dash + end-anchor, so a name
+      // where "Court" is preceded by a word (not a dash) survives intact.
+      expect(normalizeProgramTitle('King of the Court', 'IPC East')).toBe('King of the Court')
+      expect(normalizeProgramTitle('King of the Court Night', 'IPC East')).toBe('King of the Court Night')
+    })
+  })
+
   describe('preserves semantics', () => {
     it('keeps skill rating on Open Play', () => {
       expect(

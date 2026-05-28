@@ -62,9 +62,15 @@ export function normalizeProgramTitle(
     t = t.replace(new RegExp(`\\(\\s*${escapeRegex(clubName.trim())}\\s*\\)`, 'gi'), ' ')
   }
 
-  // Strip court assignment: "Court #9", "Court 9", "- Court #9", with any
-  // leading separator. Pure per-instance noise.
-  t = t.replace(/[-\s]*\bcourt\s*#?\s*\d+/gi, ' ')
+  // Strip court assignment: "Court #9", "Court 9", "- Court #9", and the
+  // ", Court #2, Court #3" tail of multi-court bookings. Leading separator
+  // class includes a comma so those lists don't leave ", ," ghosts behind.
+  t = t.replace(/[-,\s]*\bcourt\s*#?\s*\d+/gi, ' ')
+
+  // Strip a trailing bare "Court" with no number — CR emits "Doubles — Court"
+  // (no court assigned). Require a leading dash so we never eat "Court" from
+  // a real program name like "King of the Court".
+  t = t.replace(/\s*-[\s-]*court\b\s*$/gi, ' ')
 
   // Strip league session counter: "(Session 3)"
   t = t.replace(/\(\s*session\s*\d+\s*\)/gi, ' ')
@@ -72,8 +78,9 @@ export function normalizeProgramTitle(
   // Collapse repeated whitespace
   t = t.replace(/\s{2,}/g, ' ')
 
-  // Trim trailing/leading separators and spaces (e.g. dangling " - ")
-  t = t.replace(/^[\s\-]+|[\s\-]+$/g, '').trim()
+  // Trim trailing/leading separators, commas and spaces (e.g. dangling " - "
+  // or a leftover comma from a stripped court list).
+  t = t.replace(/^[\s\-,]+|[\s\-,]+$/g, '').trim()
 
   return t
 }

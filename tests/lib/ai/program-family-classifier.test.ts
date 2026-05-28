@@ -122,6 +122,9 @@ describe('classifyProgramFamily — real IPC East titles', () => {
     it('Ball Machine', () => {
       expect(classifyProgramFamily({ title: 'Single Person - Ball Machine — Court #9 (IPC East)' })).toBe('EQUIPMENT')
     })
+    it('Volley Machine (ball-machine brand) → Equipment', () => {
+      expect(classifyProgramFamily({ title: 'Volley Machine — Court' })).toBe('EQUIPMENT')
+    })
     it('beats everything (checked first)', () => {
       // even a "ball machine clinic" would be equipment — facility takes
       // precedence so it never inflates programming metrics.
