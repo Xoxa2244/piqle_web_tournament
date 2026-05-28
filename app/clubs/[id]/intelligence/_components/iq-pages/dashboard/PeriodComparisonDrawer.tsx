@@ -68,7 +68,7 @@ export type PeriodComparisonSnapshot = {
  *  startDate/endDate window updates without closing the drawer.
  *  Custom mode is Dashboard-only (it needs a date picker); it shows
  *  as a non-interactive pill here. */
-export type DrawerPeriod = 'week' | 'month' | 'quarter' | 'custom'
+export type DrawerPeriod = 'week' | 'month' | 'quarter' | 'year' | 'custom'
 
 interface Props {
   open: boolean
@@ -216,7 +216,7 @@ export function PeriodComparisonDrawer({
                 <span className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 600 }}>
                   Period
                 </span>
-                {(['week', 'month', 'quarter'] as const).map((p) => {
+                {(['week', 'month', 'quarter', 'year'] as const).map((p) => {
                   const isActive = period === p
                   return (
                     <button

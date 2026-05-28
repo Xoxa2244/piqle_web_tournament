@@ -92,7 +92,7 @@ function ExcelSlot({ label, description, file, onFile, isDark }: {
 }
 
 /* --- Period-dependent Mock Data --- */
-type Period = "week" | "month" | "quarter" | "custom";
+type Period = "week" | "month" | "quarter" | "year" | "custom";
 
 /** Safety net: auto-fires onComplete after 3s if animation callback didn't fire */
 function SafetyAutoComplete({ onComplete }: { onComplete: () => void }) {
@@ -110,6 +110,7 @@ function getPeriodLabel(p: Period): { current: string; previous: string } {
   if (p === "week") return { current: "Last 7 days", previous: "Previous 7 days" };
   if (p === "month") return { current: "Last 30 days", previous: "Previous 30 days" };
   if (p === "quarter") return { current: "Last 90 days", previous: "Previous 90 days" };
+  if (p === "year") return { current: "Last 365 days", previous: "Previous 365 days" };
   return { current: "Selected range", previous: "Previous range" };
 }
 
@@ -637,6 +638,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     if (period === 'week') return { dateFrom: iso(new Date(now.getTime() - 7 * 86400000)), dateTo: today };
     if (period === 'month') return { dateFrom: iso(new Date(now.getTime() - 30 * 86400000)), dateTo: today };
     if (period === 'quarter') return { dateFrom: iso(new Date(now.getTime() - 90 * 86400000)), dateTo: today };
+    if (period === 'year') return { dateFrom: iso(new Date(now.getTime() - 365 * 86400000)), dateTo: today };
     if (period === 'custom' && customFrom && customTo) return { dateFrom: customFrom, dateTo: customTo };
     return {};
   }, [period, customFrom, customTo]);
@@ -657,7 +659,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
       return { dateFrom: calBFrom, dateTo: calBTo };
     }
     // Determine current period span in days
-    const spanDays = period === 'week' ? 7 : period === 'quarter' ? 90 : 30;
+    const spanDays = period === 'week' ? 7 : period === 'quarter' ? 90 : period === 'year' ? 365 : 30;
     const now = new Date();
     if (compMode === 'prev_year') {
       const to = new Date(now.getTime() - 365 * 86400000);
@@ -941,7 +943,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           <p className="text-sm mt-1" style={{ color: "var(--t3)" }}>Welcome back, {userName}. Here&apos;s your club overview.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {(["week", "month", "quarter", "custom"] as const).map((p) => (
+          {(["week", "month", "quarter", "year", "custom"] as const).map((p) => (
             <button
               key={p}
               onClick={() => setPeriod(p)}
@@ -953,7 +955,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 border: period === p ? "1px solid rgba(139,92,246,0.2)" : "1px solid transparent",
               }}
             >
-              {p === 'week' ? 'Week' : p === 'month' ? 'Month' : p === 'quarter' ? 'Quarter' : 'Custom'}
+              {p === 'week' ? 'Week' : p === 'month' ? 'Month' : p === 'quarter' ? 'Quarter' : p === 'year' ? 'Year' : 'Custom'}
               {period === p && isPeriodLoading && (
                 <span className="inline-block w-2.5 h-2.5 rounded-full border border-current border-t-transparent animate-spin" />
               )}
