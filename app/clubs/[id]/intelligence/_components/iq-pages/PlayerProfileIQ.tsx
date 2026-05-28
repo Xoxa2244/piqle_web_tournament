@@ -33,13 +33,17 @@ function Shimmer({ className = "" }: { className?: string }) {
 
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null
+  // payload[0].payload is the row, which carries `weekRange` (e.g.
+  // "Mar 23 – 29") — that's what the user wants to see, not the bare
+  // start-of-week date that lives on `label` / `week`.
+  const range = payload[0]?.payload?.weekRange ?? label
   return (
     <div className="rounded-xl px-4 py-3 text-xs" style={{ background: "var(--tooltip-bg)", border: "1px solid var(--tooltip-border)", color: "var(--tooltip-color)", backdropFilter: "blur(12px)" }}>
-      <div className="mb-1" style={{ fontWeight: 600 }}>{label}</div>
+      <div className="mb-1" style={{ fontWeight: 600 }}>Week of {range}</div>
       {payload.map((p: any) => (
         <div key={p.name} className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full" style={{ background: p.color || "#8B5CF6" }} />
-          <span>{p.value} sessions</span>
+          <span>{p.value} {p.value === 1 ? 'session' : 'sessions'}</span>
         </div>
       ))}
     </div>
@@ -141,13 +145,30 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
   const riskCfg = RISK_COLORS[risk.level]
   const memColor = MEMBERSHIP_COLORS["No Membership"]
 
-  // Chart data — highlight last 4 weeks
+  // Chart data — highlight last 4 weeks. Each bar represents a 7-day
+  // window starting from `w.week` (Monday — DATE_TRUNC('week') in SQL).
+  // The X-axis label is intentionally compact ("Mar 23"); `weekRange`
+  // is the full window ("Mar 23 – 29") shown in the tooltip so users
+  // don't misread the bar as single-day activity.
+  // Append T12:00:00 when parsing the date-only string so timezone
+  // offsets (esp. negative UTC like US/EST) don't shift the day —
+  // matches the pattern used elsewhere in this file (partners list).
   const fourWeeksAgo = new Date(Date.now() - 28 * 86400000).toISOString().slice(0, 10)
-  const chartData = activity.sessionsPerWeek.map(w => ({
-    week: new Date(w.week).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-    count: w.count,
-    isRecent: w.week >= fourWeeksAgo,
-  }))
+  const fmtDay = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  const chartData = activity.sessionsPerWeek.map(w => {
+    const start = new Date(w.week + 'T12:00:00')
+    const end = new Date(start.getTime() + 6 * 86400000)
+    const sameMonth = start.getMonth() === end.getMonth()
+    const weekRange = sameMonth
+      ? `${fmtDay(start)} – ${end.getDate()}`
+      : `${fmtDay(start)} – ${fmtDay(end)}`
+    return {
+      week: fmtDay(start),
+      weekRange,
+      count: w.count,
+      isRecent: w.week >= fourWeeksAgo,
+    }
+  })
 
   const TrendIcon = activity.trend === "increasing" ? TrendingUp : activity.trend === "declining" ? TrendingDown : Minus
   const trendColor = activity.trend === "increasing" ? "#10B981" : activity.trend === "declining" ? "#EF4444" : "#06B6D4"
