@@ -18,7 +18,7 @@ import { useParams, useRouter } from "next/navigation";
 import { IQFileDropZone } from "./IQFileDropZone";
 import { AILoadingAnimation } from "./AILoadingAnimation";
 import { MonthCalendar } from "../MonthCalendar";
-import { X, Check, ChevronRight, FileSpreadsheet, Loader2 } from "lucide-react";
+import { X, Check, ChevronRight, ChevronDown, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { CourtReserveConnector } from "./shared/CourtReserveConnector";
 import { AIRevenueTile } from "../ai-revenue-tile";
@@ -699,6 +699,11 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     trpc.intelligence.refreshBusinessInsights.useMutation();
   const resolveBusinessInsight =
     trpc.intelligence.resolveBusinessInsight.useMutation();
+  // Business Insights — collapse all but the first two by default.
+  // The full list can grow to 8+ items and pushes the heatmap /
+  // segments below the fold on smaller screens.
+  const INSIGHTS_COLLAPSED_COUNT = 2;
+  const [insightsExpanded, setInsightsExpanded] = useState(false);
 
   // Inactive Players KPI — Step 6 of DASHBOARD_AND_ACTION_CENTER_SPEC.md
   // §3.2. Lapsed users (≥1 historical CONFIRMED booking, none in last 30
@@ -1352,27 +1357,56 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                 the engine for this club.
               </p>
             </div>
-          ) : (
-            <div>
-              {((businessInsightsQuery.data?.insights ?? []) as BusinessInsightRow[]).map((bi) => (
-                <BusinessInsightCard
-                  key={bi.id}
-                  insight={bi}
-                  clubId={clubId!}
-                  onResolve={async (reason, snoozeUntil) => {
-                    if (!clubId) return;
-                    await resolveBusinessInsight.mutateAsync({
-                      clubId,
-                      insightId: bi.id,
-                      reason,
-                      snoozeUntil: snoozeUntil?.toISOString(),
-                    });
-                    businessInsightsQuery.refetch();
-                  }}
-                />
-              ))}
-            </div>
-          )}
+          ) : (() => {
+            const allInsights = (businessInsightsQuery.data?.insights ?? []) as BusinessInsightRow[];
+            const visibleInsights = insightsExpanded
+              ? allInsights
+              : allInsights.slice(0, INSIGHTS_COLLAPSED_COUNT);
+            const hiddenCount = allInsights.length - INSIGHTS_COLLAPSED_COUNT;
+            const hasMore = hiddenCount > 0;
+            return (
+              <div>
+                {visibleInsights.map((bi) => (
+                  <BusinessInsightCard
+                    key={bi.id}
+                    insight={bi}
+                    clubId={clubId!}
+                    onResolve={async (reason, snoozeUntil) => {
+                      if (!clubId) return;
+                      await resolveBusinessInsight.mutateAsync({
+                        clubId,
+                        insightId: bi.id,
+                        reason,
+                        snoozeUntil: snoozeUntil?.toISOString(),
+                      });
+                      businessInsightsQuery.refetch();
+                    }}
+                  />
+                ))}
+                {hasMore && (
+                  <button
+                    type="button"
+                    onClick={() => setInsightsExpanded((v) => !v)}
+                    className="w-full mt-2 py-2.5 rounded-xl flex items-center justify-center gap-1.5 text-xs transition-all hover:opacity-80"
+                    style={{
+                      background: "var(--subtle)",
+                      color: "var(--t2)",
+                      border: "1px solid var(--card-border)",
+                      fontWeight: 600,
+                    }}
+                    aria-expanded={insightsExpanded}
+                  >
+                    {insightsExpanded
+                      ? "Show less"
+                      : `Show ${hiddenCount} more insight${hiddenCount === 1 ? "" : "s"}`}
+                    <ChevronDown
+                      className={`w-4 h-4 transition-transform ${insightsExpanded ? "rotate-180" : ""}`}
+                    />
+                  </button>
+                )}
+              </div>
+            );
+          })()}
         </Card>
       </div>
 
