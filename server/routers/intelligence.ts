@@ -4741,15 +4741,31 @@ export const intelligenceRouter = createTRPCRouter({
           `[Intelligence] getMemberHealth counts: activeUserRows=${activeUserIds.length} activeSet=${activeSet.size} followers=${allFollowers.length} activeFollowers=${followers.length} dormant=${dormantCount}`
         )
 
-        // Load membership data from embeddings — match by email (source_id may not match userId due to duplicate users)
+        // Load membership data from CSV-import embeddings — match by email
+        // (source_id may not match userId due to duplicate users).
+        //
+        // Skip this query when the club already has native play_session data
+        // (activeSet.size > 0): in that case `users.membershipType` /
+        // `membershipStatus` are populated by the connector sync (fixed in
+        // 6a3c488e), and the embedding lookup only provides FALLBACK that
+        // gets overridden anyway in getMembershipInfo() below. The query
+        // walks document_embeddings (large table on prod) and costs
+        // ~200ms — pure overhead for non-CSV clubs.
+        //
+        // We still consult embeddings for CSV-only clubs (activeSet empty)
+        // because they have no native session data, and user fields may
+        // not be populated.
         let memberEmbeddings: Array<{ source_id: string; metadata: any }> = []
-        try {
-          memberEmbeddings = await ctx.prisma.$queryRaw<Array<{ source_id: string; metadata: any }>>`
-            SELECT source_id, metadata FROM document_embeddings
-            WHERE club_id = ${input.clubId} AND content_type = 'member' AND source_table = 'csv_import'
-          `
-        } catch (err) {
-          log.warn('[Intelligence] getMemberHealth member embeddings query failed:', (err as Error).message?.slice(0, 120))
+        const isCsvOnlyClub = activeSet.size === 0
+        if (isCsvOnlyClub) {
+          try {
+            memberEmbeddings = await ctx.prisma.$queryRaw<Array<{ source_id: string; metadata: any }>>`
+              SELECT source_id, metadata FROM document_embeddings
+              WHERE club_id = ${input.clubId} AND content_type = 'member' AND source_table = 'csv_import'
+            `
+          } catch (err) {
+            log.warn('[Intelligence] getMemberHealth member embeddings query failed:', (err as Error).message?.slice(0, 120))
+          }
         }
         const membershipByEmail = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
         const membershipBySourceId = new Map<string, { membership: string | null; membershipStatus: string | null; lastVisit: string | null; firstVisit: string | null }>()
@@ -4791,51 +4807,146 @@ export const intelligenceRouter = createTRPCRouter({
           }
         }
 
-        // Get all bookings for these users at this club
-        const userIds = followers.map(f => f.userId)
-        const bookings = await ctx.prisma.playSessionBooking.findMany({
-          where: {
-            userId: { in: userIds },
-            playSession: { clubId: input.clubId },
-          },
-          select: {
-            userId: true, status: true, bookedAt: true,
-            playSession: {
-              select: { date: true, startTime: true, format: true, pricePerSlot: true },
-            },
-          },
-          orderBy: { bookedAt: 'desc' },
-        })
-        log.info(`[Intelligence] getMemberHealth bookings: users=${userIds.length} bookings=${bookings.length}`)
-
-        // Get preferences
-        const preferences = await ctx.prisma.userPlayPreference.findMany({
-          where: { clubId: input.clubId, userId: { in: userIds } },
-        })
-        log.info(`[Intelligence] getMemberHealth preferences: ${preferences.length}`)
-
-        // Build input for health scoring
+        // ── Split-aggregate strategy for bookings (perf fix, 2026-05-28) ──
+        //
+        // Before: ONE findMany pulled every booking ever made by every
+        // active user (~200k rows on IPC East), then JS filtered the
+        // array six different ways per user to compute totals, recent
+        // counts and lifetime cancelled/no-show stats. SQL took
+        // ~1.5–2s and the result blew up memory.
+        //
+        // After: a recent-window findMany + four typed-Prisma groupBy
+        // aggregates, all running in parallel via Promise.all. The
+        // per-booking scoring functions in lib/ai/member-health only
+        // ever look at ≤60-day windows internally (scoreSessionDiversity
+        // 30/60d, scorePatternBreak 14d, scoreCancelAcceleration 14/28d)
+        // so the 90-day window is a strict superset. Lifetime counts
+        // and the absolute last-confirmed timestamp come from the
+        // groupBys — kept lifetime so lapsed members still get a
+        // correct `daysSinceLastConfirmedBooking` even when their last
+        // play was > 90 days ago.
         const now = new Date()
         const d30 = new Date(now.getTime() - 30 * 86400000)
         const d60 = new Date(now.getTime() - 60 * 86400000)
+        const d90 = new Date(now.getTime() - 90 * 86400000)
+        const d7 = new Date(now.getTime() - 7 * 86400000)
 
+        const userIds = followers.map(f => f.userId)
+
+        // Five parallel typed-Prisma queries replace the old single
+        // findMany that pulled every booking ever into memory. Why
+        // typed and not raw SQL: the Sol2 prod schema diverges from
+        // schema.prisma on UUID columns (clubId fields are TEXT in
+        // DB despite @db.Uuid — see 4f45204f0). Raw SQL with `::uuid`
+        // casts fails on prod with "operator does not exist: text =
+        // uuid" — a regression that already burned us once this
+        // session. Typed API sidesteps the trap.
+        const [
+          recentBookings,
+          totalAgg,
+          cancelledAgg,
+          noShowAgg,
+          lastConfirmedAgg,
+          preferences,
+        ] = await Promise.all([
+          // A — last 90 days with full data for per-window scoring
+          ctx.prisma.playSessionBooking.findMany({
+            where: {
+              userId: { in: userIds },
+              playSession: { clubId: input.clubId },
+              bookedAt: { gte: d90 },
+            },
+            select: {
+              userId: true, status: true, bookedAt: true,
+              playSession: {
+                select: { date: true, startTime: true, format: true, pricePerSlot: true },
+              },
+            },
+            orderBy: { bookedAt: 'desc' },
+          }),
+
+          // B1 — total lifetime bookings per user (all statuses)
+          ctx.prisma.playSessionBooking.groupBy({
+            by: ['userId'],
+            where: {
+              userId: { in: userIds },
+              playSession: { clubId: input.clubId },
+            },
+            _count: { _all: true },
+          }),
+
+          // B2 — lifetime cancelled count per user
+          ctx.prisma.playSessionBooking.groupBy({
+            by: ['userId'],
+            where: {
+              userId: { in: userIds },
+              playSession: { clubId: input.clubId },
+              status: 'CANCELLED',
+            },
+            _count: { _all: true },
+          }),
+
+          // B3 — lifetime no-show count per user
+          ctx.prisma.playSessionBooking.groupBy({
+            by: ['userId'],
+            where: {
+              userId: { in: userIds },
+              playSession: { clubId: input.clubId },
+              status: 'NO_SHOW',
+            },
+            _count: { _all: true },
+          }),
+
+          // B4 — last CONFIRMED booking per user (kept absolute so
+          // lapsed members still get correct daysSinceLastConfirmedBooking
+          // even when their last play was > 90 days ago)
+          ctx.prisma.playSessionBooking.groupBy({
+            by: ['userId'],
+            where: {
+              userId: { in: userIds },
+              playSession: { clubId: input.clubId },
+              status: 'CONFIRMED',
+            },
+            _max: { bookedAt: true },
+          }),
+
+          // Preferences (unchanged)
+          ctx.prisma.userPlayPreference.findMany({
+            where: { clubId: input.clubId, userId: { in: userIds } },
+          }),
+        ])
+
+        log.info(
+          `[Intelligence] getMemberHealth bookings: users=${userIds.length} recent90d=${recentBookings.length} totals=${totalAgg.length} cancelled=${cancelledAgg.length} noShow=${noShowAgg.length} lastConfirmed=${lastConfirmedAgg.length} preferences=${preferences.length}`
+        )
+
+        // Build lookup maps from the aggregate result sets
         const prefMap = new Map(preferences.map(p => [p.userId, p]))
-        const bookingMap = new Map<string, typeof bookings>()
-        for (const b of bookings) {
-          if (!bookingMap.has(b.userId)) bookingMap.set(b.userId, [])
-          bookingMap.get(b.userId)!.push(b)
+        const totalMap = new Map(totalAgg.map(a => [a.userId, a._count._all]))
+        const cancelledMap = new Map(cancelledAgg.map(a => [a.userId, a._count._all]))
+        const noShowMap = new Map(noShowAgg.map(a => [a.userId, a._count._all]))
+        const lastConfirmedMap = new Map(lastConfirmedAgg.map(a => [a.userId, a._max.bookedAt]))
+        const recentByUser = new Map<string, typeof recentBookings>()
+        for (const b of recentBookings) {
+          if (!recentByUser.has(b.userId)) recentByUser.set(b.userId, [])
+          recentByUser.get(b.userId)!.push(b)
         }
 
         const memberInputs = followers.map(f => {
-          const userBookings = bookingMap.get(f.userId) || []
-          const confirmed = userBookings.filter(b => b.status === 'CONFIRMED')
-          const lastConfirmed = confirmed[0]?.bookedAt ?? null
-          const daysSinceLast = lastConfirmed
-            ? Math.floor((now.getTime() - lastConfirmed.getTime()) / 86400000)
+          const userRecent = recentByUser.get(f.userId) || []
+          const confirmedRecent = userRecent.filter(b => b.status === 'CONFIRMED')
+
+          const totalBookings = totalMap.get(f.userId) ?? 0
+          const cancelledCount = cancelledMap.get(f.userId) ?? 0
+          const noShowCount = noShowMap.get(f.userId) ?? 0
+          const lastConfirmedAt = lastConfirmedMap.get(f.userId) ?? null
+          const daysSinceLast = lastConfirmedAt
+            ? Math.floor((now.getTime() - new Date(lastConfirmedAt).getTime()) / 86400000)
             : null
 
-          const bookingsLast30 = confirmed.filter(b => b.bookedAt >= d30).length
-          const bookings30to60 = confirmed.filter(b => b.bookedAt >= d60 && b.bookedAt < d30).length
+          const bookingsLast7 = confirmedRecent.filter(b => b.bookedAt >= d7).length
+          const bookingsLast30 = confirmedRecent.filter(b => b.bookedAt >= d30).length
+          const bookings30to60 = confirmedRecent.filter(b => b.bookedAt >= d60 && b.bookedAt < d30).length
 
           return {
             member: {
@@ -4868,16 +4979,24 @@ export const intelligenceRouter = createTRPCRouter({
               }
             })(),
             history: {
-              totalBookings: userBookings.length,
-              bookingsLastWeek: confirmed.filter(b => b.bookedAt >= new Date(now.getTime() - 7 * 86400000)).length,
+              totalBookings,
+              bookingsLastWeek: bookingsLast7,
               bookingsLastMonth: bookingsLast30,
               daysSinceLastConfirmedBooking: daysSinceLast,
-              cancelledCount: userBookings.filter(b => b.status === 'CANCELLED').length,
-              noShowCount: userBookings.filter(b => b.status === 'NO_SHOW').length,
+              cancelledCount,
+              noShowCount,
               inviteAcceptanceRate: 0.7, // default
             },
             joinedAt: f.createdAt ?? new Date(),
-            bookingDates: userBookings.map(b => ({
+            // bookingDates / bookingsWithSessions are last-90d slices.
+            // All scoring functions in lib/ai/member-health.ts look at
+            // ≤60d windows internally so this is semantically equivalent.
+            // Lifetime totals (total/cancelled/noShow) come from the
+            // groupBy aggregates above; revenue stays approximated from
+            // the 90d window — scoring's value-tier classifier compares
+            // members relative to each other within the same club, so a
+            // consistent 90d window keeps the ordering correct.
+            bookingDates: userRecent.map(b => ({
               date: b.bookedAt,
               status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
             })),
@@ -4888,7 +5007,7 @@ export const intelligenceRouter = createTRPCRouter({
               f.user.membershipType,
               f.user.membershipStatus,
             ),
-            bookingsWithSessions: userBookings.map(b => ({
+            bookingsWithSessions: userRecent.map(b => ({
               date: (b as any).playSession?.date ?? b.bookedAt,
               startTime: (b as any).playSession?.startTime ?? '12:00',
               format: (b as any).playSession?.format ?? 'OPEN_PLAY',

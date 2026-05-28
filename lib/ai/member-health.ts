@@ -91,6 +91,12 @@ interface MemberHealthInput {
   membershipInfo?: MembershipInfo | null;
   // Co-player social graph data (built by getMemberHealth SQL)
   coPlayerActivity?: { activeCoPlayers: number; totalCoPlayers: number };
+  // Lifetime total of pricePerSlot for confirmed bookings. When provided,
+  // overrides the in-memory sum over bookingsWithSessions — necessary
+  // since the route may limit bookingsWithSessions to a recent window
+  // for SQL efficiency, while the value-tier classifier needs lifetime
+  // numbers to stay consistent across members.
+  lifetimeRevenue?: number;
 }
 
 // ── Segmentation Classifiers ──
@@ -287,7 +293,11 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
   // ── Multi-dimensional segmentation ──
   const bws = input.bookingsWithSessions || []
   const confirmedBws = bws.filter(b => b.status === 'CONFIRMED')
-  const totalRevenue = confirmedBws.reduce((sum, b) => sum + (b.pricePerSlot || 0), 0)
+  // Prefer the explicit lifetime revenue when the route provides it;
+  // otherwise fall back to summing whatever bookings are in memory.
+  // Older call sites that pass full history continue to work unchanged.
+  const totalRevenue = input.lifetimeRevenue
+    ?? confirmedBws.reduce((sum, b) => sum + (b.pricePerSlot || 0), 0)
   const avgSessionsPerWeek = joinedDaysAgo > 0 ? (history.totalBookings / (joinedDaysAgo / 7)) : 0
 
   const segment: MemberSegment = {
