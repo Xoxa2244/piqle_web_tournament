@@ -35,6 +35,9 @@ export interface DrillTarget {
 interface Props {
   clubId: string
   periodDays: number
+  /** Custom range (§1e) — when set, the modal inherits it from the page. */
+  startDate?: string | null
+  endDate?: string | null
   target: DrillTarget | null
   onClose: () => void
 }
@@ -47,7 +50,7 @@ const METRIC_META: Record<Metric, { label: string }> = {
   sessions: { label: 'Sessions' },
 }
 
-export function ProgrammingDynamicsModal({ clubId, periodDays, target, onClose }: Props) {
+export function ProgrammingDynamicsModal({ clubId, periodDays, startDate, endDate, target, onClose }: Props) {
   const [metric, setMetric] = useState<Metric>('participants')
 
   // Esc closes + lock body scroll while open.
@@ -71,6 +74,8 @@ export function ProgrammingDynamicsModal({ clubId, periodDays, target, onClose }
       periodDays,
       family: (target?.family ?? 'OPEN_PLAY') as ProgramFamily,
       programKey: target?.programKey ?? undefined,
+      startDate: startDate ?? undefined,
+      endDate: endDate ?? undefined,
     },
     { enabled: !!target && !!clubId, staleTime: 5 * 60_000 },
   )
@@ -221,8 +226,8 @@ export function ProgrammingDynamicsModal({ clubId, periodDays, target, onClose }
                       )}
                     </div>
                     <span className="text-xs" style={{ color: 'var(--t4)' }}>
-                      {data.granularity === 'day' ? 'daily' : data.granularity === 'week' ? 'weekly' : 'monthly'} · last{' '}
-                      {periodDays >= 365 ? '1y' : `${periodDays}d`}
+                      {data.granularity === 'day' ? 'daily' : data.granularity === 'week' ? 'weekly' : 'monthly'} ·{' '}
+                      {startDate && endDate ? 'custom range' : periodDays >= 365 ? 'last 1y' : `last ${periodDays}d`}
                     </span>
                   </div>
                 )}

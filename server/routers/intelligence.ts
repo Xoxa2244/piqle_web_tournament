@@ -184,6 +184,28 @@ async function loadProgrammingSessionRows(
   }))
 }
 
+/**
+ * Resolve the period anchor + length for Programming Health (§1e).
+ * With an explicit [startDate, endDate] the window ENDS at endDate (inclusive
+ * of that whole day) and periodDays is derived; otherwise it's the last
+ * `periodDays` ending now. Derived length is clamped to [1, 730] days.
+ */
+function resolveProgrammingPeriod(input: {
+  periodDays: number
+  startDate?: string
+  endDate?: string
+}): { anchorNow: Date; periodDays: number } {
+  if (input.startDate && input.endDate) {
+    const start = new Date(input.startDate)
+    const end = new Date(input.endDate)
+    // Treat endDate as inclusive of its whole day → exclusive next-day bound.
+    end.setUTCDate(end.getUTCDate() + 1)
+    const days = Math.min(730, Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000)))
+    return { anchorNow: end, periodDays: days }
+  }
+  return { anchorNow: new Date(), periodDays: input.periodDays }
+}
+
 // ── Helper: bucket a 24h time into morning/afternoon/evening ──
 // Used by Programming IQ when persisting OpsSessionDraft rows so its
 // timeSlot stays aligned with the rest of the ops-session workflows.
@@ -2365,13 +2387,17 @@ export const intelligenceRouter = createTRPCRouter({
     .input(z.object({
       clubId: z.string().uuid(),
       periodDays: z.number().int().min(1).max(365).default(30),
+      // Custom range (§1e): when both set, the window ends at endDate and
+      // periodDays is derived; otherwise periodDays-ending-now is used.
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const now = new Date()
+      const { anchorNow: now, periodDays } = resolveProgrammingPeriod(input)
       // Load TWO periods so the aggregator can compute a trend.
-      const windowStart = new Date(now.getTime() - 2 * input.periodDays * 86_400_000)
+      const windowStart = new Date(now.getTime() - 2 * periodDays * 86_400_000)
 
       const club = await ctx.prisma.club.findUnique({
         where: { id: input.clubId },
@@ -2389,12 +2415,12 @@ export const intelligenceRouter = createTRPCRouter({
       return {
         ...aggregateProgramFamilies(sessionRows, {
           now,
-          periodDays: input.periodDays,
+          periodDays,
           clubName: club?.name ?? null,
         }),
         insights: buildProgrammingInsights(sessionRows, {
           now,
-          periodDays: input.periodDays,
+          periodDays,
           clubName: club?.name ?? null,
         }),
       }
@@ -2418,12 +2444,15 @@ export const intelligenceRouter = createTRPCRouter({
       /** Optional: restrict to one normalized program inside the family
        *  (the lowercased programGroupKey from the drill-down list). */
       programKey: z.string().optional(),
+      // Custom range (§1e) — modal inherits the page's period.
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
 
-      const now = new Date()
-      const windowStart = new Date(now.getTime() - input.periodDays * 86_400_000)
+      const { anchorNow: now, periodDays } = resolveProgrammingPeriod(input)
+      const windowStart = new Date(now.getTime() - periodDays * 86_400_000)
 
       const club = await ctx.prisma.club.findUnique({
         where: { id: input.clubId },
@@ -2439,7 +2468,7 @@ export const intelligenceRouter = createTRPCRouter({
 
       return buildProgramFamilySeries(sessionRows, {
         now,
-        periodDays: input.periodDays,
+        periodDays,
         family: input.family,
         programKey: input.programKey ?? null,
         clubName: club?.name ?? null,

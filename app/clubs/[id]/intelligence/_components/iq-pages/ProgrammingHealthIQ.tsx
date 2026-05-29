@@ -46,13 +46,20 @@ type Trend = { deltaPct: number; direction: 'up' | 'down' | 'flat' } | null
 
 export function ProgrammingHealthIQ({ clubId }: Props) {
   const [periodDays, setPeriodDays] = useState<number>(30)
+  // Custom date range (§1e) — when set, overrides the preset periodDays.
+  const [custom, setCustom] = useState<{ start: string; end: string } | null>(null)
+  const [showCustom, setShowCustom] = useState(false)
+  const [draftStart, setDraftStart] = useState('')
+  const [draftEnd, setDraftEnd] = useState('')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // Drill-down chart modal (§1f). Chevron expands inline; clicking the card
   // or a program row opens this with a line chart.
   const [drill, setDrill] = useState<DrillTarget | null>(null)
 
   const query = trpc.intelligence.getProgrammingFamilyHealth.useQuery(
-    { clubId, periodDays },
+    custom
+      ? { clubId, startDate: custom.start, endDate: custom.end }
+      : { clubId, periodDays },
     { enabled: !!clubId, staleTime: 5 * 60_000 },
   )
   const data = query.data
@@ -71,7 +78,28 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
     document.getElementById(`ph-fam-${family}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
-  const periodLabel = PERIOD_PRESETS.find((p) => p.days === periodDays)?.label ?? `${periodDays}d`
+  const periodLabel = custom
+    ? 'custom range'
+    : PERIOD_PRESETS.find((p) => p.days === periodDays)?.label ?? `${periodDays}d`
+
+  // Open the custom-range editor seeded with the current window.
+  const openCustom = () => {
+    const today = new Date()
+    const startSeed = new Date(today.getTime() - periodDays * 86_400_000)
+    setDraftStart(custom?.start ?? startSeed.toISOString().slice(0, 10))
+    setDraftEnd(custom?.end ?? today.toISOString().slice(0, 10))
+    setShowCustom((s) => !s)
+  }
+  const applyCustom = () => {
+    if (!draftStart || !draftEnd || draftStart > draftEnd) return
+    setCustom({ start: draftStart, end: draftEnd })
+    setShowCustom(false)
+  }
+  const selectPreset = (days: number) => {
+    setCustom(null)
+    setShowCustom(false)
+    setPeriodDays(days)
+  }
 
   return (
     <div className="px-6 py-6 space-y-6" style={{ maxWidth: 1100 }}>
@@ -91,27 +119,72 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
             </p>
           </div>
         </div>
-        {/* Period selector (presets; custom range lands in 1e) */}
-        <div
-          className="inline-flex rounded-lg overflow-hidden"
-          style={{ border: '1px solid var(--card-border)' }}
-        >
-          {PERIOD_PRESETS.map((p) => {
-            const active = p.days === periodDays
-            return (
+        {/* Period selector — presets + custom range (§1e) */}
+        <div className="flex items-start gap-2 flex-wrap justify-end">
+          <div
+            className="inline-flex rounded-lg overflow-hidden"
+            style={{ border: '1px solid var(--card-border)' }}
+          >
+            {PERIOD_PRESETS.map((p) => {
+              const active = !custom && p.days === periodDays
+              return (
+                <button
+                  key={p.days}
+                  onClick={() => selectPreset(p.days)}
+                  className="px-3 py-1.5 text-sm font-semibold transition-colors"
+                  style={{
+                    background: active ? 'var(--accent, #A855F7)' : 'var(--subtle)',
+                    color: active ? '#fff' : 'var(--t2)',
+                  }}
+                >
+                  {p.label}
+                </button>
+              )
+            })}
+            <button
+              onClick={openCustom}
+              className="px-3 py-1.5 text-sm font-semibold transition-colors"
+              style={{
+                background: custom ? 'var(--accent, #A855F7)' : 'var(--subtle)',
+                color: custom ? '#fff' : 'var(--t2)',
+              }}
+              title="Custom date range"
+            >
+              Custom
+            </button>
+          </div>
+          {showCustom && (
+            <div
+              className="flex items-center gap-1.5 rounded-lg p-1.5"
+              style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}
+            >
+              <input
+                type="date"
+                value={draftStart}
+                max={draftEnd || undefined}
+                onChange={(e) => setDraftStart(e.target.value)}
+                className="text-xs rounded px-2 py-1"
+                style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--t2)' }}
+              />
+              <span style={{ color: 'var(--t4)', fontSize: 12 }}>→</span>
+              <input
+                type="date"
+                value={draftEnd}
+                min={draftStart || undefined}
+                onChange={(e) => setDraftEnd(e.target.value)}
+                className="text-xs rounded px-2 py-1"
+                style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--t2)' }}
+              />
               <button
-                key={p.days}
-                onClick={() => setPeriodDays(p.days)}
-                className="px-3 py-1.5 text-sm font-semibold transition-colors"
-                style={{
-                  background: active ? 'var(--accent, #A855F7)' : 'var(--subtle)',
-                  color: active ? '#fff' : 'var(--t2)',
-                }}
+                onClick={applyCustom}
+                disabled={!draftStart || !draftEnd || draftStart > draftEnd}
+                className="text-xs font-semibold rounded px-2.5 py-1 transition-opacity disabled:opacity-40"
+                style={{ background: 'var(--accent, #A855F7)', color: '#fff' }}
               >
-                {p.label}
+                Apply
               </button>
-            )
-          })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -308,6 +381,8 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
       <ProgrammingDynamicsModal
         clubId={clubId}
         periodDays={periodDays}
+        startDate={custom?.start}
+        endDate={custom?.end}
         target={drill}
         onClose={() => setDrill(null)}
       />
