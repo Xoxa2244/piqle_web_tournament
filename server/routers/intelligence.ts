@@ -8,6 +8,7 @@ import {
   aggregateProgramFamilies,
   type AggregatorSessionRow,
 } from '@/lib/ai/program-family-aggregator'
+import { buildProgramFamilySeries } from '@/lib/ai/program-family-series'
 import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
@@ -110,6 +111,76 @@ async function requireClubAdmin(prisma: any, clubId: string, userId: string) {
     return { isAdmin: false, isMember: true }
   }
   return { isAdmin: true, isMember: true }
+}
+
+/**
+ * Load play_sessions + confirmed booking counts for one club over a date
+ * window [start, end), mapped to the aggregator's row shape.
+ *
+ * Solomon's pre-aggregate pattern: count bookings in a CTE then LEFT JOIN,
+ * so a wide window stays ~1s instead of a per-session correlated subquery.
+ * No ::uuid cast — clubId is TEXT on Sol2 prod (see CLAUDE.md). Shared by
+ * the Programming Health v2 family-health + family-series endpoints.
+ */
+async function loadProgrammingSessionRows(
+  prisma: any,
+  clubId: string,
+  start: Date,
+  end: Date,
+): Promise<AggregatorSessionRow[]> {
+  const rows = (await prisma.$queryRawUnsafe(
+    `
+    WITH window_sessions AS (
+      SELECT ps.id,
+             ps.title,
+             ps.format::text AS format,
+             ps.category,
+             ps."maxPlayers" AS max_players,
+             ps.date
+      FROM play_sessions ps
+      WHERE ps."clubId" = $1
+        AND ps.date >= $2
+        AND ps.date <  $3
+    ),
+    booking_counts AS (
+      SELECT psb."sessionId" AS session_id, COUNT(*)::int AS confirmed
+      FROM play_session_bookings psb
+      WHERE psb.status = 'CONFIRMED'
+        AND psb."sessionId" IN (SELECT id FROM window_sessions)
+      GROUP BY psb."sessionId"
+    )
+    SELECT ws.id,
+           ws.title,
+           ws.format,
+           ws.category,
+           ws.max_players,
+           ws.date,
+           COALESCE(bc.confirmed, 0)::int AS confirmed_count
+    FROM window_sessions ws
+    LEFT JOIN booking_counts bc ON bc.session_id = ws.id
+    `,
+    clubId,
+    start,
+    end,
+  )) as Array<{
+    id: string
+    title: string | null
+    format: string | null
+    category: string | null
+    max_players: number | null
+    date: Date
+    confirmed_count: number
+  }>
+
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    format: r.format,
+    category: r.category,
+    maxPlayers: r.max_players,
+    date: r.date,
+    confirmedCount: r.confirmed_count,
+  }))
 }
 
 // ── Helper: bucket a 24h time into morning/afternoon/evening ──
@@ -2306,66 +2377,62 @@ export const intelligenceRouter = createTRPCRouter({
         select: { name: true },
       })
 
-      // Pre-aggregate confirmed bookings for just the window's sessions,
-      // then LEFT JOIN — avoids the per-session correlated subquery.
-      // NB: clubId is TEXT on Sol2 prod — no ::uuid cast (see CLAUDE.md).
-      const rows = (await ctx.prisma.$queryRawUnsafe(
-        `
-        WITH window_sessions AS (
-          SELECT ps.id,
-                 ps.title,
-                 ps.format::text AS format,
-                 ps.category,
-                 ps."maxPlayers" AS max_players,
-                 ps.date
-          FROM play_sessions ps
-          WHERE ps."clubId" = $1
-            AND ps.date >= $2
-            AND ps.date <  $3
-        ),
-        booking_counts AS (
-          SELECT psb."sessionId" AS session_id, COUNT(*)::int AS confirmed
-          FROM play_session_bookings psb
-          WHERE psb.status = 'CONFIRMED'
-            AND psb."sessionId" IN (SELECT id FROM window_sessions)
-          GROUP BY psb."sessionId"
-        )
-        SELECT ws.id,
-               ws.title,
-               ws.format,
-               ws.category,
-               ws.max_players,
-               ws.date,
-               COALESCE(bc.confirmed, 0)::int AS confirmed_count
-        FROM window_sessions ws
-        LEFT JOIN booking_counts bc ON bc.session_id = ws.id
-        `,
+      const sessionRows = await loadProgrammingSessionRows(
+        ctx.prisma,
         input.clubId,
         windowStart,
         now,
-      )) as Array<{
-        id: string
-        title: string | null
-        format: string | null
-        category: string | null
-        max_players: number | null
-        date: Date
-        confirmed_count: number
-      }>
-
-      const sessionRows: AggregatorSessionRow[] = rows.map((r) => ({
-        id: r.id,
-        title: r.title,
-        format: r.format,
-        category: r.category,
-        maxPlayers: r.max_players,
-        date: r.date,
-        confirmedCount: r.confirmed_count,
-      }))
+      )
 
       return aggregateProgramFamilies(sessionRows, {
         now,
         periodDays: input.periodDays,
+        clubName: club?.name ?? null,
+      })
+    }),
+
+  // ── Programming Health v2 — drill-down time series (§1f-i) ──
+  //
+  // Buckets ONE family's (optionally one normalized program's) current-period
+  // sessions into a line series for the chart modal. Same window loader as
+  // getProgrammingFamilyHealth; bucketing lives in the pure, unit-tested
+  // buildProgramFamilySeries(). Only the current period is loaded (the modal
+  // charts the selected period; the family card already carries the trend).
+  getProgrammingFamilySeries: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      periodDays: z.number().int().min(1).max(365).default(30),
+      family: z.enum([
+        'OPEN_PLAY', 'COURT_BOOKING', 'CLINIC', 'PRIVATE_LESSON',
+        'LEAGUE', 'EVENTS', 'YOUTH', 'EQUIPMENT',
+      ]),
+      /** Optional: restrict to one normalized program inside the family
+       *  (the lowercased programGroupKey from the drill-down list). */
+      programKey: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const now = new Date()
+      const windowStart = new Date(now.getTime() - input.periodDays * 86_400_000)
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true },
+      })
+
+      const sessionRows = await loadProgrammingSessionRows(
+        ctx.prisma,
+        input.clubId,
+        windowStart,
+        now,
+      )
+
+      return buildProgramFamilySeries(sessionRows, {
+        now,
+        periodDays: input.periodDays,
+        family: input.family,
+        programKey: input.programKey ?? null,
         clubName: club?.name ?? null,
       })
     }),

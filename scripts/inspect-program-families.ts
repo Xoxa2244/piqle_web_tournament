@@ -15,7 +15,8 @@
 import { prisma } from '../lib/prisma'
 import { aggregateProgramFamilies, type AggregatorSessionRow } from '../lib/ai/program-family-aggregator'
 import { normalizeProgramTitle } from '../lib/ai/program-title-normalizer'
-import { classifyProgramFamily } from '../lib/ai/program-family-classifier'
+import { classifyProgramFamily, type ProgramFamily } from '../lib/ai/program-family-classifier'
+import { buildProgramFamilySeries } from '../lib/ai/program-family-series'
 
 function arg(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`))
@@ -124,6 +125,27 @@ async function main() {
     date: r.date,
     confirmedCount: r.confirmed_count,
   }))
+
+  // --series=FAMILY [--program=key]: print the drill-down time series the
+  // chart modal will plot (§1f-i verification).
+  const seriesFamily = arg('series') as ProgramFamily | undefined
+  if (seriesFamily) {
+    const s = buildProgramFamilySeries(sessionRows, {
+      now,
+      periodDays: days,
+      family: seriesFamily,
+      programKey: arg('program') ?? null,
+      clubName,
+    })
+    console.log(`Series — ${s.family}${s.programKey ? ` / ${s.programKey}` : ''}  (${s.granularity}, ${days}d)\n`)
+    for (const b of s.buckets) {
+      const fill = b.fillRate == null ? '   —' : `${b.fillRate}%`.padStart(4)
+      console.log(`  ${b.label.padEnd(10)}  ${String(b.sessions).padStart(3)} sess  ${String(b.participants).padStart(4)} ppl  fill ${fill}`)
+    }
+    console.log(`\n  TOTAL: ${s.totals.sessions} sess · ${s.totals.participants} ppl · fill ${s.totals.fillRate == null ? '—' : s.totals.fillRate + '%'}`)
+    await prisma.$disconnect()
+    return
+  }
 
   const result = aggregateProgramFamilies(sessionRows, { now, periodDays: days, clubName })
 
