@@ -1200,6 +1200,139 @@ async function syncEventRegistrations(
   return { sessions: sessionsResult, bookings: bookingsResult }
 }
 
+/** Sync event WAITLISTS → play_session_waitlist.
+ *
+ *  CR's eventregistrationreport exposes a sibling of /listactive: /listwaitlist,
+ *  with the same row shape. The active-registration pass already created each
+ *  PlaySession and its PLAY_SESSION external mapping, so here we only resolve
+ *  the existing session per event and upsert the waitlisted members (resolved
+ *  to users by email, same as bookings).
+ *
+ *  Per processed session we reconcile: members no longer on CR's waitlist
+ *  (promoted into a freed spot, or removed) are deleted — but ONLY when we
+ *  matched ≥1 current member, so a total email-match miss never wipes a
+ *  session's list. Best-effort: failures here never abort the overall sync.
+ *
+ *  v1 limitation: if a session's CR waitlist drops to 0 it returns no rows, so
+ *  we can't detect it to clear ours that run; it clears on a later run where
+ *  CR still lists ≥1, or naturally once the session is in the past.
+ *
+ *  NOTE: field names below assume /listwaitlist mirrors /listactive (same
+ *  report family). If CR shapes it differently, matches fall to 0 (no harm) —
+ *  verified by checking play_session_waitlist populates after a sync. */
+async function syncEventWaitlist(
+  client: CourtReserveClient,
+  clubId: string,
+  partnerId: string,
+  from: Date,
+  to: Date,
+): Promise<{ upserted: number; removed: number; errors: number }> {
+  const result = { upserted: 0, removed: 0, errors: 0 }
+
+  const [followers, existingMappings] = await Promise.all([
+    prisma.clubFollower.findMany({
+      where: { clubId },
+      include: { user: { select: { id: true, email: true } } },
+    }),
+    prisma.externalIdMapping.findMany({
+      where: { partnerId, entityType: ExternalEntityType.PLAY_SESSION },
+      select: { externalId: true, internalId: true },
+    }),
+  ])
+  const emailToUserId = new Map(
+    followers.filter((f) => f.user.email).map((f) => [f.user.email!.toLowerCase(), f.userId]),
+  )
+  const eventIdToSessionId = new Map(existingMappings.map((m) => [m.externalId, m.internalId]))
+
+  // 31-day windows — identical scheme to syncEventRegistrations.
+  const windows: { from: string; to: string }[] = []
+  let current = new Date(from)
+  while (current < to) {
+    const windowEnd = new Date(current)
+    windowEnd.setDate(windowEnd.getDate() + 30)
+    const end = windowEnd > to ? to : windowEnd
+    windows.push({ from: current.toISOString().split('T')[0], to: end.toISOString().split('T')[0] })
+    current = new Date(end)
+    current.setDate(current.getDate() + 1)
+  }
+
+  for (const window of windows) {
+    try {
+      const data = await client
+        .request<any[]>('/api/v1/eventregistrationreport/listwaitlist', {
+          eventDateFrom: window.from,
+          eventDateTo: window.to,
+        })
+        .catch(() => [] as any[])
+      if (!Array.isArray(data) || data.length === 0) continue
+
+      // Group by event-date instance — same key scheme as bookings, so it
+      // resolves against the same PLAY_SESSION external mapping.
+      const grouped = new Map<string, any[]>()
+      for (const reg of data) {
+        const key = `evt_${reg.EventDateId ?? reg.eventDateId ?? reg.EventId ?? reg.eventId}`
+        if (!grouped.has(key)) grouped.set(key, [])
+        grouped.get(key)!.push(reg)
+      }
+
+      const entries = Array.from(grouped.entries())
+      const BATCH = 5
+      for (let i = 0; i < entries.length; i += BATCH) {
+        await Promise.all(
+          entries.slice(i, i + BATCH).map(async ([eventKey, regs]) => {
+            const sessionId = eventIdToSessionId.get(eventKey)
+            if (!sessionId) return // session not synced yet (no active regs) — caught next run
+
+            const currentUserIds: string[] = []
+            for (const reg of regs) {
+              if (reg.CancelledOnUtc || reg.cancelledOnUtc) continue
+              const email = String(reg.Email ?? reg.email ?? '').toLowerCase().trim()
+              const userId = email ? emailToUserId.get(email) : undefined
+              if (!userId) continue
+              currentUserIds.push(userId)
+              const joinedRaw =
+                reg.SignedUpOnUtc ?? reg.signedUpOnUtc ?? reg.RegisteredOnUtc ?? reg.registeredOnUtc ?? null
+              try {
+                await prisma.playSessionWaitlist.upsert({
+                  where: { sessionId_userId: { sessionId, userId } },
+                  update: { status: 'WAITING' as any },
+                  create: {
+                    sessionId,
+                    userId,
+                    status: 'WAITING' as any,
+                    joinedAt: joinedRaw ? new Date(joinedRaw) : new Date(),
+                  },
+                })
+                result.upserted++
+              } catch {
+                result.errors++
+              }
+            }
+
+            // Reconcile only when we matched ≥1 current member — guards against
+            // a full email-match miss wiping a session's waitlist.
+            if (currentUserIds.length > 0) {
+              try {
+                const removed = await prisma.playSessionWaitlist.deleteMany({
+                  where: { sessionId, userId: { notIn: currentUserIds } },
+                })
+                result.removed += removed.count
+              } catch {
+                /* non-fatal */
+              }
+            }
+          }),
+        )
+      }
+    } catch (err) {
+      console.error(`[CR Sync] Waitlist ${window.from}-${window.to} error:`, (err as Error).message?.slice(0, 100))
+      result.errors++
+    }
+  }
+
+  return result
+}
+
 function mapSkillLevelFromEvent(name: string): string {
   const lower = name.toLowerCase()
   if (lower.includes('beginner') || lower.includes('casual') || lower.includes('2.0') || lower.includes('2.5')) return 'BEGINNER'
@@ -1461,6 +1594,17 @@ export async function runCourtReserveSync(
         const eventResult = await syncEventRegistrations(client, clubId, partnerId, windowFrom, windowTo, connectorId)
         sessionsResult.created += eventResult.sessions.created; sessionsResult.updated += eventResult.sessions.updated; sessionsResult.errors += eventResult.sessions.errors
         bookingsResult.created += eventResult.bookings.created; bookingsResult.errors += eventResult.bookings.errors
+        // Event waitlists → play_session_waitlist. Best-effort: a waitlist
+        // failure must never abort the events phase. Runs after registrations
+        // so the PLAY_SESSION mappings it resolves against already exist.
+        try {
+          const wl = await syncEventWaitlist(client, clubId, partnerId, windowFrom, windowTo)
+          if (wl.upserted || wl.removed || wl.errors) {
+            console.log(`[CR Sync] ${clubId}: waitlist ${window.from} → +${wl.upserted} / -${wl.removed} / err ${wl.errors}`)
+          }
+        } catch (e: any) {
+          console.error(`[CR Sync] ${clubId}: waitlist window ${window.from} error (non-fatal):`, e?.message || e)
+        }
         completedWindows.push(`evt:${window.from}`)
       } catch (err: any) {
         if (err.message?.includes('Rate limited')) throw err
