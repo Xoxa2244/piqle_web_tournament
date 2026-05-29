@@ -26,6 +26,7 @@
 import { useState } from 'react'
 import {
   FileBarChart, ChevronRight, ChevronDown, TrendingUp, TrendingDown, Minus,
+  Lightbulb, AlertCircle, AlertTriangle, ArrowRight,
 } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 import { ProgrammingDynamicsModal, type DrillTarget } from './ProgrammingDynamicsModal'
@@ -63,6 +64,12 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
       else next.add(family)
       return next
     })
+
+  // Insight "see family ↑" chip scrolls back to the matching family card.
+  const scrollToFamily = (family: string) => {
+    if (typeof document === 'undefined') return
+    document.getElementById(`ph-fam-${family}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
 
   const periodLabel = PERIOD_PRESETS.find((p) => p.days === periodDays)?.label ?? `${periodDays}d`
 
@@ -146,7 +153,8 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
               return (
                 <div
                   key={fam.family}
-                  className="rounded-2xl overflow-hidden"
+                  id={`ph-fam-${fam.family}`}
+                  className="rounded-2xl overflow-hidden scroll-mt-4"
                   style={{
                     background: 'var(--card-bg)',
                     border: '1px solid var(--card-border)',
@@ -238,6 +246,62 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
               )
             })}
           </div>
+
+          {/* Part 2 — what to do (insights tied to the numbers above) */}
+          {data.insights.length > 0 && (
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-4 h-4" style={{ color: 'var(--t3)' }} />
+                <h2 style={{ fontSize: 15, fontWeight: 700, color: 'var(--heading)' }}>What to do</h2>
+                <span className="text-xs" style={{ color: 'var(--t4)' }}>
+                  {data.insights.length} suggestion{data.insights.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              {data.insights.map((ins) => {
+                const sevColor = ins.severity === 'critical' ? '#EF4444' : '#F59E0B'
+                const Icon = ins.severity === 'critical' ? AlertCircle : AlertTriangle
+                const hasCard = data.families.some((f) => f.family === ins.family)
+                return (
+                  <div
+                    key={ins.id}
+                    className="rounded-xl p-4 flex items-start gap-3"
+                    style={{
+                      background: 'var(--card-bg)',
+                      border: '1px solid var(--card-border)',
+                      borderLeft: `4px solid ${sevColor}`,
+                    }}
+                  >
+                    <Icon className="w-4 h-4 mt-0.5 shrink-0" style={{ color: sevColor }} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold" style={{ color: 'var(--heading)', fontSize: 14 }}>
+                          {ins.title}
+                        </span>
+                        {hasCard && (
+                          <button
+                            onClick={() => scrollToFamily(ins.family)}
+                            className="text-[11px] px-2 py-0.5 rounded-full transition-opacity hover:opacity-80"
+                            style={{ background: 'var(--subtle)', color: 'var(--t3)' }}
+                            title="Jump to the numbers above"
+                          >
+                            see {ins.familyLabel} ↑
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>{ins.detail}</p>
+                    </div>
+                    <a
+                      href={`/clubs/${clubId}/intelligence/campaigns?goal=${ins.treatmentGoal}&family=${ins.family}`}
+                      className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
+                      style={{ background: 'var(--accent, #A855F7)', color: '#fff' }}
+                    >
+                      {ins.treatmentLabel} <ArrowRight className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </>
       )}
 
