@@ -10,6 +10,8 @@ import {
 } from '@/lib/ai/program-family-aggregator'
 import { buildProgramFamilySeries } from '@/lib/ai/program-family-series'
 import { buildProgrammingInsights } from '@/lib/ai/program-family-insights'
+import { classifyProgramFamily } from '@/lib/ai/program-family-classifier'
+import { programGroupKey } from '@/lib/ai/program-title-normalizer'
 import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
@@ -2478,6 +2480,51 @@ export const intelligenceRouter = createTRPCRouter({
         programKey: input.programKey ?? null,
         clubName: club?.name ?? null,
       })
+    }),
+
+  // ── Programming Health v2 — campaign audience by program (§1g) ──
+  //
+  // Distinct confirmed-booker user IDs for a family (optionally one program)
+  // over the period — the audience the insight "Create campaign" button
+  // targets. Same window loader; family classification is regex-on-title, so
+  // we filter + dedup userIds in TS. count matches the family card's "people".
+  getProgramAudience: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      periodDays: z.number().int().min(1).max(365).default(30),
+      family: z.enum([
+        'OPEN_PLAY', 'COURT_BOOKING', 'CLINIC', 'PRIVATE_LESSON',
+        'LEAGUE', 'EVENTS', 'YOUTH', 'EQUIPMENT',
+      ]),
+      programKey: z.string().optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const { anchorNow: now, periodDays } = resolveProgrammingPeriod(input)
+      const windowStart = new Date(now.getTime() - periodDays * 86_400_000)
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true },
+      })
+
+      const rows = await loadProgrammingSessionRows(ctx.prisma, input.clubId, windowStart, now)
+      const ids = new Set<string>()
+      for (const r of rows) {
+        if (classifyProgramFamily({ title: r.title, format: r.format, category: r.category }) !== input.family) {
+          continue
+        }
+        if (input.programKey) {
+          const key = programGroupKey(r.title, club?.name ?? null) || '(untitled)'
+          if (key !== input.programKey) continue
+        }
+        for (const uid of r.userIds ?? []) ids.add(uid)
+      }
+
+      return { family: input.family, count: ids.size, userIds: Array.from(ids) }
     }),
 
   getWeeklyScorecard: protectedProcedure
