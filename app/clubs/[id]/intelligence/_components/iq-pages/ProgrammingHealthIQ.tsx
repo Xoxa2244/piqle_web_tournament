@@ -210,6 +210,7 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
               label="Avg fill (organized)"
               value={data.rollup.fillRate != null ? `${data.rollup.fillRate}%` : '—'}
               accent="green"
+              hint="Registered ÷ listed capacity across organized programs. Can exceed 100% when confirmed bookings go over a session's listed max — common for Open Play, where the cap isn't strictly enforced."
             />
           </div>
 
@@ -392,13 +393,22 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
 
 // ── presentational helpers ──────────────────────────────────────────────
 
-function KpiTile({ label, value, accent }: { label: string; value: string; accent?: 'green' }) {
+function KpiTile({ label, value, accent, hint }: { label: string; value: string; accent?: 'green'; hint?: string }) {
   const color = accent === 'green' ? '#10B981' : 'var(--heading)'
   const bg = accent === 'green' ? 'rgba(16,185,129,0.06)' : 'var(--card-bg)'
   return (
-    <div className="rounded-xl p-3" style={{ background: bg, border: '1px solid var(--card-border)' }}>
-      <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>
+    <div className="rounded-xl p-3" style={{ background: bg, border: '1px solid var(--card-border)' }} title={hint}>
+      <div className="text-[10px] uppercase tracking-wider flex items-center gap-1" style={{ color: 'var(--t4)', fontWeight: 700 }}>
         {label}
+        {hint && (
+          <span
+            className="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] cursor-help"
+            style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}
+            aria-hidden
+          >
+            ?
+          </span>
+        )}
       </div>
       <div style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1.2 }}>{value}</div>
     </div>

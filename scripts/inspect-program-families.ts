@@ -162,6 +162,39 @@ async function main() {
     return
   }
 
+  // --prices=FAMILY: is the over-admission monetized? Pull pricePerSlot for
+  // the family's current-period sessions (PlaySessionBooking has no per-booking
+  // payment field — pricePerSlot is the only money signal in the schema).
+  const pricesFamily = arg('prices') as ProgramFamily | undefined
+  if (pricesFamily) {
+    const periodStart = new Date(now.getTime() - days * 86_400_000)
+    const priced = (await prisma.$queryRawUnsafe(
+      `SELECT ps.id, ps.title, ps.format::text AS format, ps.category,
+              ps."pricePerSlot" AS price
+       FROM play_sessions ps
+       WHERE ps."clubId"::text = $1 AND ps.date >= $2 AND ps.date < $3`,
+      clubId, periodStart, now,
+    )) as Array<{ id: string; title: string | null; format: string | null; category: string | null; price: number | null }>
+    const fam = priced.filter(
+      (r) => classifyProgramFamily({ title: r.title, format: r.format, category: r.category }) === pricesFamily,
+    )
+    let free = 0, zero = 0
+    const priceCount = new Map<number, number>()
+    for (const r of fam) {
+      if (r.price == null) free++
+      else if (r.price === 0) zero++
+      else priceCount.set(r.price, (priceCount.get(r.price) ?? 0) + 1)
+    }
+    console.log(`pricePerSlot — ${pricesFamily} (current ${days}d, ${fam.length} sessions)\n`)
+    console.log(`  price = null (not set):  ${free}`)
+    console.log(`  price = 0 (free):        ${zero}`)
+    for (const [p, c] of Array.from(priceCount.entries()).sort((a, b) => a[0] - b[0])) {
+      console.log(`  price = $${p.toFixed(2).padEnd(7)} ${c} sessions`)
+    }
+    await prisma.$disconnect()
+    return
+  }
+
   // --series=FAMILY [--program=key]: print the drill-down time series the
   // chart modal will plot (§1f-i verification).
   const seriesFamily = arg('series') as ProgramFamily | undefined
