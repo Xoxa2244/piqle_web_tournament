@@ -70,6 +70,22 @@ async function run(request: Request) {
         totalInserted += report.inserted
         totalRefreshed += report.refreshed
         totalResolved += report.resolved
+        // Generator-level failures are now isolated inside runBusinessInsights
+        // (one bad generator no longer aborts the whole club). Surface them so
+        // a single broken generator can't silently freeze insights again.
+        if (report.errors.length > 0) {
+          log.warn(
+            {
+              cron: 'business-insights',
+              clubId: club.id,
+              clubName: club.name,
+              failedGenerators: report.errors
+                .map((e) => `${e.generator}: ${e.error}`)
+                .slice(0, 10),
+            },
+            'business-insights: some generators failed (isolated, run continued)',
+          )
+        }
         okCount++
       } catch (err: any) {
         errCount++

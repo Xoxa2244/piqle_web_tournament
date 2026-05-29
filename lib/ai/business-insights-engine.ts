@@ -911,6 +911,12 @@ export interface RunReport {
   inserted: number
   refreshed: number
   resolved: number
+  /** Per-generator failures (function name + message). Empty on a clean
+   *  pass. A failing generator is isolated (it no longer aborts the whole
+   *  run — that froze EVERY insight at 2026-05-22 on prod), and when this is
+   *  non-empty the auto-resolve sweep is skipped so a transient generator
+   *  error can't wrongly resolve a still-valid insight. */
+  errors: Array<{ generator: string; error: string }>
 }
 
 /**
@@ -961,9 +967,21 @@ export async function runBusinessInsights(
   ]
 
   const produced: BusinessInsight[] = []
+  const errors: Array<{ generator: string; error: string }> = []
   for (const fn of generators) {
-    const result = await fn(prisma, clubId)
-    if (result) produced.push(result)
+    // Isolate each generator: a single throw must NOT abort the whole pass.
+    // (One failing generator froze every business insight at 2026-05-22 on
+    // prod — the manual Refresh and the daily cron both silently no-op'd.)
+    try {
+      const result = await fn(prisma, clubId)
+      if (result) produced.push(result)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      errors.push({ generator: fn.name || 'anonymous', error: message })
+      console.error(
+        `[business-insights] generator "${fn.name}" failed for club ${clubId}: ${message}`,
+      )
+    }
   }
 
   const producedKeys = new Set(produced.map(p => p.dedupeKey))
@@ -1041,21 +1059,26 @@ export async function runBusinessInsights(
   }
 
   // Auto-resolve insights that were active but the generator no longer
-  // produces them (condition resolved on its own).
-  for (const row of existing) {
-    if (!producedKeys.has(row.dedupe_key)) {
-      await prisma.$executeRawUnsafe(
-        `
-        UPDATE business_insight
-        SET status = 'resolved', resolved_at = $1
-        WHERE id = $2
-        `,
-        now,
-        row.id,
-      )
-      resolved++
+  // produces them (condition resolved on its own). SKIP this entirely when
+  // any generator errored: a failed generator is absent from `produced` for
+  // the wrong reason, so resolving here would wrongly clear a still-valid
+  // insight. Those rows just stay until the next clean pass.
+  if (errors.length === 0) {
+    for (const row of existing) {
+      if (!producedKeys.has(row.dedupe_key)) {
+        await prisma.$executeRawUnsafe(
+          `
+          UPDATE business_insight
+          SET status = 'resolved', resolved_at = $1
+          WHERE id = $2
+          `,
+          now,
+          row.id,
+        )
+        resolved++
+      }
     }
   }
 
-  return { generated: produced.length, inserted, refreshed, resolved }
+  return { generated: produced.length, inserted, refreshed, resolved, errors }
 }
