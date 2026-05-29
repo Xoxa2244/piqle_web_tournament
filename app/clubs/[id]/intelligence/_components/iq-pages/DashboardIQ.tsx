@@ -21,7 +21,6 @@ import { MonthCalendar } from "../MonthCalendar";
 import { X, Check, ChevronRight, ChevronDown, FileSpreadsheet, Loader2 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { CourtReserveConnector } from "./shared/CourtReserveConnector";
-import { AIRevenueTile } from "../ai-revenue-tile";
 // IntroFunnelTile (Pickleball 101 funnel) removed per
 // DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.1 Step 5.
 // TierBreakdownTile / "Programming Health Overview" removed —
@@ -1167,17 +1166,6 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           (need actual data shape). Skeletons inside Customer Health /
           Business Insights are handled by their own components. */}
       {hasRealData && data && <>
-
-      {/* AI-Attributed Revenue — the "money metric" tile.
-          Placed right after KPIs so club owners (and demo viewers) see
-          the ROI story before the deeper player-health analytics. */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-      >
-        <AIRevenueTile clubId={clubId} />
-      </motion.div>
 
       {/* Pickleball 101 → Membership conversion funnel (IntroFunnelTile)
           removed per DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.1 Step 5.
