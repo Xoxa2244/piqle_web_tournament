@@ -220,7 +220,11 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
         <>
           {/* Part 1 — rollup KPIs */}
           <div className="grid grid-cols-3 gap-3">
-            <KpiTile label="Total sessions" value={String(data.rollup.sessions)} />
+            <KpiTile
+              label="Total sessions"
+              value={String(data.rollup.sessions)}
+              hint={`All sessions run across programs in the last ${periodLabel}.`}
+            />
             <KpiTile
               label="People"
               value={String(data.rollup.people)}
@@ -276,6 +280,7 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                         sessions={fam.sessions}
                         participants={fam.participants}
                         people={fam.people}
+                        periodLabel={periodLabel}
                       />
                     </button>
                     {/* Chevron → expand programs inline (quick overview) */}
@@ -332,6 +337,7 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                               sessions={p.sessions}
                               participants={p.participants}
                               people={p.people}
+                              periodLabel={periodLabel}
                               small
                             />
                           </button>
@@ -457,6 +463,19 @@ function KpiTile({ label, value, accent, hint, sub }: { label: string; value: st
 }
 
 /** The right-aligned metric block shared by family rows and program rows. */
+/** Plain-language tooltip explaining the trend pill (e.g. why "— -1%"). */
+function trendTitle(trend: Trend, period: string): string {
+  if (!trend) return `Trend vs the previous ${period}: not enough history yet.`
+  const { direction, deltaPct } = trend
+  const word =
+    direction === 'up'
+      ? `up ${deltaPct}%`
+      : direction === 'down'
+        ? `down ${Math.abs(deltaPct)}%`
+        : `roughly flat (${deltaPct >= 0 ? '+' : ''}${deltaPct}%)`
+  return `Signups ${word} vs the previous ${period}. The arrow is the direction; flat = within ±2%.`
+}
+
 function MetricCluster({
   trend,
   fill,
@@ -464,6 +483,7 @@ function MetricCluster({
   sessions,
   participants,
   people,
+  periodLabel,
   small,
 }: {
   trend: Trend
@@ -472,22 +492,34 @@ function MetricCluster({
   sessions: number
   participants: number
   people: number
+  periodLabel: string
   small?: boolean
 }) {
   const fs = small ? 12 : 13
+  const fillTitle = !fillMeaningful
+    ? 'Self-serve program (court bookings / private / equipment): booked to capacity by definition, so fill is not meaningful.'
+    : 'Fill = signups / listed capacity. Over 100% = more bookings than the listed max (common for Open Play, where the cap is not strictly enforced).'
   return (
     <div className="flex items-center gap-3 shrink-0" style={{ fontSize: fs }}>
-      <span className="w-16 text-right tabular-nums">
+      <span className="w-16 text-right tabular-nums cursor-help" title={trendTitle(trend, periodLabel)}>
         <TrendPill trend={trend} />
       </span>
-      <span className="w-14 text-right" style={{ color: 'var(--t3)' }}>
+      <span className="w-14 text-right cursor-help" style={{ color: 'var(--t3)' }} title={fillTitle}>
         <FillValue value={fill} meaningful={fillMeaningful} />
       </span>
-      <span className="w-16 text-right tabular-nums" style={{ color: 'var(--t2)' }}>
+      <span
+        className="w-16 text-right tabular-nums cursor-help"
+        style={{ color: 'var(--t2)' }}
+        title={`Sessions run in the last ${periodLabel}.`}
+      >
         {sessions} sess
       </span>
       {/* People (distinct) primary, signups (total bookings) secondary. */}
-      <span className="w-24 text-right tabular-nums leading-tight" style={{ color: 'var(--t2)' }}>
+      <span
+        className="w-24 text-right tabular-nums leading-tight cursor-help"
+        style={{ color: 'var(--t2)' }}
+        title={`People = distinct attendees in the last ${periodLabel}. Signups = total confirmed bookings (one person attending N sessions counts N times).`}
+      >
         {people} <span style={{ color: 'var(--t4)', fontWeight: 400 }}>ppl</span>
         <span className="block text-[10px]" style={{ color: 'var(--t4)' }}>{participants} signups</span>
       </span>
