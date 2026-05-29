@@ -271,6 +271,51 @@ describe('campaign send runner', () => {
     expect(sendOutreachEmail).not.toHaveBeenCalled()
   })
 
+  it('marks a sequence campaign completed when no pending send logs remain', async () => {
+    const prisma = createMockPrisma()
+    const now = new Date('2026-05-13T10:20:00.000Z')
+
+    prisma.campaign.findMany.mockResolvedValue([makeSequenceCampaign()])
+    prisma.aIRecommendationLog.findMany
+      .mockResolvedValueOnce([{ userId: 'member-1', sequenceStep: 0, channel: 'email' }])
+      .mockResolvedValueOnce([
+        {
+          id: 'log-step-0',
+          userId: 'member-1',
+          status: 'sent',
+          sequenceStep: 0,
+          createdAt: new Date('2026-05-13T10:00:00.000Z'),
+          sentAt: new Date('2026-05-13T10:00:00.000Z'),
+          reasoning: {},
+        },
+        {
+          id: 'log-step-1',
+          userId: 'member-1',
+          status: 'sent',
+          sequenceStep: 1,
+          createdAt: new Date('2026-05-13T10:17:00.000Z'),
+          sentAt: new Date('2026-05-13T10:17:00.000Z'),
+          reasoning: {},
+        },
+      ])
+      .mockResolvedValueOnce([{ userId: 'member-1', sequenceStep: 1, channel: 'email' }])
+    prisma.playSessionBooking.findMany.mockResolvedValue([])
+    prisma.$queryRawUnsafe.mockResolvedValue([])
+    prisma.campaign.findUnique.mockResolvedValue({ status: 'running' })
+    prisma.aIRecommendationLog.count
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(0)
+
+    const result = await runCampaignSendTick(prisma, { now })
+
+    expect(prisma.campaign.update).toHaveBeenCalledWith({
+      where: { id: 'campaign-1' },
+      data: { status: 'completed', completedAt: expect.any(Date) },
+    })
+    expect(result.completed).toBe(1)
+    expect(sendOutreachEmail).not.toHaveBeenCalled()
+  })
+
   it('queues follow-up using day-based delays from the wizard', async () => {
     const prisma = createMockPrisma()
     const now = new Date('2026-05-13T10:00:00.000Z')

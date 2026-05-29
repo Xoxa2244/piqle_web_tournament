@@ -1028,7 +1028,7 @@ export async function runCampaignSendTick(prisma: any, opts?: CampaignSendRunner
       summary.exited += result.exited
       summary.queued += result.queued
 
-      if (campaign.format === 'one_time') {
+      if (campaign.format !== 'recurring') {
         const completed = await maybeCompleteCampaign(prisma, campaign.id)
         if (completed) totalCompleted += 1
       }
