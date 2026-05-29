@@ -254,7 +254,7 @@ async function main() {
     const sev = i.severity === 'critical' ? '🔴' : '🟠'
     console.log(`\n${sev} [${i.kind}] ${i.title}`)
     console.log(`   ${i.detail}`)
-    console.log(`   → ${i.treatmentLabel}  (goal: ${i.treatmentGoal})`)
+    console.log(`   → Create campaign  (goal: ${i.treatmentGoal})`)
   }
 
   console.log('\n' + '═'.repeat(72))

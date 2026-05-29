@@ -43,9 +43,8 @@ export interface ProgrammingInsight {
   title: string
   /** One-line explanation tied to the numbers above. */
   detail: string
-  /** CTA label on the treatment button. */
-  treatmentLabel: string
-  /** Campaign-wizard goal the treatment deep-links to. */
+  /** Treatment goal. The UI maps this to a short tag (re-engage / fill /
+   *  recruit / relaunch) and to the Campaign wizard's goal code. */
   treatmentGoal: TreatmentGoal
 }
 
@@ -152,7 +151,6 @@ export function buildProgrammingInsights(
         familyLabel: meta.label,
         title: `${meta.label} went quiet`,
         detail: `No ${meta.label} sessions in the last ${label} — there were ${acc.prevSessions} the period before. Relaunch it or take it off the schedule.`,
-        treatmentLabel: 'Plan a relaunch',
         treatmentGoal: 'relaunch',
       })
       continue // a dead family can't also be "declining" / "low fill"
@@ -172,7 +170,6 @@ export function buildProgrammingInsights(
           familyLabel: meta.label,
           title: `${meta.label} is losing participants`,
           detail: `Down ${Math.abs(deltaPct)}% vs the previous ${label} (${acc.prevParticipants} → ${acc.curParticipants} participants). Win them back before the habit breaks.`,
-          treatmentLabel: 'Re-engage these players',
           treatmentGoal: 'reengage',
         })
       }
@@ -190,7 +187,6 @@ export function buildProgrammingInsights(
           familyLabel: meta.label,
           title: `${meta.label} has empty seats`,
           detail: `Only ${fill}% full across ${acc.curSessions} sessions this ${label}. Fill the open spots with a targeted push.`,
-          treatmentLabel: 'Fill the open spots',
           treatmentGoal: 'fill',
         })
       }
@@ -214,7 +210,6 @@ export function buildProgrammingInsights(
         familyLabel: PROGRAM_FAMILY_META.OPEN_PLAY.label,
         title: 'Beginner pipeline is leaking',
         detail: `Beginner Open Play is down ${Math.abs(begDelta)}% (${begPrev} → ${begCur}) while overall Open Play holds steady — fewer newcomers are entering the funnel.`,
-        treatmentLabel: 'Recruit new players',
         treatmentGoal: 'intro',
       })
     }

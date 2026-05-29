@@ -44,6 +44,22 @@ const PERIOD_PRESETS = [
 
 type Trend = { deltaPct: number; direction: 'up' | 'down' | 'flat' } | null
 
+// Insight treatment → short tag (chip) + the Campaign wizard's goal code.
+// Every insight's action is "create a campaign"; the tag says which kind, and
+// the goal code pre-selects the wizard's Goal step (the wizard's vocabulary).
+const GOAL_TAG: Record<string, string> = {
+  reengage: 'Re-engage',
+  fill: 'Fill seats',
+  intro: 'Recruit',
+  relaunch: 'Relaunch',
+}
+const GOAL_WIZARD: Record<string, string> = {
+  reengage: 'retention_boost',
+  fill: 'promote_event',
+  intro: 'onboard_new',
+  relaunch: 'promote_event',
+}
+
 export function ProgrammingHealthIQ({ clubId }: Props) {
   const [periodDays, setPeriodDays] = useState<number>(30)
   // Custom date range (§1e) — when set, overrides the preset periodDays.
@@ -364,13 +380,21 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                       </div>
                       <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>{ins.detail}</p>
                     </div>
-                    <a
-                      href={`/clubs/${clubId}/intelligence/campaigns?goal=${ins.treatmentGoal}&family=${ins.family}`}
-                      className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
-                      style={{ background: 'var(--accent, #A855F7)', color: '#fff' }}
-                    >
-                      {ins.treatmentLabel} <ArrowRight className="w-3.5 h-3.5" />
-                    </a>
+                    <div className="shrink-0 flex items-center gap-2">
+                      <span
+                        className="text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap"
+                        style={{ background: 'var(--subtle)', color: 'var(--t3)', border: '1px solid var(--card-border)' }}
+                      >
+                        {GOAL_TAG[ins.treatmentGoal] ?? ins.treatmentGoal}
+                      </span>
+                      <a
+                        href={`/clubs/${clubId}/intelligence/campaigns?goal=${GOAL_WIZARD[ins.treatmentGoal] ?? 'custom'}&family=${ins.family}`}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 whitespace-nowrap"
+                        style={{ background: 'var(--accent, #A855F7)', color: '#fff' }}
+                      >
+                        Create campaign <ArrowRight className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                   </div>
                 )
               })}
