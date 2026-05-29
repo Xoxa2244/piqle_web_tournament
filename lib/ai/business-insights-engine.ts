@@ -37,17 +37,10 @@ export interface CohortFilter {
  */
 export type ProgrammingPrefill = Record<string, unknown>
 
-/**
- * Single CR write endpoint reachable from a `cr_api_direct` action.
- * Keep in sync with the methods exposed in `courtreserve-client.ts`.
- */
-export type CRWriteEndpoint =
-  | 'familymembership/reactivate'
-  | 'familymembership/suspend'
-  | 'customrating/assign'
-  | 'reservation/createcourtblock'
-
-/** UnifiedAction.primary leaves — see Spec §2. */
+/** UnifiedAction.primary leaves — see Spec §2.
+ *  Note: there is intentionally no "write to CourtReserve" action — the CR
+ *  integration is read-only (sync in). Anything that would need a CR change
+ *  is surfaced to the operator as `advice` (a manual step), never an API call. */
 export type Action =
   | {
       type: 'create_cohort'
@@ -67,13 +60,6 @@ export type Action =
       label: string
       params: ProgrammingPrefill
       draftId?: string
-    }
-  | {
-      type: 'cr_api_direct'
-      label: string
-      endpoint: CRWriteEndpoint
-      payload: Record<string, unknown>
-      requiresConfirmation: boolean
     }
   | { type: 'advice'; label: string }
 
@@ -638,11 +624,9 @@ export async function pilotGuestPassUpsell(
  * Generator 8 — skill progression (BEGINNER → INTERMEDIATE/ADVANCED).
  *
  * Action: `create_cohort` for progressed members + secondary
- * `create_campaign` (templateKey 'level_up_offer'). Per §6.5 the canon
- * action also includes `cr_api_direct` to assign a new rating in CR,
- * but rating assignment requires a category mapping per-club that we
- * don't have yet — keep it as a future secondary action once a club's
- * rating taxonomy is wired (Phase 2).
+ * `create_campaign` (templateKey 'level_up_offer'). We don't push the new
+ * rating back to CourtReserve — the integration is read-only — so updating
+ * the rating stays a manual step the operator does in CR.
  */
 export async function pilotSkillProgression(
   prisma: PrismaClient,
