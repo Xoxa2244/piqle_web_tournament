@@ -47,7 +47,6 @@ export interface OperationalSignalRow {
       | { type: 'create_cohort'; label: string; cohortRules: unknown[]; draftId?: string }
       | { type: 'create_campaign'; label: string; templateKey: string; cohortRef?: string; draftId?: string }
       | { type: 'programming'; label: string; params: Record<string, unknown>; draftId?: string }
-      | { type: 'cr_api_direct'; label: string; endpoint: string; payload: Record<string, unknown>; requiresConfirmation: boolean }
       | { type: 'advice'; label: string }
     secondary?: Array<OperationalSignalRow['action']['primary']>
   }
@@ -151,18 +150,6 @@ export function SignalCard({ signal, clubId, onResolve }: Props) {
         router.push(`/clubs/${clubId}/intelligence/programming?draftId=${draftId}`)
         return
       }
-      case 'cr_api_direct':
-        // Direct CR write confirmation modal — Step 15 (this) drops a
-        // stub that mirrors BusinessInsightCard. The real modal ships
-        // when the first cr_api_direct generator goes live (Step 16:
-        // suspendedWinback reactivate, etc.).
-        // eslint-disable-next-line no-alert
-        alert(
-          `Direct CR write: ${a.label}\n\nEndpoint: ${a.endpoint}\n\n` +
-            'Confirmation modal lands in a follow-up commit. For now this ' +
-            'is a click-through stub so signal handlers can wire up safely.',
-        )
-        return
       case 'advice':
         onResolve('manual')
         return

@@ -51,7 +51,6 @@ export interface BusinessInsightRow {
       | { type: 'create_cohort'; label: string; cohortRules: unknown[]; draftId?: string }
       | { type: 'create_campaign'; label: string; templateKey: string; cohortRef?: string; draftId?: string }
       | { type: 'programming'; label: string; params: Record<string, unknown>; draftId?: string }
-      | { type: 'cr_api_direct'; label: string; endpoint: string; payload: Record<string, unknown>; requiresConfirmation: boolean }
       | { type: 'advice'; label: string }
     secondary?: Array<BusinessInsightRow['action']['primary']>
   }
@@ -138,14 +137,6 @@ export function BusinessInsightCard({ insight, clubId, onResolve }: Props) {
         router.push(`/clubs/${clubId}/intelligence/programming?draftId=${draftId}`)
         return
       }
-      case 'cr_api_direct':
-        // Direct-write modal lands in Action Center (Step 15+). Surface
-        // a stub for now so operators know the button is wired.
-        // eslint-disable-next-line no-alert
-        alert(
-          `Direct CR write: ${a.label}\n\nThis action will be available once the Action Center confirmation modal ships (Step 15+).`,
-        )
-        return
       case 'advice':
         // Advice-only insights — clicking "Got it" marks resolved.
         onResolve('manual')

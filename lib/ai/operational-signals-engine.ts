@@ -358,19 +358,20 @@ export async function membershipLifecycleAlerts(
           daysSinceLastBooking,
           confirmedBookings: confirmed,
         },
+        // We don't write back to CourtReserve (read-only integration), so the
+        // primary action is the real thing we can do — a win-back campaign.
+        // Reactivating in CR is a manual step, surfaced as advice (clicking
+        // marks the signal handled), never a fake "write to CR" button.
         action: {
           primary: {
-            type: 'cr_api_direct',
-            label: 'Reactivate in CourtReserve',
-            endpoint: 'familymembership/reactivate',
-            payload: { userId: r.userId },
-            requiresConfirmation: true,
+            type: 'create_campaign',
+            label: 'Send win-back offer',
+            templateKey: 'suspended_winback',
           },
           secondary: [
             {
-              type: 'create_campaign',
-              label: 'Send win-back offer',
-              templateKey: 'suspended_winback',
+              type: 'advice',
+              label: 'Mark handled (reactivate in CourtReserve)',
             },
           ],
         },
