@@ -17,7 +17,8 @@
  */
 
 import { useState } from 'react'
-import { Inbox, Layers } from 'lucide-react'
+import { Inbox, Layers, Sparkles } from 'lucide-react'
+import { TodayFeed } from './action-center/TodayFeed'
 import { SignalFeed } from './action-center/SignalFeed'
 import { TierConstructor } from './action-center/TierConstructor'
 
@@ -25,10 +26,10 @@ interface Props {
   clubId: string
 }
 
-type Tab = 'signals' | 'tiers'
+type Tab = 'today' | 'signals' | 'tiers'
 
 export function ActionCenterIQ({ clubId }: Props) {
-  const [tab, setTab] = useState<Tab>('signals')
+  const [tab, setTab] = useState<Tab>('today')
 
   return (
     <div className="max-w-7xl mx-auto p-4 sm:p-6 space-y-4">
@@ -45,8 +46,8 @@ export function ActionCenterIQ({ clubId }: Props) {
             className="text-[12px] sm:text-sm mt-1"
             style={{ color: 'var(--t4)' }}
           >
-            Operational signals + Tier Constructor — what needs your attention
-            today.
+            What to do today to raise engagement — plus operational signals and
+            the Tier Constructor.
           </p>
         </div>
 
@@ -57,12 +58,15 @@ export function ActionCenterIQ({ clubId }: Props) {
             border: '1px solid var(--card-border)',
           }}
         >
+          <TabBtn active={tab === 'today'} onClick={() => setTab('today')} icon={Sparkles} label="Today" />
           <TabBtn active={tab === 'signals'} onClick={() => setTab('signals')} icon={Inbox} label="Signal feed" />
           <TabBtn active={tab === 'tiers'} onClick={() => setTab('tiers')} icon={Layers} label="Tier Constructor" />
         </div>
       </div>
 
-      {tab === 'signals' ? (
+      {tab === 'today' ? (
+        <TodayFeed clubId={clubId} />
+      ) : tab === 'signals' ? (
         <SignalFeed clubId={clubId} />
       ) : (
         <TierConstructor clubId={clubId} />
