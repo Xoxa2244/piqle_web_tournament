@@ -9,6 +9,7 @@ import {
   type AggregatorSessionRow,
 } from '@/lib/ai/program-family-aggregator'
 import { buildProgramFamilySeries } from '@/lib/ai/program-family-series'
+import { buildProgrammingInsights } from '@/lib/ai/program-family-insights'
 import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
 import { persistAgentDecisionRecord } from '@/lib/ai/agent-decision-records'
@@ -2384,11 +2385,19 @@ export const intelligenceRouter = createTRPCRouter({
         now,
       )
 
-      return aggregateProgramFamilies(sessionRows, {
-        now,
-        periodDays: input.periodDays,
-        clubName: club?.name ?? null,
-      })
+      // Part 1 (numbers) + Part 2 (insights) from the same rows — one DB load.
+      return {
+        ...aggregateProgramFamilies(sessionRows, {
+          now,
+          periodDays: input.periodDays,
+          clubName: club?.name ?? null,
+        }),
+        insights: buildProgrammingInsights(sessionRows, {
+          now,
+          periodDays: input.periodDays,
+          clubName: club?.name ?? null,
+        }),
+      }
     }),
 
   // ── Programming Health v2 — drill-down time series (§1f-i) ──

@@ -17,6 +17,7 @@ import { aggregateProgramFamilies, type AggregatorSessionRow } from '../lib/ai/p
 import { normalizeProgramTitle } from '../lib/ai/program-title-normalizer'
 import { classifyProgramFamily, type ProgramFamily } from '../lib/ai/program-family-classifier'
 import { buildProgramFamilySeries } from '../lib/ai/program-family-series'
+import { buildProgrammingInsights } from '../lib/ai/program-family-insights'
 
 function arg(name: string): string | undefined {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`))
@@ -176,6 +177,18 @@ async function main() {
       )
     }
   }
+  // Part 2 — insights ("что делать")
+  const insights = buildProgrammingInsights(sessionRows, { now, periodDays: days, clubName })
+  console.log('\n' + '═'.repeat(72))
+  console.log(`INSIGHTS (${insights.length})`)
+  console.log('═'.repeat(72))
+  for (const i of insights) {
+    const sev = i.severity === 'critical' ? '🔴' : '🟠'
+    console.log(`\n${sev} [${i.kind}] ${i.title}`)
+    console.log(`   ${i.detail}`)
+    console.log(`   → ${i.treatmentLabel}  (goal: ${i.treatmentGoal})`)
+  }
+
   console.log('\n' + '═'.repeat(72))
 }
 
