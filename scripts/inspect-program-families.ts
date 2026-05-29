@@ -127,6 +127,41 @@ async function main() {
     confirmedCount: r.confirmed_count,
   }))
 
+  // --caps=FAMILY: diagnose fill >100% — group the family's current-period
+  // sessions by their maxPlayers value, with confirmed-booking stats, so we
+  // can see whether the listed capacity is systematically too low.
+  const capsFamily = arg('caps') as ProgramFamily | undefined
+  if (capsFamily) {
+    const periodStart = new Date(now.getTime() - days * 86_400_000)
+    const fam = sessionRows.filter(
+      (r) =>
+        classifyProgramFamily({ title: r.title, format: r.format, category: r.category }) === capsFamily &&
+        new Date(r.date) >= periodStart &&
+        new Date(r.date) < now,
+    )
+    const byCap = new Map<number, { sessions: number; confirmed: number; over: number }>()
+    for (const r of fam) {
+      const cap = r.maxPlayers ?? 0
+      const g = byCap.get(cap) ?? { sessions: 0, confirmed: 0, over: 0 }
+      g.sessions++
+      g.confirmed += r.confirmedCount
+      if (r.confirmedCount > cap) g.over++
+      byCap.set(cap, g)
+    }
+    console.log(`maxPlayers breakdown — ${capsFamily} (current ${days}d, ${fam.length} sessions)\n`)
+    console.log('  maxPlayers │ sessions │ avg confirmed │ # overbooked')
+    for (const [cap, g] of Array.from(byCap.entries()).sort((a, b) => a[0] - b[0])) {
+      const avg = (g.confirmed / g.sessions).toFixed(1)
+      console.log(`  ${String(cap).padStart(10)} │ ${String(g.sessions).padStart(8)} │ ${avg.padStart(13)} │ ${String(g.over).padStart(12)}`)
+    }
+    console.log('\n  sample (title · maxPlayers · confirmed):')
+    for (const r of fam.slice(0, 12)) {
+      console.log(`   ${(r.title ?? '').slice(0, 46).padEnd(48)} cap ${String(r.maxPlayers ?? 0).padStart(3)} · ${r.confirmedCount} confirmed`)
+    }
+    await prisma.$disconnect()
+    return
+  }
+
   // --series=FAMILY [--program=key]: print the drill-down time series the
   // chart modal will plot (§1f-i verification).
   const seriesFamily = arg('series') as ProgramFamily | undefined
