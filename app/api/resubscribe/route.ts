@@ -37,16 +37,9 @@ export async function GET(request: Request) {
         skillLevel: 'ALL_LEVELS',
       },
     }),
-    prisma.$executeRaw`
-      UPDATE users
-      SET
-        sms_opt_in = true,
-        "updatedAt" = NOW()
-      WHERE id = ${payload.userId}
-    `,
   ])
 
-  console.log(`[Resubscribe] User ${payload.userId} re-subscribed to club ${payload.clubId}; sms_opt_in=true`)
+  console.log(`[Resubscribe] User ${payload.userId} re-subscribed to club ${payload.clubId}`)
 
   return NextResponse.redirect(
     `${getAppBaseUrl()}/unsubscribe?status=resubscribed&token=${encodeURIComponent(token)}`

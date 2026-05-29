@@ -28,13 +28,6 @@ async function processUnsubscribe(token: string): Promise<{ userId: string; club
         skillLevel: 'ALL_LEVELS',
       },
     }),
-    prisma.$executeRaw`
-      UPDATE users
-      SET
-        sms_opt_in = false,
-        "updatedAt" = NOW()
-      WHERE id = ${payload.userId}
-    `,
     prisma.aIRecommendationLog.updateMany({
       where: {
         userId: payload.userId,
@@ -45,7 +38,7 @@ async function processUnsubscribe(token: string): Promise<{ userId: string; club
     }),
   ])
 
-  console.log(`[Unsubscribe] User ${payload.userId} opted out of club ${payload.clubId}; sms_opt_in=false`)
+  console.log(`[Unsubscribe] User ${payload.userId} opted out of club ${payload.clubId}`)
 
   return payload
 }
