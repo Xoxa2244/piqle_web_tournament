@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { trpc } from '@/lib/trpc'
+import type { ProgramFamily } from '@/lib/ai/program-family-classifier'
 import { motion } from 'motion/react'
 import { AlertTriangle, ArrowRight, CalendarDays, Check, Clock3, Loader2, Plus, Radar, ShieldAlert, ShieldCheck, Sparkles, TestTube2, Users, X, BarChart3 } from 'lucide-react'
 import { CampaignKPIs } from './campaigns/CampaignKPIs'
@@ -361,6 +362,12 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
   const [pendingTierAudience, setPendingTierAudience] = useState<
     { tierName: string; bucket: TierAudienceBucket; goal: string | null } | null
   >(null)
+  // Program-attendance audience (Programming Health insight → "Create campaign"
+  // for re-engage / fill). Mirrors the tier-audience path below: stash the
+  // request from ?family=, fetch the attendees, open the wizard pre-selected.
+  const [pendingProgramAudience, setPendingProgramAudience] = useState<
+    { family: string; familyLabel: string; periodDays?: number; startDate?: string; endDate?: string; goal: string | null } | null
+  >(null)
   useEffect(() => {
     if (showWizard) return
     const cohortIdFromUrl = wizardSearchParams?.get('cohortId') ?? null
@@ -388,6 +395,27 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
         next.delete('goal')
         next.delete('tier')
         next.delete('bucket')
+        const qs = next.toString()
+        wizardRouter.replace(qs ? `${wizardPathname}?${qs}` : wizardPathname, { scroll: false })
+      }
+      return
+    }
+    // ?family= (+ familyLabel, days|start/end) — Programming Health insight
+    // audience. Like tier above: stash, strip, let the fetch open the wizard.
+    const familyFromUrl = wizardSearchParams?.get('family') ?? null
+    if (familyFromUrl && !pendingProgramAudience) {
+      const daysRaw = wizardSearchParams?.get('days')
+      setPendingProgramAudience({
+        family: familyFromUrl,
+        familyLabel: wizardSearchParams?.get('familyLabel') ?? familyFromUrl,
+        periodDays: daysRaw ? Number(daysRaw) : undefined,
+        startDate: wizardSearchParams?.get('start') ?? undefined,
+        endDate: wizardSearchParams?.get('end') ?? undefined,
+        goal: goalFromUrl && VALID_GOALS.includes(goalFromUrl) ? goalFromUrl : null,
+      })
+      if (wizardPathname) {
+        const next = new URLSearchParams(wizardSearchParams.toString())
+        for (const k of ['family', 'familyLabel', 'days', 'start', 'end', 'goal', 'cohortId']) next.delete(k)
         const qs = next.toString()
         wizardRouter.replace(qs ? `${wizardPathname}?${qs}` : wizardPathname, { scroll: false })
       }
@@ -436,6 +464,36 @@ export function CampaignsIQ({ campaignData, campaignListData, variantData, isLoa
     setPendingTierAudience(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTierAudience, tierAudienceQuery.data])
+
+  // Resolve a program family's attendees → open the wizard pre-selected with
+  // them as the audience + the treatment goal (mirrors the tier path above).
+  const programAudienceQuery = trpc.intelligence.getProgramAudience.useQuery(
+    {
+      clubId,
+      family: (pendingProgramAudience?.family ?? 'OPEN_PLAY') as ProgramFamily,
+      periodDays: pendingProgramAudience?.periodDays ?? 30,
+      startDate: pendingProgramAudience?.startDate,
+      endDate: pendingProgramAudience?.endDate,
+    },
+    { enabled: !!pendingProgramAudience },
+  )
+  useEffect(() => {
+    if (!pendingProgramAudience || !programAudienceQuery.data) return
+    const { userIds } = programAudienceQuery.data
+    if (userIds.length > 0) {
+      setWizardInitialUserIds(userIds)
+      const periodLabel = pendingProgramAudience.startDate
+        ? 'custom range'
+        : `last ${pendingProgramAudience.periodDays ?? 30}d`
+      setWizardInitialUserIdsLabel(`${pendingProgramAudience.familyLabel} players · ${periodLabel}`)
+    }
+    if (pendingProgramAudience.goal) {
+      setWizardInitialGoal(pendingProgramAudience.goal as typeof wizardInitialGoal)
+    }
+    setShowWizard(true)
+    setPendingProgramAudience(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingProgramAudience, programAudienceQuery.data])
 
   // ?draftId prefill — Step 11 §8.1. Loads the campaign_draft row and
   // opens the wizard with templateKey + cohortRef applied. cohortRef

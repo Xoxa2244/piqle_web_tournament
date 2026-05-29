@@ -358,6 +358,15 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                 const sevColor = ins.severity === 'critical' ? '#EF4444' : '#F59E0B'
                 const Icon = ins.severity === 'critical' ? AlertCircle : AlertTriangle
                 const hasCard = data.families.some((f) => f.family === ins.family)
+                // Audience prefill (current program players) only where that's
+                // the right target: re-engage (declining) + fill. Recruit /
+                // relaunch open goal-only — their audience isn't current players.
+                const wantsAudience = ins.treatmentGoal === 'reengage' || ins.treatmentGoal === 'fill'
+                const goalParam = GOAL_WIZARD[ins.treatmentGoal] ?? 'custom'
+                const periodQs = custom ? `&start=${custom.start}&end=${custom.end}` : `&days=${periodDays}`
+                const campaignHref = wantsAudience
+                  ? `/clubs/${clubId}/intelligence/campaigns?goal=${goalParam}&family=${ins.family}&familyLabel=${encodeURIComponent(ins.familyLabel)}${periodQs}`
+                  : `/clubs/${clubId}/intelligence/campaigns?goal=${goalParam}`
                 return (
                   <div
                     key={ins.id}
@@ -395,7 +404,7 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                         {GOAL_TAG[ins.treatmentGoal] ?? ins.treatmentGoal}
                       </span>
                       <a
-                        href={`/clubs/${clubId}/intelligence/campaigns?goal=${GOAL_WIZARD[ins.treatmentGoal] ?? 'custom'}&family=${ins.family}`}
+                        href={campaignHref}
                         className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 whitespace-nowrap"
                         style={{ background: 'var(--accent, #A855F7)', color: '#fff' }}
                       >
