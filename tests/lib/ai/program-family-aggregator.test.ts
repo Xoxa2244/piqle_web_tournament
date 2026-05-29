@@ -180,4 +180,43 @@ describe('aggregateProgramFamilies', () => {
     const op = res.families.find((f) => f.family === 'OPEN_PLAY')!
     expect(op.sessions).toBe(1) // only the current one
   })
+
+  describe('distinct people vs signups', () => {
+    it('counts a repeat attendee once per family', () => {
+      const res = agg([
+        row({ title: 'Verified Open Play', date: CUR, confirmedCount: 2, userIds: ['u1', 'u2'] }),
+        row({ title: 'Verified Open Play', date: CUR, confirmedCount: 2, userIds: ['u1', 'u3'] }), // u1 repeats
+      ])
+      const op = res.families.find((f) => f.family === 'OPEN_PLAY')!
+      expect(op.participants).toBe(4) // signups = total bookings
+      expect(op.people).toBe(3) // distinct u1, u2, u3
+    })
+
+    it('rollup people is a union across families, not a sum', () => {
+      const res = agg([
+        row({ title: 'Verified Open Play', date: CUR, confirmedCount: 1, userIds: ['u1'] }),
+        row({ title: 'Private Lesson for 1', date: CUR, confirmedCount: 1, userIds: ['u1'] }), // same person
+      ])
+      expect(res.rollup.participants).toBe(2) // signups
+      expect(res.rollup.people).toBe(1) // one distinct human across both families
+    })
+
+    it('per-program people is distinct within the program', () => {
+      const res = agg([
+        row({ title: 'Verified Open Play - Casual', date: CUR, confirmedCount: 2, userIds: ['a', 'b'] }),
+        row({ title: 'Verified Open Play - Casual', date: CUR, confirmedCount: 1, userIds: ['a'] }),
+      ])
+      const op = res.families.find((f) => f.family === 'OPEN_PLAY')!
+      const casual = op.programs.find((p) => p.title.includes('Casual'))!
+      expect(casual.participants).toBe(3) // signups
+      expect(casual.people).toBe(2) // a, b
+    })
+
+    it('people is 0 when userIds are absent (back-compat)', () => {
+      const res = agg([row({ title: 'Verified Open Play', date: CUR, confirmedCount: 5 })])
+      const op = res.families.find((f) => f.family === 'OPEN_PLAY')!
+      expect(op.participants).toBe(5)
+      expect(op.people).toBe(0)
+    })
+  })
 })

@@ -64,14 +64,17 @@ async function main() {
       WHERE ps."clubId"::text = $1 AND ps.date >= $2 AND ps.date < $3
     ),
     booking_counts AS (
-      SELECT psb."sessionId" AS session_id, COUNT(*)::int AS confirmed
+      SELECT psb."sessionId" AS session_id,
+             COUNT(*)::int AS confirmed,
+             array_agg(psb."userId"::text) AS user_ids
       FROM play_session_bookings psb
       WHERE psb.status = 'CONFIRMED'
         AND psb."sessionId" IN (SELECT id FROM window_sessions)
       GROUP BY psb."sessionId"
     )
     SELECT ws.id, ws.title, ws.format, ws.category, ws.max_players, ws.date,
-           COALESCE(bc.confirmed, 0)::int AS confirmed_count
+           COALESCE(bc.confirmed, 0)::int AS confirmed_count,
+           COALESCE(bc.user_ids, ARRAY[]::text[]) AS user_ids
     FROM window_sessions ws
     LEFT JOIN booking_counts bc ON bc.session_id = ws.id
     `,
@@ -86,6 +89,7 @@ async function main() {
     max_players: number | null
     date: Date
     confirmed_count: number
+    user_ids: string[] | null
   }>
 
   console.log(`Loaded ${rows.length} sessions across the 2×${days}d window.\n`)
@@ -125,7 +129,43 @@ async function main() {
     maxPlayers: r.max_players,
     date: r.date,
     confirmedCount: r.confirmed_count,
+    userIds: r.user_ids ?? [],
   }))
+
+  // --people=FAMILY: is "ppl" total bookings or distinct people? Compare
+  // SUM(confirmed) (what the card shows) vs COUNT(DISTINCT userId).
+  const peopleFamily = arg('people') as ProgramFamily | undefined
+  if (peopleFamily) {
+    const periodStart = new Date(now.getTime() - days * 86_400_000)
+    const ids = sessionRows
+      .filter(
+        (r) =>
+          classifyProgramFamily({ title: r.title, format: r.format, category: r.category }) === peopleFamily &&
+          new Date(r.date) >= periodStart &&
+          new Date(r.date) < now,
+      )
+      .map((r) => r.id)
+    if (ids.length === 0) {
+      console.log(`No ${peopleFamily} sessions in current ${days}d.`)
+      await prisma.$disconnect()
+      return
+    }
+    const res = (await prisma.$queryRawUnsafe(
+      `SELECT COUNT(*)::int AS total_bookings,
+              COUNT(DISTINCT psb."userId")::int AS distinct_users
+       FROM play_session_bookings psb
+       WHERE psb.status = 'CONFIRMED' AND psb."sessionId"::text = ANY($1::text[])`,
+      ids,
+    )) as Array<{ total_bookings: number; distinct_users: number }>
+    const { total_bookings, distinct_users } = res[0]
+    console.log(`${peopleFamily} — current ${days}d\n`)
+    console.log(`  sessions:                 ${ids.length}`)
+    console.log(`  total bookings (= "ppl"): ${total_bookings}`)
+    console.log(`  DISTINCT people:          ${distinct_users}`)
+    console.log(`  avg visits/person:        ${(total_bookings / Math.max(1, distinct_users)).toFixed(1)}`)
+    await prisma.$disconnect()
+    return
+  }
 
   // --caps=FAMILY: diagnose fill >100% — group the family's current-period
   // sessions by their maxPlayers value, with confirmed-booking stats, so we
@@ -223,7 +263,7 @@ async function main() {
   const fmtFill = (f: number | null) => (f === null ? '  — ' : `${f}%`.padStart(4))
 
   console.log('═'.repeat(72))
-  console.log(`ROLLUP (current ${days}d):  ${result.rollup.sessions} sessions   ${result.rollup.participants} participants   fill ${fmtFill(result.rollup.fillRate)}`)
+  console.log(`ROLLUP (current ${days}d):  ${result.rollup.sessions} sessions   ${result.rollup.people} people / ${result.rollup.participants} signups   fill ${fmtFill(result.rollup.fillRate)}`)
   console.log(`hasComparison: ${result.hasComparison}`)
   console.log('═'.repeat(72))
 
@@ -231,7 +271,7 @@ async function main() {
     console.log(
       `\n${fam.emoji} ${fam.label.toUpperCase().padEnd(22)} ` +
         `${String(fam.sessions).padStart(3)} sess  ` +
-        `${String(fam.participants).padStart(4)} ppl  ` +
+        `${String(fam.people).padStart(4)} ppl/${String(fam.participants).padStart(4)} sgn  ` +
         `fill ${fmtFill(fam.fillRate)}  ` +
         `trend ${fmtTrend(fam.trend)}`,
     )
@@ -239,7 +279,7 @@ async function main() {
       console.log(
         `   └─ ${p.title.slice(0, 40).padEnd(42)} ` +
           `${String(p.sessions).padStart(3)} sess  ` +
-          `${String(p.participants).padStart(4)} ppl  ` +
+          `${String(p.people).padStart(4)} ppl/${String(p.participants).padStart(4)} sgn  ` +
           `fill ${fmtFill(p.fillRate)}  ` +
           `trend ${fmtTrend(p.trend)}`,
       )

@@ -41,6 +41,10 @@ export interface AggregatorSessionRow {
   date: string | Date
   /** Confirmed bookings for this session (pre-aggregated in SQL). */
   confirmedCount: number
+  /** Distinct confirmed booker user IDs for this session — drives the
+   *  current-period distinct-people count. Optional: when absent, people
+   *  counts read 0 (signups/fill still come from confirmedCount). */
+  userIds?: string[]
 }
 
 export interface TrendInfo {
@@ -53,7 +57,10 @@ export interface ProgramRow {
   /** Normalized display title (court #s / club name / session # stripped). */
   title: string
   sessions: number
+  /** Total confirmed signups (a person booking N sessions counts N times). */
   participants: number
+  /** Distinct people in the current period. */
+  people: number
   /** null when the family's fill rate isn't meaningful. */
   fillRate: number | null
   trend: TrendInfo | null
@@ -69,7 +76,10 @@ export interface FamilyHealth {
   hidden: boolean
   fillRateMeaningful: boolean
   sessions: number
+  /** Total confirmed signups (sum across sessions; repeat visits count). */
   participants: number
+  /** Distinct people in the current period. */
+  people: number
   fillRate: number | null
   trend: TrendInfo | null
   /** Drill-down: programs (normalized titles) inside this family, by
@@ -84,6 +94,8 @@ export interface ProgrammingHealthResult {
   rollup: {
     sessions: number
     participants: number
+    /** Distinct people across all visible families (union, not a sum). */
+    people: number
     /** Across organized families only (fill-meaningful). null if none. */
     fillRate: number | null
   }
@@ -98,6 +110,8 @@ interface Bucket {
   curCapacity: number
   prevSessions: number
   prevParticipants: number
+  /** Distinct current-period booker user IDs (for the people count). */
+  curPeople: Set<string>
 }
 
 function newBucket(): Bucket {
@@ -108,6 +122,7 @@ function newBucket(): Bucket {
     curCapacity: 0,
     prevSessions: 0,
     prevParticipants: 0,
+    curPeople: new Set<string>(),
   }
 }
 
@@ -162,6 +177,7 @@ export function aggregateProgramFamilies(
     })
     const participants = row.confirmedCount ?? 0
     const capacity = row.maxPlayers ?? 0
+    const userIds = row.userIds ?? []
 
     // Family-level
     let fb = familyBuckets.get(family)
@@ -174,6 +190,7 @@ export function aggregateProgramFamilies(
       fb.curParticipants += participants
       fb.curRegistered += participants
       fb.curCapacity += capacity
+      for (const uid of userIds) fb.curPeople.add(uid)
     } else {
       fb.prevSessions++
       fb.prevParticipants += participants
@@ -198,6 +215,7 @@ export function aggregateProgramFamilies(
       pb.bucket.curParticipants += participants
       pb.bucket.curRegistered += participants
       pb.bucket.curCapacity += capacity
+      for (const uid of userIds) pb.bucket.curPeople.add(uid)
     } else {
       pb.bucket.prevSessions++
       pb.bucket.prevParticipants += participants
@@ -212,6 +230,7 @@ export function aggregateProgramFamilies(
   let rollupParticipants = 0
   let rollupRegistered = 0
   let rollupCapacity = 0
+  const rollupPeople = new Set<string>()
 
   for (const family of ALL_FAMILIES) {
     const meta: FamilyMeta = PROGRAM_FAMILY_META[family]
@@ -222,6 +241,7 @@ export function aggregateProgramFamilies(
     // Rollup (organized families only for fill rate)
     rollupSessions += fb.curSessions
     rollupParticipants += fb.curParticipants
+    fb.curPeople.forEach((uid) => rollupPeople.add(uid))
     if (meta.fillRateMeaningful) {
       rollupRegistered += fb.curRegistered
       rollupCapacity += fb.curCapacity
@@ -236,6 +256,7 @@ export function aggregateProgramFamilies(
         title,
         sessions: bucket.curSessions,
         participants: bucket.curParticipants,
+        people: bucket.curPeople.size,
         fillRate: meta.fillRateMeaningful ? fillRate(bucket.curRegistered, bucket.curCapacity) : null,
         trend: computeTrend(bucket.curParticipants, bucket.prevParticipants, hasComparison),
       })
@@ -253,6 +274,7 @@ export function aggregateProgramFamilies(
       fillRateMeaningful: meta.fillRateMeaningful,
       sessions: fb.curSessions,
       participants: fb.curParticipants,
+      people: fb.curPeople.size,
       fillRate: meta.fillRateMeaningful ? fillRate(fb.curRegistered, fb.curCapacity) : null,
       trend: computeTrend(fb.curParticipants, fb.prevParticipants, hasComparison),
       programs,
@@ -265,6 +287,7 @@ export function aggregateProgramFamilies(
     rollup: {
       sessions: rollupSessions,
       participants: rollupParticipants,
+      people: rollupPeople.size,
       fillRate: fillRate(rollupRegistered, rollupCapacity),
     },
     families,

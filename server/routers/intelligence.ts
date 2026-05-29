@@ -144,7 +144,9 @@ async function loadProgrammingSessionRows(
         AND ps.date <  $3
     ),
     booking_counts AS (
-      SELECT psb."sessionId" AS session_id, COUNT(*)::int AS confirmed
+      SELECT psb."sessionId" AS session_id,
+             COUNT(*)::int AS confirmed,
+             array_agg(psb."userId"::text) AS user_ids
       FROM play_session_bookings psb
       WHERE psb.status = 'CONFIRMED'
         AND psb."sessionId" IN (SELECT id FROM window_sessions)
@@ -156,7 +158,8 @@ async function loadProgrammingSessionRows(
            ws.category,
            ws.max_players,
            ws.date,
-           COALESCE(bc.confirmed, 0)::int AS confirmed_count
+           COALESCE(bc.confirmed, 0)::int AS confirmed_count,
+           COALESCE(bc.user_ids, ARRAY[]::text[]) AS user_ids
     FROM window_sessions ws
     LEFT JOIN booking_counts bc ON bc.session_id = ws.id
     `,
@@ -171,6 +174,7 @@ async function loadProgrammingSessionRows(
     max_players: number | null
     date: Date
     confirmed_count: number
+    user_ids: string[] | null
   }>
 
   return rows.map((r) => ({
@@ -181,6 +185,7 @@ async function loadProgrammingSessionRows(
     maxPlayers: r.max_players,
     date: r.date,
     confirmedCount: r.confirmed_count,
+    userIds: r.user_ids ?? [],
   }))
 }
 

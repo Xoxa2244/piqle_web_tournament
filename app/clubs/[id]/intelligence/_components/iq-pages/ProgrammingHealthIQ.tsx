@@ -221,7 +221,12 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
           {/* Part 1 — rollup KPIs */}
           <div className="grid grid-cols-3 gap-3">
             <KpiTile label="Total sessions" value={String(data.rollup.sessions)} />
-            <KpiTile label="Participants" value={String(data.rollup.participants)} />
+            <KpiTile
+              label="People"
+              value={String(data.rollup.people)}
+              sub={`${data.rollup.participants} signups`}
+              hint="Distinct people who attended across all programs (a person counts once). Signups = total confirmed bookings (repeat visits counted)."
+            />
             <KpiTile
               label="Avg fill (organized)"
               value={data.rollup.fillRate != null ? `${data.rollup.fillRate}%` : '—'}
@@ -270,6 +275,7 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                         fillMeaningful={fam.fillRateMeaningful}
                         sessions={fam.sessions}
                         participants={fam.participants}
+                        people={fam.people}
                       />
                     </button>
                     {/* Chevron → expand programs inline (quick overview) */}
@@ -325,6 +331,7 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                               fillMeaningful={fam.fillRateMeaningful}
                               sessions={p.sessions}
                               participants={p.participants}
+                              people={p.people}
                               small
                             />
                           </button>
@@ -417,7 +424,7 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
 
 // ── presentational helpers ──────────────────────────────────────────────
 
-function KpiTile({ label, value, accent, hint }: { label: string; value: string; accent?: 'green'; hint?: string }) {
+function KpiTile({ label, value, accent, hint, sub }: { label: string; value: string; accent?: 'green'; hint?: string; sub?: string }) {
   const color = accent === 'green' ? '#10B981' : 'var(--heading)'
   const bg = accent === 'green' ? 'rgba(16,185,129,0.06)' : 'var(--card-bg)'
   return (
@@ -435,6 +442,7 @@ function KpiTile({ label, value, accent, hint }: { label: string; value: string;
         )}
       </div>
       <div style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1.2 }}>{value}</div>
+      {sub && <div className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>{sub}</div>}
     </div>
   )
 }
@@ -446,6 +454,7 @@ function MetricCluster({
   fillMeaningful,
   sessions,
   participants,
+  people,
   small,
 }: {
   trend: Trend
@@ -453,6 +462,7 @@ function MetricCluster({
   fillMeaningful: boolean
   sessions: number
   participants: number
+  people: number
   small?: boolean
 }) {
   const fs = small ? 12 : 13
@@ -461,14 +471,16 @@ function MetricCluster({
       <span className="w-16 text-right tabular-nums">
         <TrendPill trend={trend} />
       </span>
-      <span className="w-16 text-right" style={{ color: 'var(--t3)' }}>
+      <span className="w-14 text-right" style={{ color: 'var(--t3)' }}>
         <FillValue value={fill} meaningful={fillMeaningful} />
       </span>
-      <span className="w-20 text-right tabular-nums" style={{ color: 'var(--t2)' }}>
+      <span className="w-16 text-right tabular-nums" style={{ color: 'var(--t2)' }}>
         {sessions} sess
       </span>
-      <span className="w-20 text-right tabular-nums" style={{ color: 'var(--t2)' }}>
-        {participants} ppl
+      {/* People (distinct) primary, signups (total bookings) secondary. */}
+      <span className="w-24 text-right tabular-nums leading-tight" style={{ color: 'var(--t2)' }}>
+        {people} <span style={{ color: 'var(--t4)', fontWeight: 400 }}>ppl</span>
+        <span className="block text-[10px]" style={{ color: 'var(--t4)' }}>{participants} signups</span>
       </span>
     </div>
   )

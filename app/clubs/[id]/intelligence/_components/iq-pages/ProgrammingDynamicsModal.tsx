@@ -45,7 +45,7 @@ interface Props {
 type Metric = 'participants' | 'fillRate' | 'sessions'
 
 const METRIC_META: Record<Metric, { label: string }> = {
-  participants: { label: 'Participants' },
+  participants: { label: 'Signups' },
   fillRate: { label: 'Fill %' },
   sessions: { label: 'Sessions' },
 }
@@ -218,7 +218,7 @@ export function ProgrammingDynamicsModal({ clubId, periodDays, startDate, endDat
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="text-sm" style={{ color: 'var(--t2)' }}>
                       <strong style={{ color: 'var(--heading)' }}>{data.totals.sessions}</strong> sessions ·{' '}
-                      <strong style={{ color: 'var(--heading)' }}>{data.totals.participants}</strong> participants
+                      <strong style={{ color: 'var(--heading)' }}>{data.totals.participants}</strong> signups
                       {data.totals.fillRate != null && (
                         <>
                           {' '}· fill <strong style={{ color: 'var(--heading)' }}>{data.totals.fillRate}%</strong>
