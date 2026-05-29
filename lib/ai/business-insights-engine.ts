@@ -285,7 +285,7 @@ export async function pilotPeakHourOverflow(
 ): Promise<BusinessInsight | null> {
   const rows = (await prisma.$queryRawUnsafe(
     `
-    SELECT EXTRACT(HOUR FROM ps.date) AS hour,
+    SELECT EXTRACT(HOUR FROM ps."startTime"::time) AS hour,
            COUNT(*) AS "sessionCount",
            SUM(COALESCE(ps."registered_count", 0)) AS "totalBooked",
            SUM(ps."maxPlayers") AS "totalCapacity",
@@ -295,7 +295,7 @@ export async function pilotPeakHourOverflow(
       AND ps.date >= NOW() - INTERVAL '30 days'
       AND ps.date <= NOW()
       AND ps.status::text != 'CANCELLED'
-    GROUP BY EXTRACT(HOUR FROM ps.date)
+    GROUP BY EXTRACT(HOUR FROM ps."startTime"::time)
     HAVING SUM(ps."maxPlayers") > 0
     ORDER BY "occupancyPct" DESC
     `,
@@ -355,7 +355,7 @@ export async function pilotEmptyEveningSlots(
     WHERE ps."clubId" = $1
       AND ps.date >= NOW() - INTERVAL '30 days'
       AND ps.date <= NOW()
-      AND EXTRACT(HOUR FROM ps.date) >= 19
+      AND EXTRACT(HOUR FROM ps."startTime"::time) >= 19
       AND ps.status::text != 'CANCELLED'
     `,
     clubId,
