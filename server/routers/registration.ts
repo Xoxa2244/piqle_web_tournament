@@ -10,6 +10,10 @@ import {
   parseInviteRegistrationName,
 } from '@/lib/inviteRegistration'
 import {
+  hasInviteRegistrationDetails,
+  isInviteRegistrationRequiredForTournament,
+} from '@/lib/inviteRegistrationGate'
+import {
   releaseExpiredUnpaidRegistrations as releaseExpiredUnpaidRegistrationsCore,
   isDuePaymentsSchemaError,
 } from '../utils/paymentDue'
@@ -81,11 +85,19 @@ const inviteRegistrationInputSchema = z.object({
     .trim()
     .min(3, 'Enter last name and first name')
     .refine((value) => value.split(/\s+/).length >= 2, 'Enter last name and first name'),
+  phoneNumber: z
+    .string()
+    .trim()
+    .min(2, 'Enter phone number')
+    .regex(/^\+?\d+$/, 'Phone number can contain only a leading + and digits'),
   gender: z.enum(['M', 'F']),
   duprRating: z.number().min(0).max(8),
   desiredLevel: z.enum(INVITE_REGISTRATION_LEVELS),
   clubName: z.enum(INVITE_REGISTRATION_CLUBS),
 })
+
+const INVITE_REGISTRATION_REQUIRED_MESSAGE =
+  'Complete the invite registration form before choosing a spot or paying.'
 
 const upsertPendingInvitePayment = async (
   tx: any,
@@ -121,12 +133,12 @@ const upsertPendingInvitePayment = async (
       status: 'PENDING',
     },
     orderBy: { createdAt: 'desc' },
-    select: { id: true },
+    select: { id: true, teamId: true, slotIndex: true },
   })
 
   const paymentData = {
-    teamId: null,
-    slotIndex: null,
+    teamId: pendingPayment?.teamId ?? null,
+    slotIndex: typeof pendingPayment?.slotIndex === 'number' ? pendingPayment.slotIndex : null,
     entryFeeAmount: fromCents(entryFeeCents),
     platformFeeAmount: fromCents(platformFeeCents),
     stripeFeeAmount: fromCents(stripeFeeCents),
@@ -276,6 +288,7 @@ export const registrationRouter = createTRPCRouter({
     .input(inviteRegistrationInputSchema)
     .mutation(async ({ ctx, input }) => {
       const normalizedFullName = input.fullName.trim().replace(/\s+/g, ' ')
+      const normalizedPhoneNumber = input.phoneNumber.trim()
       const roundedDuprRating = Math.round(input.duprRating * 100) / 100
 
       return ctx.prisma.$transaction(async (tx) => {
@@ -317,8 +330,56 @@ export const registrationRouter = createTRPCRouter({
 
         const entryFeeCents = getEntryFeeCents(tournament)
         const isPaidTournament = entryFeeCents > 0
+        const { firstName, lastName } = parseInviteRegistrationName(normalizedFullName)
+        const now = new Date()
+        const registrationComment = {
+          source: 'invite_registration' as const,
+          fullName: normalizedFullName,
+          phoneNumber: normalizedPhoneNumber,
+          desiredLevel: input.desiredLevel,
+          clubName: input.clubName,
+          duprRating: roundedDuprRating,
+          gender: input.gender,
+          submittedAt: now.toISOString(),
+        }
 
         if (existingPlayer) {
+          await tx.player.update({
+            where: { id: existingPlayer.id },
+            data: {
+              firstName,
+              lastName,
+              email: ctx.session.user.email ?? undefined,
+              gender: input.gender,
+              duprRating: roundedDuprRating,
+              isWaitlist: false,
+              registrationComment,
+            },
+          })
+
+          if (isPaidTournament && !existingPlayer.isPaid) {
+            await upsertPendingInvitePayment(tx, tournament, existingPlayer.id, now)
+          }
+
+          await tx.auditLog.create({
+            data: {
+              actorUserId: ctx.session.user.id,
+              tournamentId: input.tournamentId,
+              action: 'PLAYER_INVITE_REGISTER',
+              entityType: 'Player',
+              entityId: existingPlayer.id,
+              payload: {
+                fullName: normalizedFullName,
+                phoneNumber: normalizedPhoneNumber,
+                gender: input.gender,
+                duprRating: roundedDuprRating,
+                desiredLevel: input.desiredLevel,
+                clubName: input.clubName,
+                updatedExistingPlayer: true,
+              },
+            },
+          })
+
           return {
             alreadyRegistered: true,
             playerId: existingPlayer.id,
@@ -327,8 +388,6 @@ export const registrationRouter = createTRPCRouter({
           }
         }
 
-        const { firstName, lastName } = parseInviteRegistrationName(normalizedFullName)
-        const now = new Date()
         const player = await tx.player.create({
           data: {
             tournamentId: input.tournamentId,
@@ -340,15 +399,7 @@ export const registrationRouter = createTRPCRouter({
             duprRating: roundedDuprRating,
             isWaitlist: false,
             isPaid: isPaidTournament ? false : true,
-            registrationComment: {
-              source: 'invite_registration',
-              fullName: normalizedFullName,
-              desiredLevel: input.desiredLevel,
-              clubName: input.clubName,
-              duprRating: roundedDuprRating,
-              gender: input.gender,
-              submittedAt: now.toISOString(),
-            },
+            registrationComment,
           },
         })
 
@@ -365,6 +416,7 @@ export const registrationRouter = createTRPCRouter({
             entityId: player.id,
             payload: {
               fullName: normalizedFullName,
+              phoneNumber: normalizedPhoneNumber,
               gender: input.gender,
               duprRating: roundedDuprRating,
               desiredLevel: input.desiredLevel,
@@ -671,6 +723,16 @@ export const registrationRouter = createTRPCRouter({
             divisionId: waitlistEntry.divisionId,
             waitlistEntryId: waitlistEntry.id,
           }
+          continue
+        }
+
+        if (hasInviteRegistrationDetails(player.registrationComment)) {
+          statusByTournament[player.tournamentId] = {
+            status: 'registered' as const,
+            playerId: player.id,
+            isPaid: Boolean(player.isPaid),
+            registrationType: 'invite' as const,
+          }
         }
       }
 
@@ -737,6 +799,11 @@ export const registrationRouter = createTRPCRouter({
           throw new TRPCError({ code: 'CONFLICT', message: 'Slot already taken' })
         }
 
+        const inviteRegistrationRequired = isInviteRegistrationRequiredForTournament(
+          team.division.tournamentId,
+          ctx.inviteRegistrationTournamentIds
+        )
+
         let player = await tx.player.findUnique({
           where: {
             userId_tournamentId: {
@@ -747,6 +814,13 @@ export const registrationRouter = createTRPCRouter({
         })
 
         if (!player) {
+          if (inviteRegistrationRequired) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: INVITE_REGISTRATION_REQUIRED_MESSAGE,
+            })
+          }
+
           const { firstName, lastName } = parseName(ctx.session.user.name)
           player = await tx.player.create({
             data: {
@@ -758,7 +832,17 @@ export const registrationRouter = createTRPCRouter({
               isWaitlist: false,
             },
           })
+        } else if (
+          inviteRegistrationRequired &&
+          !hasInviteRegistrationDetails(player.registrationComment)
+        ) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: INVITE_REGISTRATION_REQUIRED_MESSAGE,
+          })
         }
+
+        const playerWasPaid = Boolean(player.isPaid)
 
         const existingTeamPlayer = await tx.teamPlayer.findFirst({
           where: {
@@ -794,7 +878,7 @@ export const registrationRouter = createTRPCRouter({
         let paymentDueAt: Date | null = null
         let paymentTiming: 'PAY_IN_15_MIN' | 'PAY_BY_DEADLINE' | null = null
 
-        if (isPaidTournament) {
+        if (isPaidTournament && !playerWasPaid) {
           const now = new Date()
           paymentTiming = getEffectivePaymentTiming(
             (team.division.tournament.paymentTiming ?? 'PAY_IN_15_MIN') as
@@ -861,7 +945,7 @@ export const registrationRouter = createTRPCRouter({
           where: { id: player.id },
           data: {
             isWaitlist: false,
-            isPaid: isPaidTournament ? false : true,
+            isPaid: isPaidTournament ? playerWasPaid : true,
           },
         })
 
@@ -880,7 +964,12 @@ export const registrationRouter = createTRPCRouter({
           },
         })
 
-        return { success: true, paymentDueAt, paymentTiming }
+        return {
+          success: true,
+          paymentDueAt,
+          paymentTiming,
+          isPaid: !isPaidTournament || playerWasPaid,
+        }
       })
     }),
 
@@ -900,6 +989,8 @@ export const registrationRouter = createTRPCRouter({
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Player not found' })
       }
 
+      const hasInviteDetails = hasInviteRegistrationDetails(player.registrationComment)
+
       const teamPlayer = await ctx.prisma.teamPlayer.findFirst({
         where: {
           playerId: player.id,
@@ -918,35 +1009,59 @@ export const registrationRouter = createTRPCRouter({
         },
       })
 
-      if (!teamPlayer) {
+      if (!teamPlayer && !hasInviteDetails) {
         throw new TRPCError({ code: 'NOT_FOUND', message: 'Registration not found' })
       }
 
-      await ctx.prisma.teamPlayer.delete({ where: { id: teamPlayer.id } })
+      await ctx.prisma.$transaction(async (tx) => {
+        if (hasInviteDetails) {
+          await tx.auditLog.create({
+            data: {
+              actorUserId: ctx.session.user.id,
+              tournamentId: input.tournamentId,
+              action: 'PLAYER_CANCEL_REGISTRATION',
+              entityType: 'Player',
+              entityId: player.id,
+              payload: {
+                teamId: teamPlayer?.teamId ?? null,
+                divisionId: teamPlayer?.team.divisionId ?? null,
+                registrationType: 'invite',
+              },
+            },
+          })
 
-      await ctx.prisma.payment.updateMany({
-        where: {
-          tournamentId: input.tournamentId,
-          playerId: player.id,
-          status: 'PENDING',
-        },
-        data: {
-          status: 'CANCELED',
-        },
-      })
+          await tx.player.delete({ where: { id: player.id } })
+          return
+        }
 
-      await ctx.prisma.auditLog.create({
-        data: {
-          actorUserId: ctx.session.user.id,
-          tournamentId: input.tournamentId,
-          action: 'PLAYER_CANCEL_REGISTRATION',
-          entityType: 'TeamPlayer',
-          entityId: teamPlayer.id,
-          payload: {
-            teamId: teamPlayer.teamId,
-            divisionId: teamPlayer.team.divisionId,
+        if (!teamPlayer) return
+
+        await tx.teamPlayer.delete({ where: { id: teamPlayer.id } })
+
+        await tx.payment.updateMany({
+          where: {
+            tournamentId: input.tournamentId,
+            playerId: player.id,
+            status: 'PENDING',
           },
-        },
+          data: {
+            status: 'CANCELED',
+          },
+        })
+
+        await tx.auditLog.create({
+          data: {
+            actorUserId: ctx.session.user.id,
+            tournamentId: input.tournamentId,
+            action: 'PLAYER_CANCEL_REGISTRATION',
+            entityType: 'TeamPlayer',
+            entityId: teamPlayer.id,
+            payload: {
+              teamId: teamPlayer.teamId,
+              divisionId: teamPlayer.team.divisionId,
+            },
+          },
+        })
       })
 
       return { success: true }
@@ -969,6 +1084,11 @@ export const registrationRouter = createTRPCRouter({
           throw new TRPCError({ code: 'FORBIDDEN', message: 'Registration closed' })
         }
 
+        const inviteRegistrationRequired = isInviteRegistrationRequiredForTournament(
+          division.tournamentId,
+          ctx.inviteRegistrationTournamentIds
+        )
+
         let player = await tx.player.findUnique({
           where: {
             userId_tournamentId: {
@@ -979,6 +1099,13 @@ export const registrationRouter = createTRPCRouter({
         })
 
         if (!player) {
+          if (inviteRegistrationRequired) {
+            throw new TRPCError({
+              code: 'FORBIDDEN',
+              message: INVITE_REGISTRATION_REQUIRED_MESSAGE,
+            })
+          }
+
           const { firstName, lastName } = parseName(ctx.session.user.name)
           player = await tx.player.create({
             data: {
@@ -989,6 +1116,14 @@ export const registrationRouter = createTRPCRouter({
               email: ctx.session.user.email ?? undefined,
               isWaitlist: true,
             },
+          })
+        } else if (
+          inviteRegistrationRequired &&
+          !hasInviteRegistrationDetails(player.registrationComment)
+        ) {
+          throw new TRPCError({
+            code: 'FORBIDDEN',
+            message: INVITE_REGISTRATION_REQUIRED_MESSAGE,
           })
         }
 

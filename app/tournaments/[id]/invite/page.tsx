@@ -9,6 +9,7 @@ import { fromCents } from '@/lib/payment'
 import {
   INVITE_REGISTRATION_CLUBS,
   INVITE_REGISTRATION_LEVELS,
+  isInviteRegistrationComment,
 } from '@/lib/inviteRegistration'
 import { formatUsDateTimeShort } from '@/lib/dateFormat'
 import { Button } from '@/components/ui/button'
@@ -19,6 +20,14 @@ import { toast } from '@/components/ui/use-toast'
 
 type GenderValue = 'M' | 'F' | ''
 
+type InvitePagePlayer = {
+  id: string
+  firstName?: string | null
+  lastName?: string | null
+  isPaid?: boolean | null
+  registrationComment?: unknown
+}
+
 export default function TournamentInviteRegistrationPage() {
   const params = useParams()
   const router = useRouter()
@@ -27,6 +36,7 @@ export default function TournamentInviteRegistrationPage() {
   const utils = trpc.useUtils()
 
   const [fullName, setFullName] = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
   const [gender, setGender] = useState<GenderValue>('')
   const [duprRating, setDuprRating] = useState('')
   const [desiredLevel, setDesiredLevel] = useState('')
@@ -151,10 +161,12 @@ export default function TournamentInviteRegistrationPage() {
   }, [authStatus, confirmPaymentMutation, refetch, tournamentId])
 
   const tournament = data?.tournament
-  const player = data?.player
+  const player = data?.player as InvitePagePlayer | null | undefined
+  const playerRegistrationComment: unknown = player?.registrationComment
+  const inviteDetailsSubmitted = Boolean(isInviteRegistrationComment(playerRegistrationComment))
   const isPaidTournament = (tournament?.entryFeeCents ?? 0) > 0
   const feeLabel = tournament ? `$${fromCents(tournament.entryFeeCents).toFixed(2)}` : ''
-  const paymentPending = Boolean(player && isPaidTournament && !player.isPaid)
+  const paymentPending = Boolean(player && inviteDetailsSubmitted && isPaidTournament && !player.isPaid)
 
   useEffect(() => {
     if (authStatus !== 'authenticated') return
@@ -174,12 +186,24 @@ export default function TournamentInviteRegistrationPage() {
       })
   }, [authStatus, confirmPaymentMutation, paymentPending, player?.id, refetch, tournamentId])
 
+  useEffect(() => {
+    if (fullName || !player || inviteDetailsSubmitted) return
+    const existingName = `${player.lastName ?? ''} ${player.firstName ?? ''}`.trim()
+    if (existingName) {
+      setFullName(existingName)
+    }
+  }, [fullName, inviteDetailsSubmitted, player])
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     const parsedDuprRating = Number(duprRating)
     if (!fullName.trim() || fullName.trim().split(/\s+/).length < 2) {
       toast({ description: 'Enter last name and first name', variant: 'destructive' })
+      return
+    }
+    if (!/^\+?\d+$/.test(phoneNumber.trim())) {
+      toast({ description: 'Enter phone number using only + and digits', variant: 'destructive' })
       return
     }
     if (!gender) {
@@ -199,6 +223,7 @@ export default function TournamentInviteRegistrationPage() {
       await submitMutation.mutateAsync({
         tournamentId,
         fullName: fullName.trim(),
+        phoneNumber: phoneNumber.trim(),
         gender,
         duprRating: parsedDuprRating,
         desiredLevel: desiredLevel as (typeof INVITE_REGISTRATION_LEVELS)[number],
@@ -290,7 +315,7 @@ export default function TournamentInviteRegistrationPage() {
           </CardHeader>
         </Card>
 
-        {player ? (
+        {player && inviteDetailsSubmitted ? (
           <Card>
             <CardContent className="p-6 space-y-4">
               <div className="flex items-start gap-3">
@@ -344,6 +369,21 @@ export default function TournamentInviteRegistrationPage() {
                     value={fullName}
                     onChange={(event) => setFullName(event.target.value)}
                     placeholder="Smith John"
+                    disabled={submitMutation.isPending || !tournament.registrationOpen}
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number *
+                  </label>
+                  <Input
+                    id="phoneNumber"
+                    type="tel"
+                    inputMode="tel"
+                    value={phoneNumber}
+                    onChange={(event) => setPhoneNumber(event.target.value)}
+                    placeholder="+13175551234"
                     disabled={submitMutation.isPending || !tournament.registrationOpen}
                   />
                 </div>
@@ -459,14 +499,16 @@ export default function TournamentInviteRegistrationPage() {
                 <h2 className="text-xl font-semibold text-gray-900">Thank you for registering</h2>
                 {isPaidTournament ? (
                   <p className="mt-2 text-sm text-gray-600">
-                    Please pay the {feeLabel} entry fee to complete payment.
+                    {player?.isPaid
+                      ? 'Your registration has been added and payment is complete.'
+                      : `Please pay the ${feeLabel} entry fee to complete payment.`}
                   </p>
                 ) : (
                   <p className="mt-2 text-sm text-gray-600">Your registration has been added.</p>
                 )}
               </div>
               <div className="flex flex-col gap-2">
-                {isPaidTournament && (
+                {isPaidTournament && !player?.isPaid && (
                   <Button
                     onClick={handlePay}
                     disabled={payLoading || !tournament.payoutsActive}
@@ -480,7 +522,7 @@ export default function TournamentInviteRegistrationPage() {
                   Close
                 </Button>
               </div>
-              {isPaidTournament && !tournament.payoutsActive && (
+              {isPaidTournament && !player?.isPaid && !tournament.payoutsActive && (
                 <div className="text-xs text-amber-800">Payments are not enabled yet. Contact the organizer.</div>
               )}
             </CardContent>

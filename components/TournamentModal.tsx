@@ -363,24 +363,35 @@ export default function TournamentModal({
                   )
                 }
 
-                const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
+                const registrationStatus = registrationStatuses?.[tournament.id]
+                const status = registrationStatus?.status ?? 'none'
                 const registrationOpen = isRegistrationOpen(tournament)
                 const isActiveUnpaid =
                   status === 'active' &&
                   entryFeeNum > 0 &&
-                  !registrationStatuses?.[tournament.id]?.isPaid
+                  !registrationStatus?.isPaid
+                const isRegisteredUnpaid =
+                  status === 'registered' &&
+                  entryFeeNum > 0 &&
+                  !registrationStatus?.isPaid
+                const registrationHref =
+                  registrationStatus?.registrationType === 'invite'
+                    ? `/tournaments/${tournament.id}/invite`
+                    : `/tournaments/${tournament.id}/register`
                 const label =
                   status === 'active'
                     ? 'Cancel Registration'
                     : status === 'waitlisted'
                       ? 'Leave Waitlist'
+                      : status === 'registered'
+                        ? 'Cancel Registration'
                       : 'Join Tournament'
                 return (
                   <div className="flex flex-wrap gap-2">
-                    {isActiveUnpaid && (
+                    {(isActiveUnpaid || isRegisteredUnpaid) && (
                       <Button className="bg-gray-900 hover:bg-gray-800 text-white" asChild>
                         <Link
-                          href={`/tournaments/${tournament.id}/register`}
+                          href={registrationHref}
                           onClick={(e) => e.stopPropagation()}
                         >
                           Pay Now ${entryFeeNum.toFixed(2)}
@@ -390,27 +401,31 @@ export default function TournamentModal({
                     <Button
                       className={label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
                       variant={
-                        label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'
+                        label === 'Join Tournament'
+                          ? undefined
+                          : status === 'active' || status === 'registered'
+                            ? 'destructive'
+                            : 'default'
                       }
-                      disabled={!registrationOpen}
+                      disabled={status === 'registered' ? false : !registrationOpen}
                       onClick={(e) => {
                         e.stopPropagation()
                         if (!session) {
                           router.push(
-                            `/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`
+                            `/auth/signin?callbackUrl=${encodeURIComponent(registrationHref)}`
                           )
                           return
                         }
-                        if (status === 'active') {
+                        if (status === 'active' || status === 'registered') {
                           setShowCancelRegistrationModal(true)
                           return
                         }
                         if (status === 'waitlisted') {
-                          const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                          const divisionId = registrationStatus?.divisionId
                           if (divisionId) setLeaveWaitlistDivisionId(divisionId)
                           return
                         }
-                        router.push(`/tournaments/${tournament.id}/register`)
+                        router.push(registrationHref)
                       }}
                     >
                       {label}

@@ -680,23 +680,31 @@ function HomePageContent() {
                     </div>
 
                     {(() => {
-                      const status = registrationStatuses?.[tournament.id]?.status ?? 'none'
+                      const registrationStatus = registrationStatuses?.[tournament.id]
+                      const status = registrationStatus?.status ?? 'none'
                       const registrationOpen = isRegistrationOpen(tournament)
                       const isPaidTournament = !!(tournament.entryFee && parseFloat(String(tournament.entryFee)) > 0)
-                      const isActiveUnpaid = status === 'active' && isPaidTournament && !registrationStatuses?.[tournament.id]?.isPaid
+                      const isActiveUnpaid = status === 'active' && isPaidTournament && !registrationStatus?.isPaid
+                      const isRegisteredUnpaid = status === 'registered' && isPaidTournament && !registrationStatus?.isPaid
+                      const registrationHref =
+                        registrationStatus?.registrationType === 'invite'
+                          ? `/tournaments/${tournament.id}/invite`
+                          : `/tournaments/${tournament.id}/register`
                       const label =
                         status === 'active'
                           ? 'Cancel Registration'
                           : status === 'waitlisted'
                           ? 'Leave Waitlist'
+                          : status === 'registered'
+                          ? 'Cancel Registration'
                           : 'Join Tournament'
 
                       return (
                         <div className="flex flex-col gap-2">
-                          {isActiveUnpaid && (
+                          {(isActiveUnpaid || isRegisteredUnpaid) && (
                             <Button className="w-full bg-gray-900 hover:bg-gray-800 text-white" asChild>
                               <Link
-                                href={`/tournaments/${tournament.id}/register`}
+                                href={registrationHref}
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 Pay Now ${tournament.entryFee != null ? Number(tournament.entryFee).toFixed(2) : '0.00'}
@@ -705,15 +713,15 @@ function HomePageContent() {
                           )}
                           <Button
                             className={`w-full ${label === 'Join Tournament' ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}`}
-                            variant={label === 'Join Tournament' ? undefined : status === 'active' ? 'destructive' : 'default'}
-                            disabled={!registrationOpen}
+                            variant={label === 'Join Tournament' ? undefined : status === 'active' || status === 'registered' ? 'destructive' : 'default'}
+                            disabled={status === 'registered' ? false : !registrationOpen}
                             onClick={(e) => {
                               e.stopPropagation()
                               if (!session) {
-                                router.push(`/auth/signin?callbackUrl=${encodeURIComponent(`/tournaments/${tournament.id}/register`)}`)
+                                router.push(`/auth/signin?callbackUrl=${encodeURIComponent(registrationHref)}`)
                                 return
                               }
-                              if (status === 'active') {
+                              if (status === 'active' || status === 'registered') {
                                 setCancelModalTournament({
                                   tournamentId: tournament.id,
                                   isPaid: isPaidTournament,
@@ -721,11 +729,11 @@ function HomePageContent() {
                                 return
                               }
                               if (status === 'waitlisted') {
-                                const divisionId = registrationStatuses?.[tournament.id]?.divisionId
+                                const divisionId = registrationStatus?.divisionId
                                 if (divisionId) setLeaveWaitlistDivisionId(divisionId)
                                 return
                               }
-                              router.push(`/tournaments/${tournament.id}/register`)
+                              router.push(registrationHref)
                             }}
                           >
                             {label}

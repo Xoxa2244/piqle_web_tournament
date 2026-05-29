@@ -5,12 +5,17 @@ import type { Session } from 'next-auth'
 import { parse as parseCookie } from 'cookie'
 
 import { authOptions } from '@/lib/auth'
+import {
+  INVITE_REGISTRATION_TOURNAMENT_COOKIE,
+  parseInviteRegistrationTournamentIds,
+} from '@/lib/inviteRegistrationGate'
 import { getSessionFromMobileToken } from '@/lib/mobileAuth'
 import { prisma } from '@/lib/prisma'
 
 interface CreateContextOptions {
   session: Session | null
   requestOrigin: string | null
+  inviteRegistrationTournamentIds: Set<string>
 }
 
 const createInnerTRPCContext = (opts: CreateContextOptions) => {
@@ -18,6 +23,7 @@ const createInnerTRPCContext = (opts: CreateContextOptions) => {
     session: opts.session,
     prisma,
     requestOrigin: opts.requestOrigin,
+    inviteRegistrationTournamentIds: opts.inviteRegistrationTournamentIds,
   }
 }
 
@@ -61,6 +67,13 @@ const getBearerTokenFromRequest = (req: Request) => {
   if (!scheme || !token) return null
   if (scheme.toLowerCase() !== 'bearer') return null
   return token.trim() || null
+}
+
+const getInviteRegistrationTournamentIdsFromRequest = (req: Request) => {
+  const cookieHeader = req.headers.get('cookie')
+  if (!cookieHeader) return new Set<string>()
+  const cookies = parseCookie(cookieHeader)
+  return new Set(parseInviteRegistrationTournamentIds(cookies[INVITE_REGISTRATION_TOURNAMENT_COOKIE]))
 }
 
 const getSessionFromDb = async (sessionToken: string): Promise<Session | null> => {
@@ -117,6 +130,7 @@ export const createTRPCContext = async (opts: FetchCreateContextFnOptions) => {
   return createInnerTRPCContext({
     session,
     requestOrigin: getRequestOrigin(opts.req),
+    inviteRegistrationTournamentIds: getInviteRegistrationTournamentIdsFromRequest(opts.req),
   })
 }
 

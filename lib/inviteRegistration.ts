@@ -1,7 +1,7 @@
 export const INVITE_REGISTRATION_LEVELS = [
   '2.5',
   '3.0',
-  '3.4',
+  '3.5',
   '4.0',
   '4.5',
   'Free agent',
@@ -24,6 +24,7 @@ export type InviteRegistrationClub = (typeof INVITE_REGISTRATION_CLUBS)[number]
 export type InviteRegistrationComment = {
   source: 'invite_registration'
   fullName: string
+  phoneNumber?: string
   desiredLevel: InviteRegistrationLevel
   clubName: InviteRegistrationClub
   duprRating: number
