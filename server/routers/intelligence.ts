@@ -11382,10 +11382,11 @@ Generate 3 campaign strategies with different goals and timings based on the dat
 
       const subject = `${formatLabel} ${sessionDate} — ${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} left`
       const body = `Join us for ${formatLabel} at ${club?.name || 'the club'} on ${sessionDate}, ${sessionTime}. ${spotsLeft} spot${spotsLeft > 1 ? 's' : ''} remaining!`
-      const bookingUrl = buildPlatformUrl(
-        `/clubs/${input.clubId}/intelligence/sessions`,
-        getPlatformBaseUrlFromRequest(ctx.req),
-      )
+      const bookingUrl = (session as any).externalUrl
+        || buildPlatformUrl(
+          `/clubs/${input.clubId}/intelligence/sessions`,
+          getPlatformBaseUrlFromRequest(ctx.req),
+        )
 
       return {
         session: {
