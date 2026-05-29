@@ -28,6 +28,7 @@ import {
   FileBarChart, ChevronRight, ChevronDown, TrendingUp, TrendingDown, Minus,
 } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
+import { ProgrammingDynamicsModal, type DrillTarget } from './ProgrammingDynamicsModal'
 
 interface Props {
   clubId: string
@@ -45,6 +46,9 @@ type Trend = { deltaPct: number; direction: 'up' | 'down' | 'flat' } | null
 export function ProgrammingHealthIQ({ clubId }: Props) {
   const [periodDays, setPeriodDays] = useState<number>(30)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // Drill-down chart modal (§1f). Chevron expands inline; clicking the card
+  // or a program row opens this with a line chart.
+  const [drill, setDrill] = useState<DrillTarget | null>(null)
 
   const query = trpc.intelligence.getProgrammingFamilyHealth.useQuery(
     { clubId, periodDays },
@@ -149,27 +153,40 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                     borderLeft: `4px solid ${fam.color}`,
                   }}
                 >
-                  <button
-                    onClick={() => toggle(fam.family)}
-                    className="w-full flex items-center gap-3 p-4 text-left transition-colors hover:bg-[var(--subtle)]"
-                  >
-                    <span style={{ fontSize: 18 }}>{fam.emoji}</span>
-                    <span className="flex-1 font-semibold" style={{ color: 'var(--heading)', fontSize: 15 }}>
-                      {fam.label}
-                    </span>
-                    <MetricCluster
-                      trend={fam.trend}
-                      fill={fam.fillRate}
-                      fillMeaningful={fam.fillRateMeaningful}
-                      sessions={fam.sessions}
-                      participants={fam.participants}
-                    />
-                    {isOpen ? (
-                      <ChevronDown className="w-4 h-4 shrink-0" style={{ color: 'var(--t3)' }} />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--t3)' }} />
-                    )}
-                  </button>
+                  <div className="w-full flex items-center gap-2 p-4">
+                    {/* Card click → chart modal (deep dive) */}
+                    <button
+                      onClick={() =>
+                        setDrill({ family: fam.family, label: fam.label, emoji: fam.emoji, color: fam.color })
+                      }
+                      className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-lg transition-colors hover:bg-[var(--subtle)] px-1 py-1 -mx-1"
+                      title="Open dynamics chart"
+                    >
+                      <span style={{ fontSize: 18 }}>{fam.emoji}</span>
+                      <span className="flex-1 truncate font-semibold" style={{ color: 'var(--heading)', fontSize: 15 }}>
+                        {fam.label}
+                      </span>
+                      <MetricCluster
+                        trend={fam.trend}
+                        fill={fam.fillRate}
+                        fillMeaningful={fam.fillRateMeaningful}
+                        sessions={fam.sessions}
+                        participants={fam.participants}
+                      />
+                    </button>
+                    {/* Chevron → expand programs inline (quick overview) */}
+                    <button
+                      onClick={() => toggle(fam.family)}
+                      aria-label={isOpen ? 'Collapse programs' : 'Expand programs'}
+                      className="shrink-0 p-1.5 rounded-lg transition-colors hover:bg-[var(--subtle)]"
+                    >
+                      {isOpen ? (
+                        <ChevronDown className="w-4 h-4" style={{ color: 'var(--t3)' }} />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" style={{ color: 'var(--t3)' }} />
+                      )}
+                    </button>
+                  </div>
 
                   {isOpen && (
                     <div
@@ -182,10 +199,24 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                         </p>
                       ) : (
                         fam.programs.map((p, i) => (
-                          <div
+                          <button
                             key={`${fam.family}-${i}`}
-                            className="flex items-center gap-3 px-3 py-2 rounded-lg"
+                            onClick={() =>
+                              setDrill({
+                                family: fam.family,
+                                label: fam.label,
+                                emoji: fam.emoji,
+                                color: fam.color,
+                                // key === normalized title lowercased (see the
+                                // normalizer/aggregator contract) — lets the
+                                // series endpoint filter to this one program.
+                                programKey: p.title.toLowerCase(),
+                                programTitle: p.title,
+                              })
+                            }
+                            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-opacity hover:opacity-80"
                             style={{ background: 'var(--subtle)' }}
+                            title="Open dynamics chart"
                           >
                             <span className="flex-1 text-sm truncate" style={{ color: 'var(--t2)' }} title={p.title}>
                               {p.title}
@@ -198,7 +229,7 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                               participants={p.participants}
                               small
                             />
-                          </div>
+                          </button>
                         ))
                       )}
                     </div>
@@ -209,6 +240,13 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
           </div>
         </>
       )}
+
+      <ProgrammingDynamicsModal
+        clubId={clubId}
+        periodDays={periodDays}
+        target={drill}
+        onClose={() => setDrill(null)}
+      />
     </div>
   )
 }
