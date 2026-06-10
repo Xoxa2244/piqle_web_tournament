@@ -21,6 +21,7 @@ import {
   mockWinBackSnapshot,
   mockReferralSnapshot,
   mockAIRevenueAttribution,
+  mockScheduleAdvice,
 } from '../_data/mock'
 
 // ── Hook: detect demo mode from ?demo=true ──
@@ -219,6 +220,28 @@ export function useSessionsCalendar(clubId: string) {
       isLoading: false,
       error: null,
     }
+  }
+
+  return query
+}
+
+// ── Schedule Advice (sol2-lean: the Schedule page's Advise drawer) ──
+// `enabled` is driven by the drawer being open, so the analysis only runs
+// when the operator asks for it.
+export function useScheduleAdvice(clubId: string, weekStart: string, enabled: boolean) {
+  const isDemo = useIsDemo()
+
+  const query = trpc.intelligence.getScheduleAdvice.useQuery(
+    { clubId, weekStart },
+    {
+      enabled: !!clubId && !!weekStart && enabled && !isDemo,
+      staleTime: 5 * 60 * 1000,
+      keepPreviousData: true,
+    }
+  )
+
+  if (isDemo) {
+    return { data: enabled ? mockScheduleAdvice(weekStart) : null, isLoading: false, error: null }
   }
 
   return query

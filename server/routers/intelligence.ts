@@ -6298,6 +6298,111 @@ export const intelligenceRouter = createTRPCRouter({
       return { heatmap, timeSlots, days }
     }),
 
+  // Schedule Advice — week-level "remove / fill / create" recommendations
+  // for the Schedule page's Advise drawer (sol2-lean). Deterministic: the
+  // analysis lives in lib/ai/schedule-advice.ts over the visible week +
+  // ~12 weeks of history. Advisory only — CourtReserve is read-only, so
+  // this never mutates the schedule.
+  getScheduleAdvice: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      weekStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), // Monday of the visible week
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { buildScheduleAdvice } = await import('@/lib/ai/schedule-advice')
+
+      // Same timezone resolution as getSessionsCalendar — the drawer must
+      // agree with the grid it annotates about what "today" and a session's
+      // calendar date are (UTC `today` made tonight's sessions vanish from
+      // the advice every US evening).
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { automationSettings: true },
+      }).catch(() => null)
+      const timezone = (
+        (club?.automationSettings as any)?.intelligence?.timezone as string | undefined
+      ) || 'America/New_York'
+      const now = new Date()
+      const today = isoDateInTimezone(now, timezone)
+
+      const weekStartDate = new Date(`${input.weekStart}T00:00:00Z`)
+      // ±1 day of slack on the fetch windows: prisma filters compare UTC
+      // timestamps while calendar dates are timezone-mapped. The exact
+      // week/history membership is decided on the mapped date strings
+      // below (and `s.date < today` inside buildScheduleAdvice).
+      const weekFetchStart = new Date(weekStartDate)
+      weekFetchStart.setUTCDate(weekFetchStart.getUTCDate() - 1)
+      const weekFetchEnd = new Date(weekStartDate)
+      weekFetchEnd.setUTCDate(weekFetchEnd.getUTCDate() + 8)
+      // History is anchored to NOW (not the viewed week), so a future week
+      // still gets the full 12 weeks of samples.
+      const histStartDate = new Date(now)
+      histStartDate.setUTCDate(histStartDate.getUTCDate() - 85)
+
+      const sessionSelect = {
+        id: true,
+        title: true,
+        date: true,
+        startTime: true,
+        format: true,
+        skillLevel: true,
+        maxPlayers: true,
+        registeredCount: true,
+        _count: { select: { bookings: { where: { status: 'CONFIRMED' } } } },
+      } as const
+      const [weekRows, historyRows] = await Promise.all([
+        ctx.prisma.playSession.findMany({
+          where: {
+            clubId: input.clubId,
+            date: { gte: weekFetchStart, lt: weekFetchEnd },
+            status: { not: 'CANCELLED' },
+          },
+          select: sessionSelect,
+        }),
+        ctx.prisma.playSession.findMany({
+          where: {
+            clubId: input.clubId,
+            date: { gte: histStartDate, lt: now },
+            status: { not: 'CANCELLED' },
+          },
+          select: sessionSelect,
+        }),
+      ])
+
+      const weekEndStr = (() => {
+        const d = new Date(weekStartDate)
+        d.setUTCDate(d.getUTCDate() + 7)
+        return d.toISOString().slice(0, 10)
+      })()
+
+      const toRow = (s: any) => ({
+        id: s.id,
+        title: s.title ?? null,
+        date: isoDateInTimezone(s.date instanceof Date ? s.date : new Date(s.date), timezone),
+        startTime: s.startTime || '00:00',
+        format: String(s.format),
+        skillLevel: s.skillLevel ? String(s.skillLevel) : null,
+        maxPlayers: s.maxPlayers ?? 0,
+        // Same fallback as getSessionsCalendar: Excel-imported sessions
+        // carry registeredCount, CR/booking-driven ones may carry only
+        // confirmed bookings — the grid and the advice must agree.
+        registeredCount: (s.registeredCount != null && s.registeredCount > 0)
+          ? s.registeredCount
+          : (s._count?.bookings ?? 0),
+      })
+
+      const weekSessions = weekRows.map(toRow)
+        .filter((s: { date: string }) => s.date >= input.weekStart && s.date < weekEndStr)
+
+      return buildScheduleAdvice({
+        weekSessions,
+        historySessions: historyRows.map(toRow),
+        weekStart: input.weekStart,
+        today,
+      })
+    }),
+
   // 1.4 Member Growth
   getMemberGrowth: protectedProcedure
     .input(z.object({ clubId: z.string(), months: z.number().optional().default(6) }))

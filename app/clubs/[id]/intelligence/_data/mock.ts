@@ -1771,3 +1771,66 @@ export function mockProgrammingGenerationResult() {
     draftCount: 6,
   }
 }
+
+// ── Schedule Advice (sol2-lean Advise drawer) ──
+export function mockScheduleAdvice(weekStart: string) {
+  const day = (offset: number) => {
+    const d = new Date(`${weekStart}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() + offset)
+    return d.toISOString().slice(0, 10)
+  }
+  return {
+    weekStart,
+    analyzedUpcoming: 24,
+    weak: [
+      {
+        sessionId: 'demo-weak-1',
+        title: 'Open Play (Intermediate)',
+        date: day(1),
+        startTime: '14:00',
+        format: 'OPEN_PLAY',
+        occupancy: 19,
+        peerAvgOccupancy: 24,
+        peerSamples: 9,
+        verdict: 'remove' as const,
+        reason: 'Tue 14:00 Open Play averaged 24% over 9 past sessions — structurally low demand. Consider removing it and reinvesting the court time.',
+      },
+      {
+        sessionId: 'demo-weak-2',
+        title: 'Beginner Clinic',
+        date: day(3),
+        startTime: '18:00',
+        format: 'CLINIC',
+        occupancy: 31,
+        peerAvgOccupancy: 72,
+        peerSamples: 7,
+        verdict: 'fill' as const,
+        reason: 'Thu 18:00 historically fills to 72% (7 sessions) — demand exists. Promote it instead of cancelling.',
+      },
+    ],
+    create: [
+      {
+        date: day(3),
+        dayLabel: 'Thu',
+        startTime: '19:00',
+        format: 'OPEN_PLAY',
+        skillLevel: 'INTERMEDIATE',
+        histOccupancy: 86,
+        histSessions: 11,
+        avgPlayers: 14,
+        reason: 'Thu 19:00 Open Play averaged 86% fill (~14 players) over 11 past sessions and the slot is open this week.',
+      },
+      {
+        date: day(5),
+        dayLabel: 'Sat',
+        startTime: '10:00',
+        format: 'SOCIAL',
+        skillLevel: 'ALL_LEVELS',
+        histOccupancy: 78,
+        histSessions: 6,
+        avgPlayers: 18,
+        reason: 'Sat 10:00 Social averaged 78% fill (~18 players) over 6 past sessions and the slot is open this week.',
+      },
+    ],
+  }
+}

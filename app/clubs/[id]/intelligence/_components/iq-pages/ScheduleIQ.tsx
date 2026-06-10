@@ -7,11 +7,17 @@ import {
 import { useTheme } from "../IQThemeProvider"
 import type { SessionCalendarItem } from "@/types/intelligence"
 import { SessionDetailIQ } from "./SessionDetailIQ"
+import { ScheduleAdviceDrawer } from "./ScheduleAdviceDrawer"
 
 // ── Constants ──
 
 const HOUR_START = 6
 const HOUR_END = 23
+
+// sol2-lean: upcoming sessions under this fill % get the amber "weak" ring
+// and feed the Advise button's counter. Matches WEAK_FILL_PCT in
+// lib/ai/schedule-advice.ts and SessionDetailIQ's "weak" demand state.
+const WEAK_FILL_PCT = 35
 const HOURS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i)
 const SCHEDULE_ROW_HEIGHT = 40
 const WEEKDAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -189,6 +195,7 @@ export function ScheduleIQ({
   const [selectedSession, setSelectedSession] = useState<SessionCalendarItem | null>(null)
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false)
   const [calendarMonth, setCalendarMonth] = useState(() => new Date(selectedDate + 'T12:00:00'))
+  const [adviceOpen, setAdviceOpen] = useState(false)
 
   const allSessions: SessionCalendarItem[] = calendarData?.sessions ?? []
 
@@ -243,6 +250,19 @@ export function ScheduleIQ({
       return { dateStr: toDateStr(d), label: d.toLocaleDateString('en-US', { weekday: 'short' }), day: d.getDate() }
     })
   }, [selectedDate])
+
+  // sol2-lean: weak upcoming sessions in the visible week feed the Advise
+  // button's counter (the drawer computes verdicts server-side).
+  const weakWeekCount = useMemo(() => {
+    const today = toDateStr(new Date())
+    const weekStart = weekPills[0].dateStr
+    const weekEnd = weekPills[6].dateStr
+    return allSessions.filter((s) => {
+      if (s.date < weekStart || s.date > weekEnd || s.date < today) return false
+      if (!s.capacity) return false
+      return Math.round((s.registered / s.capacity) * 100) < WEAK_FILL_PCT
+    }).length
+  }, [allSessions, weekPills])
 
   const visibleHours = useMemo(() => {
     if (daySessions.length === 0) return HOURS
@@ -378,6 +398,12 @@ export function ScheduleIQ({
 
   return (
     <div className="space-y-3">
+      <ScheduleAdviceDrawer
+        open={adviceOpen}
+        onClose={() => setAdviceOpen(false)}
+        clubId={clubId}
+        weekStart={weekPills[0].dateStr}
+      />
       {/* Day navigation */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-lg font-bold" style={{ color: 'var(--heading)' }}>Court Schedule</h2>
@@ -475,6 +501,25 @@ export function ScheduleIQ({
             className="px-2.5 py-1 rounded-xl text-xs font-semibold transition-all"
             style={{ background: selectedDate === todayStr ? 'rgba(139,92,246,0.15)' : 'var(--subtle)', color: selectedDate === todayStr ? '#8B5CF6' : 'var(--t3)', border: '1px solid var(--card-border)' }}
           >Today</button>
+          {/* sol2-lean: week-level AI advice — remove dead sessions / fill
+              recoverable ones / add proven slots. Advisory only. */}
+          <button
+            onClick={() => setAdviceOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-semibold text-white transition-all hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', boxShadow: '0 2px 10px rgba(139,92,246,0.3)' }}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            Advise
+            {weakWeekCount > 0 && (
+              <span
+                className="min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px]"
+                style={{ background: 'rgba(245,158,11,0.9)', color: '#1E1B2E', fontWeight: 700 }}
+                title={`${weakWeekCount} underfilled upcoming session${weakWeekCount === 1 ? '' : 's'} this week`}
+              >
+                {weakWeekCount}
+              </span>
+            )}
+          </button>
         </div>
       </div>
 
@@ -588,6 +633,9 @@ export function ScheduleIQ({
                                   const sk = classifySkill(s.format, s.skillLevel, (s as any).title)
                                   const colors = SKILL_COLORS[sk.tier]
                                   const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
+                                  // sol2-lean: amber ring on weak upcoming sessions —
+                                  // the Advise drawer explains each one.
+                                  const isWeakUpcoming = s.date >= todayStr && (s.capacity || 0) > 0 && pct < WEAK_FILL_PCT
                                   const timeRange = `${s.startTime} - ${s.endTime}`
                                   const title = (s.title || '').trim() || sk.label
                                   // P1.4 (Sprint 1): Programming Tier indicator.
@@ -607,10 +655,13 @@ export function ScheduleIQ({
                                       style={{
                                         background: colors.bg,
                                         border: `1px solid ${colors.border}`,
+                                        // Amber halo (not a border swap) so weakness
+                                        // reads on every tier color, incl. the red one.
+                                        boxShadow: isWeakUpcoming ? '0 0 0 2px rgba(245,158,11,0.5)' : undefined,
                                         position: 'relative',
                                         zIndex: isOccupied ? 3 : 1,
                                       }}
-                                      title={`${tierMeta.label} · ${tierMeta.cadence}`}
+                                      title={isWeakUpcoming ? `Underfilled (${pct}%) — see Advise · ${tierMeta.label}` : `${tierMeta.label} · ${tierMeta.cadence}`}
                                     >
                                       <div
                                         className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full pointer-events-none"
