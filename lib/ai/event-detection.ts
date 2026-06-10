@@ -242,7 +242,14 @@ export async function detectEventsForClub(
       })
       if (alreadyWelcomed > 0) continue
 
-      if (welcomeRuntime.decision.outcome === 'pending') {
+      // sol2-lean: automated lifecycle sends are muted — every welcome is
+      // forced into the pending queue instead of the live direct-send, so
+      // a CourtReserve sync can never email members on its own. A human
+      // can still approve it from the Advisor pending queue. Flip
+      // welcomeForcePending to false (restore from deviq2) when
+      // automation ships.
+      const welcomeForcePending = true as boolean
+      if (welcomeForcePending || welcomeRuntime.decision.outcome === 'pending') {
         await prisma.aIRecommendationLog.create({
           data: {
             clubId,
