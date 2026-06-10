@@ -8,7 +8,7 @@ import {
   aggregateProgramFamilies,
   type AggregatorSessionRow,
 } from '@/lib/ai/program-family-aggregator'
-import { buildProgramFamilySeries } from '@/lib/ai/program-family-series'
+import { buildProgramFamilySeries, buildAllFamiliesSeries } from '@/lib/ai/program-family-series'
 import { buildProgrammingInsights } from '@/lib/ai/program-family-insights'
 import { classifyProgramFamily } from '@/lib/ai/program-family-classifier'
 import { programGroupKey } from '@/lib/ai/program-title-normalizer'
@@ -2553,6 +2553,269 @@ export const intelligenceRouter = createTRPCRouter({
         programKey: input.programKey ?? null,
         clubName: club?.name ?? null,
       })
+    }),
+
+  // ── Programming Health — all-families compare series (operator 3.1) ──
+  //
+  // Every visible family bucketed onto ONE shared time axis, for the
+  // "Compare families" chart. One window load + one pass (no per-family
+  // re-query); same bucket rules as the single-family series.
+  getProgrammingFamilySeriesAll: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      periodDays: z.number().int().min(1).max(365).default(30),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const { anchorNow: now, periodDays } = resolveProgrammingPeriod(input)
+      const windowStart = new Date(now.getTime() - periodDays * 86_400_000)
+
+      const sessionRows = await loadProgrammingSessionRows(
+        ctx.prisma,
+        input.clubId,
+        windowStart,
+        now,
+      )
+
+      return buildAllFamiliesSeries(sessionRows, { now, periodDays })
+    }),
+
+  // ── Programming Health — session instances behind a family/program (3.2) ──
+  //
+  // The event list for the drill-down's "Sessions" tab: every session of the
+  // family (optionally one normalized program) in the window, with confirmed
+  // + cancelled counts, fill % and estimated revenue (pricePerSlot ×
+  // confirmed — an estimate, not transactions; no-shows aren't synced from
+  // CourtReserve so cancellations are the only negative signal).
+  getProgramSessions: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      periodDays: z.number().int().min(1).max(365).default(30),
+      family: z.enum([
+        'OPEN_PLAY', 'COURT_BOOKING', 'CLINIC', 'PRIVATE_LESSON',
+        'LEAGUE', 'EVENTS', 'YOUTH', 'EQUIPMENT',
+      ]),
+      programKey: z.string().optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const { anchorNow: now, periodDays } = resolveProgrammingPeriod(input)
+      const windowStart = new Date(now.getTime() - periodDays * 86_400_000)
+
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true },
+      })
+
+      // Same pre-aggregate shape as loadProgrammingSessionRows, plus
+      // cancelled counts, startTime and pricePerSlot for the event list.
+      const rows = (await ctx.prisma.$queryRawUnsafe(
+        `
+        WITH window_sessions AS (
+          SELECT ps.id,
+                 ps.title,
+                 ps.format::text AS format,
+                 ps.category,
+                 ps."maxPlayers" AS max_players,
+                 ps.date,
+                 ps."startTime" AS start_time,
+                 ps."pricePerSlot" AS price_per_slot
+          FROM play_sessions ps
+          WHERE ps."clubId" = $1
+            AND ps.date >= $2
+            AND ps.date <  $3
+        ),
+        booking_counts AS (
+          SELECT psb."sessionId" AS session_id,
+                 COUNT(*) FILTER (WHERE psb.status = 'CONFIRMED')::int AS confirmed,
+                 COUNT(*) FILTER (WHERE psb.status = 'CANCELLED')::int AS cancelled
+          FROM play_session_bookings psb
+          WHERE psb."sessionId" IN (SELECT id FROM window_sessions)
+          GROUP BY psb."sessionId"
+        )
+        SELECT ws.*,
+               COALESCE(bc.confirmed, 0)::int AS confirmed,
+               COALESCE(bc.cancelled, 0)::int AS cancelled
+        FROM window_sessions ws
+        LEFT JOIN booking_counts bc ON bc.session_id = ws.id
+        ORDER BY ws.date DESC
+        `,
+        input.clubId,
+        windowStart,
+        now,
+      )) as Array<{
+        id: string
+        title: string | null
+        format: string | null
+        category: string | null
+        max_players: number | null
+        date: Date
+        start_time: string | null
+        price_per_slot: number | string | null
+        confirmed: number
+        cancelled: number
+      }>
+
+      const sessions = []
+      for (const r of rows) {
+        if (classifyProgramFamily({ title: r.title, format: r.format, category: r.category }) !== input.family) {
+          continue
+        }
+        if (input.programKey) {
+          const key = programGroupKey(r.title, club?.name ?? null) || '(untitled)'
+          if (key !== input.programKey) continue
+        }
+        const capacity = r.max_players ?? 0
+        const price = r.price_per_slot == null ? 0 : Number(r.price_per_slot)
+        sessions.push({
+          sessionId: r.id,
+          title: r.title ?? '(untitled)',
+          date: r.date,
+          startTime: r.start_time,
+          confirmed: r.confirmed,
+          cancelled: r.cancelled,
+          capacity,
+          fillPct: capacity > 0 ? Math.round((r.confirmed / capacity) * 100) : null,
+          estRevenue: Math.round(r.confirmed * price * 100) / 100,
+        })
+      }
+
+      return { periodDays, sessions }
+    }),
+
+  // ── Programming Health — who attended one event (operator 3.2) ──
+  //
+  // Attendee detail for a single session: membership type, skill, DUPR,
+  // booking status, repeat attendance in the same family (90d before the
+  // event) and whether they returned (any confirmed booking ≤30d after).
+  // returnedAfterPct is null while the 30-day return window is still open.
+  getSessionAudienceDetail: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      sessionId: z.string().min(1),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const session = await ctx.prisma.playSession.findFirst({
+        where: { id: input.sessionId, clubId: input.clubId },
+        select: { id: true, title: true, format: true, category: true, date: true },
+      })
+      if (!session) {
+        throw new TRPCError({ code: 'NOT_FOUND', message: 'Session not found for this club.' })
+      }
+
+      const family = classifyProgramFamily({
+        title: session.title,
+        format: session.format as string | null,
+        category: (session as any).category ?? null,
+      })
+      const sessionDate = session.date
+      const repeatWindowStart = new Date(sessionDate.getTime() - 90 * 86_400_000)
+      const returnWindowEnd = new Date(sessionDate.getTime() + 30 * 86_400_000)
+      const now = new Date()
+
+      const [attendees, surroundingRows] = await Promise.all([
+        ctx.prisma.$queryRawUnsafe(
+          `
+          SELECT psb."userId" AS user_id,
+                 psb.status::text AS status,
+                 u.name,
+                 u.email,
+                 u.membership_type,
+                 u.skill_level,
+                 u.dupr_rating_doubles
+          FROM play_session_bookings psb
+          JOIN users u ON u.id = psb."userId"
+          WHERE psb."sessionId" = $1
+            AND psb.status IN ('CONFIRMED', 'CANCELLED')
+          ORDER BY psb.status ASC, u.name ASC NULLS LAST
+          `,
+          input.sessionId,
+        ) as Promise<Array<{
+          user_id: string
+          status: string
+          name: string | null
+          email: string | null
+          membership_type: string | null
+          skill_level: string | null
+          dupr_rating_doubles: number | string | null
+        }>>,
+        // Surrounding window (90d before → 30d after) powers repeat counts
+        // and returned-after, classified per family in TS like everywhere else.
+        loadProgrammingSessionRows(ctx.prisma, input.clubId, repeatWindowStart, returnWindowEnd),
+      ])
+
+      // Per-user: confirmed sessions of the SAME family strictly before this
+      // event (repeat attendance) + any confirmed booking strictly after it
+      // within 30 days (returned).
+      const repeatCount = new Map<string, number>()
+      const returned = new Set<string>()
+      for (const row of surroundingRows) {
+        const d = row.date instanceof Date ? row.date : new Date(row.date)
+        if (row.id === session.id) continue
+        const rowFamily = classifyProgramFamily({ title: row.title, format: row.format, category: row.category })
+        for (const uid of row.userIds ?? []) {
+          if (d < sessionDate && rowFamily === family) {
+            repeatCount.set(uid, (repeatCount.get(uid) ?? 0) + 1)
+          }
+          if (d > sessionDate && d <= returnWindowEnd) {
+            returned.add(uid)
+          }
+        }
+      }
+
+      const mix = (values: Array<string | null>) => {
+        const counts = new Map<string, number>()
+        for (const v of values) {
+          const key = v && v.trim() ? v.trim() : 'Unknown'
+          counts.set(key, (counts.get(key) ?? 0) + 1)
+        }
+        return Array.from(counts.entries())
+          .map(([value, count]) => ({ value, count }))
+          .sort((a, b) => b.count - a.count)
+      }
+
+      const confirmedAttendees = attendees.filter((a) => a.status === 'CONFIRMED')
+      const returnWindowComplete = now >= returnWindowEnd
+      const returnedCount = confirmedAttendees.filter((a) => returned.has(a.user_id)).length
+
+      return {
+        session: {
+          id: session.id,
+          title: session.title ?? '(untitled)',
+          date: session.date,
+          family,
+        },
+        attendees: attendees.map((a) => ({
+          userId: a.user_id,
+          name: a.name,
+          email: a.email,
+          membershipType: a.membership_type,
+          skillLevel: a.skill_level,
+          duprDoubles: a.dupr_rating_doubles == null ? null : Number(a.dupr_rating_doubles),
+          status: a.status as 'CONFIRMED' | 'CANCELLED',
+          repeatCountInFamily: repeatCount.get(a.user_id) ?? 0,
+          returnedAfter: returned.has(a.user_id),
+        })),
+        summary: {
+          confirmed: confirmedAttendees.length,
+          cancelled: attendees.length - confirmedAttendees.length,
+          membershipMix: mix(confirmedAttendees.map((a) => a.membership_type)),
+          skillMix: mix(confirmedAttendees.map((a) => a.skill_level)),
+          // null until the full 30-day window has elapsed — don't report a
+          // misleadingly low return rate for recent events.
+          returnedAfterPct: returnWindowComplete && confirmedAttendees.length > 0
+            ? Math.round((returnedCount / confirmedAttendees.length) * 100)
+            : null,
+        },
+      }
     }),
 
   // ── Programming Health v2 — campaign audience by program (§1g) ──

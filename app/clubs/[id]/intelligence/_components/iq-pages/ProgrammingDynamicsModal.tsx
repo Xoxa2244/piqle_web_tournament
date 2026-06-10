@@ -14,8 +14,9 @@
  */
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { motion, AnimatePresence } from 'motion/react'
-import { X } from 'lucide-react'
+import { X, ChevronDown, ChevronRight, ArrowUpRight } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts'
@@ -52,6 +53,14 @@ const METRIC_META: Record<Metric, { label: string }> = {
 
 export function ProgrammingDynamicsModal({ clubId, periodDays, startDate, endDate, target, onClose }: Props) {
   const [metric, setMetric] = useState<Metric>('participants')
+  // Sessions tab (operator 3.2): event instances behind the chart, each
+  // expandable into its attendee detail.
+  const [tab, setTab] = useState<'dynamics' | 'sessions'>('dynamics')
+
+  // Reset to the chart when the modal re-opens on a different target.
+  useEffect(() => {
+    if (target) setTab('dynamics')
+  }, [target])
 
   // Esc closes + lock body scroll while open.
   useEffect(() => {
@@ -148,27 +157,61 @@ export function ProgrammingDynamicsModal({ clubId, periodDays, startDate, endDat
 
               {/* Body */}
               <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
-                {/* Metric toggle */}
-                <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--card-border)' }}>
-                  {(Object.keys(METRIC_META) as Metric[])
-                    .filter((m) => m !== 'fillRate' || fillMeaningful)
-                    .map((m) => {
-                      const active = m === effectiveMetric
+                {/* Tab strip: Dynamics chart / Sessions list (operator 3.2) */}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--card-border)' }}>
+                    {([['dynamics', 'Dynamics'], ['sessions', 'Sessions']] as const).map(([key, label]) => {
+                      const active = tab === key
                       return (
                         <button
-                          key={m}
-                          onClick={() => setMetric(m)}
+                          key={key}
+                          onClick={() => setTab(key)}
                           className="px-3 py-1.5 text-sm font-semibold transition-colors"
                           style={{
                             background: active ? target.color : 'var(--subtle)',
                             color: active ? '#fff' : 'var(--t2)',
                           }}
                         >
-                          {METRIC_META[m].label}
+                          {label}
                         </button>
                       )
                     })}
+                  </div>
+                  {tab === 'dynamics' && (
+                    <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--card-border)' }}>
+                      {(Object.keys(METRIC_META) as Metric[])
+                        .filter((m) => m !== 'fillRate' || fillMeaningful)
+                        .map((m) => {
+                          const active = m === effectiveMetric
+                          return (
+                            <button
+                              key={m}
+                              onClick={() => setMetric(m)}
+                              className="px-3 py-1.5 text-sm font-semibold transition-colors"
+                              style={{
+                                background: active ? target.color : 'var(--subtle)',
+                                color: active ? '#fff' : 'var(--t2)',
+                              }}
+                            >
+                              {METRIC_META[m].label}
+                            </button>
+                          )
+                        })}
+                    </div>
+                  )}
                 </div>
+
+                {tab === 'sessions' ? (
+                  <SessionsTab
+                    clubId={clubId}
+                    periodDays={periodDays}
+                    startDate={startDate}
+                    endDate={endDate}
+                    target={target}
+                  />
+                ) : (
+                <>
+
 
                 {/* Chart */}
                 <div
@@ -231,12 +274,210 @@ export function ProgrammingDynamicsModal({ clubId, periodDays, startDate, endDat
                     </span>
                   </div>
                 )}
+                </>
+                )}
               </div>
             </motion.div>
           </div>
         </>
       )}
     </AnimatePresence>
+  )
+}
+
+// ── Sessions tab — event instances + per-event attendee drill (operator 3.2) ──
+//
+// List of the family's (or program's) session instances over the modal's
+// period; each row expands into getSessionAudienceDetail: attendees with
+// membership/skill mix, repeat attendance and returned-within-30d. Honesty:
+// the column is "Cancelled" (no-shows aren't synced from CourtReserve) and
+// revenue is price × confirmed (estimate, not transactions).
+function SessionsTab({
+  clubId,
+  periodDays,
+  startDate,
+  endDate,
+  target,
+}: {
+  clubId: string
+  periodDays: number
+  startDate?: string | null
+  endDate?: string | null
+  target: DrillTarget
+}) {
+  const [openSessionId, setOpenSessionId] = useState<string | null>(null)
+
+  const query = trpc.intelligence.getProgramSessions.useQuery(
+    {
+      clubId,
+      periodDays,
+      family: target.family,
+      programKey: target.programKey ?? undefined,
+      startDate: startDate ?? undefined,
+      endDate: endDate ?? undefined,
+    },
+    { enabled: !!clubId, staleTime: 5 * 60_000 },
+  )
+  const sessions = query.data?.sessions ?? []
+
+  if (query.isLoading) {
+    return (
+      <div className="h-[260px] flex items-center justify-center text-sm" style={{ color: 'var(--t3)' }}>
+        Loading sessions…
+      </div>
+    )
+  }
+  if (sessions.length === 0) {
+    return (
+      <div className="h-[200px] flex items-center justify-center text-sm" style={{ color: 'var(--t4)' }}>
+        No sessions in this period.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs" style={{ color: 'var(--t4)' }}>
+          {sessions.length} session{sessions.length === 1 ? '' : 's'} · revenue is estimated (price × confirmed); no-show data isn&apos;t synced, so cancellations are shown instead
+        </span>
+        <Link
+          href={`/clubs/${clubId}/intelligence/sessions`}
+          className="text-xs font-semibold inline-flex items-center gap-1 shrink-0"
+          style={{ color: target.color }}
+        >
+          Open in Schedule <ArrowUpRight className="w-3.5 h-3.5" />
+        </Link>
+      </div>
+      {sessions.map((s) => {
+        const isOpen = openSessionId === s.sessionId
+        return (
+          <div
+            key={s.sessionId}
+            className="rounded-xl overflow-hidden"
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+          >
+            <button
+              onClick={() => setOpenSessionId(isOpen ? null : s.sessionId)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-left"
+            >
+              {isOpen
+                ? <ChevronDown className="w-4 h-4 shrink-0" style={{ color: 'var(--t4)' }} />
+                : <ChevronRight className="w-4 h-4 shrink-0" style={{ color: 'var(--t4)' }} />}
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold truncate" style={{ color: 'var(--heading)' }}>
+                  {s.title}
+                </div>
+                <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                  {new Date(s.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}
+                  {s.startTime ? ` · ${s.startTime}` : ''}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-xs font-bold" style={{ color: 'var(--heading)' }}>
+                  {s.confirmed}{s.capacity > 0 ? `/${s.capacity}` : ''}
+                  {s.fillPct != null && (
+                    <span style={{ color: s.fillPct >= 80 ? '#10B981' : s.fillPct >= 50 ? '#F59E0B' : '#EF4444' }}>
+                      {' '}· {s.fillPct}%
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                  {s.cancelled > 0 ? `${s.cancelled} cancelled · ` : ''}est. ${s.estRevenue.toLocaleString('en-US')}
+                </div>
+              </div>
+            </button>
+            {isOpen && <SessionAudienceDetail clubId={clubId} sessionId={s.sessionId} color={target.color} />}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function SessionAudienceDetail({ clubId, sessionId, color }: { clubId: string; sessionId: string; color: string }) {
+  const query = trpc.intelligence.getSessionAudienceDetail.useQuery(
+    { clubId, sessionId },
+    { staleTime: 5 * 60_000 },
+  )
+  const data = query.data
+
+  if (query.isLoading || !data) {
+    return (
+      <div className="px-4 py-3 text-xs" style={{ color: 'var(--t3)', borderTop: '1px solid var(--card-border)' }}>
+        Loading attendees…
+      </div>
+    )
+  }
+
+  const MixChips = ({ label, mix }: { label: string; mix: Array<{ value: string; count: number }> }) => (
+    mix.length > 0 ? (
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--t4)' }}>{label}</span>
+        {mix.slice(0, 4).map((m) => (
+          <span
+            key={m.value}
+            className="text-[10px] px-2 py-0.5 rounded-full truncate max-w-[200px]"
+            style={{ background: 'var(--subtle)', color: 'var(--t2)' }}
+            title={m.value}
+          >
+            {m.value} · {m.count}
+          </span>
+        ))}
+      </div>
+    ) : null
+  )
+
+  return (
+    <div className="px-4 py-3 space-y-3" style={{ borderTop: '1px solid var(--card-border)' }}>
+      {/* Mix summary */}
+      <div className="space-y-1.5">
+        <MixChips label="Membership" mix={data.summary.membershipMix} />
+        <MixChips label="Skill" mix={data.summary.skillMix} />
+        <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
+          {data.summary.confirmed} confirmed · {data.summary.cancelled} cancelled ·{' '}
+          {data.summary.returnedAfterPct != null
+            ? <>returned within 30d: <strong style={{ color }}>{data.summary.returnedAfterPct}%</strong></>
+            : 'return rate available 30 days after the event'}
+        </div>
+      </div>
+
+      {/* Attendee table */}
+      <div className="space-y-0.5">
+        {data.attendees.map((a) => (
+          <div key={`${a.userId}-${a.status}`} className="flex items-center gap-2 py-1 text-xs">
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: a.status === 'CONFIRMED' ? '#10B981' : '#EF4444' }}
+              title={a.status === 'CONFIRMED' ? 'Confirmed' : 'Cancelled'}
+            />
+            <span className="truncate flex-1 min-w-0" style={{ color: 'var(--t2)' }}>
+              {a.name || a.email || 'Unknown'}
+            </span>
+            <span className="shrink-0 truncate max-w-[160px] text-[11px]" style={{ color: 'var(--t4)' }} title={a.membershipType ?? undefined}>
+              {a.membershipType || '—'}
+            </span>
+            <span className="shrink-0 text-[11px] w-14 text-right" style={{ color: 'var(--t4)' }}>
+              {a.skillLevel || (a.duprDoubles != null ? a.duprDoubles.toFixed(2) : '—')}
+            </span>
+            <span
+              className="shrink-0 text-[11px] w-16 text-right"
+              style={{ color: a.repeatCountInFamily > 0 ? 'var(--t3)' : 'var(--t4)' }}
+              title="Visits to this program family in the 90 days before the event"
+            >
+              {a.repeatCountInFamily}× repeat
+            </span>
+            <span
+              className="shrink-0 text-[11px] w-14 text-right"
+              style={{ color: a.returnedAfter ? '#10B981' : 'var(--t4)' }}
+              title="Booked anything within 30 days after this event"
+            >
+              {a.returnedAfter ? 'returned' : '—'}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   )
 }
 

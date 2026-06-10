@@ -20,6 +20,7 @@
 import {
   classifyProgramFamily,
   PROGRAM_FAMILY_META,
+  VISIBLE_FAMILIES,
   type ProgramFamily,
 } from './program-family-classifier'
 import { programGroupKey } from './program-title-normalizer'
@@ -214,4 +215,76 @@ export function buildProgramFamilySeries(
       fillRate: fillMeaningful ? fillRate(totReg, totCap) : null,
     },
   }
+}
+
+// ── All-families compare series (operator feedback 3.1) ─────────────────────
+
+export interface AllFamiliesSeriesBucket {
+  start: string
+  label: string
+  /** One numeric column per active family key — recharts-ready rows are
+   *  derived in the UI by picking `${family}_${metric}`. */
+  perFamily: Record<string, { sessions: number; participants: number }>
+}
+
+export interface AllFamiliesSeriesResult {
+  granularity: SeriesGranularity
+  periodDays: number
+  /** Families with ≥1 session in the period, sorted by total participants desc. */
+  families: Array<{ family: ProgramFamily; sessions: number; participants: number }>
+  buckets: AllFamiliesSeriesBucket[]
+}
+
+/**
+ * Bucket EVERY visible family's sessions into one shared time axis — the
+ * "compare families on one graph" view. One pass over the rows (no per-family
+ * re-query); same bucket skeleton/granularity rules as the single-family
+ * series so the two charts agree.
+ */
+export function buildAllFamiliesSeries(
+  rows: AggregatorSessionRow[],
+  opts: { now?: Date; periodDays: number },
+): AllFamiliesSeriesResult {
+  const now = opts.now ?? new Date()
+  const periodStart = new Date(now.getTime() - opts.periodDays * DAY_MS)
+  const granularity = granularityFor(opts.periodDays)
+
+  const skeleton = makeBuckets(periodStart, now, granularity)
+  const perBucket: Array<Record<string, { sessions: number; participants: number }>> =
+    skeleton.map(() => ({}))
+  const totals = new Map<ProgramFamily, { sessions: number; participants: number }>()
+
+  for (const row of rows) {
+    const d = row.date instanceof Date ? row.date : new Date(row.date)
+    if (d < periodStart || d >= now) continue
+    const family = classifyProgramFamily({ title: row.title, format: row.format, category: row.category })
+    if (!VISIBLE_FAMILIES.includes(family)) continue
+    const idx = bucketIndex(d, periodStart, granularity, skeleton.length)
+    if (idx < 0 || idx >= skeleton.length) continue
+    const participants = row.confirmedCount ?? 0
+    const cell = (perBucket[idx][family] ??= { sessions: 0, participants: 0 })
+    cell.sessions++
+    cell.participants += participants
+    const tot = totals.get(family) ?? { sessions: 0, participants: 0 }
+    tot.sessions++
+    tot.participants += participants
+    totals.set(family, tot)
+  }
+
+  const families = Array.from(totals.entries())
+    .map(([family, t]) => ({ family, ...t }))
+    .sort((a, b) => b.participants - a.participants || b.sessions - a.sessions)
+
+  // Emit zeros for active families in empty buckets so lines slope to zero
+  // instead of breaking (same convention as the single-family series).
+  const activeKeys = families.map((f) => f.family)
+  const buckets: AllFamiliesSeriesBucket[] = skeleton.map((b, i) => {
+    const perFamily: AllFamiliesSeriesBucket['perFamily'] = {}
+    for (const key of activeKeys) {
+      perFamily[key] = perBucket[i][key] ?? { sessions: 0, participants: 0 }
+    }
+    return { start: isoDay(b.start), label: b.label, perFamily }
+  })
+
+  return { granularity, periodDays: opts.periodDays, families, buckets }
 }

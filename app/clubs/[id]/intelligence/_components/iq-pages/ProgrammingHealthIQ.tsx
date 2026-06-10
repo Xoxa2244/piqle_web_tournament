@@ -23,12 +23,16 @@
  *   - 1h removing the old tier scorecard
  */
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   FileBarChart, ChevronRight, ChevronDown, TrendingUp, TrendingDown, Minus,
   Lightbulb, AlertCircle, AlertTriangle,
 } from 'lucide-react'
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts'
 import { trpc } from '@/lib/trpc'
+import { PROGRAM_FAMILY_META, type ProgramFamily } from '@/lib/ai/program-family-classifier'
 import { ProgrammingDynamicsModal, type DrillTarget } from './ProgrammingDynamicsModal'
 
 interface Props {
@@ -238,6 +242,9 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
               No prior-period data yet — trends appear once there&apos;s a full previous {periodLabel} to compare against.
             </p>
           )}
+
+          {/* Compare families — one graph, a line per event type (operator 3.1) */}
+          <CompareFamiliesCard clubId={clubId} periodDays={periodDays} custom={custom} periodLabel={periodLabel} />
 
           {/* Family list */}
           <div className="space-y-3">
@@ -543,5 +550,118 @@ function FillValue({ value, meaningful }: { value: number | null; meaningful: bo
     >
       {value}%{over ? '+' : ''}
     </span>
+  )
+}
+
+// ── Compare families — all event types on one chart (operator 3.1) ──
+//
+// One line per active family over the page's period; metric toggle
+// Signups / Sessions. Backed by getProgrammingFamilySeriesAll (one DB
+// load, one bucketing pass). Colors come from PROGRAM_FAMILY_META so the
+// lines match the family cards below.
+function CompareFamiliesCard({
+  clubId,
+  periodDays,
+  custom,
+  periodLabel,
+}: {
+  clubId: string
+  periodDays: number
+  custom: { start: string; end: string } | null
+  periodLabel: string
+}) {
+  const [metric, setMetric] = useState<'participants' | 'sessions'>('participants')
+
+  const query = trpc.intelligence.getProgrammingFamilySeriesAll.useQuery(
+    custom
+      ? { clubId, startDate: custom.start, endDate: custom.end }
+      : { clubId, periodDays },
+    { enabled: !!clubId, staleTime: 5 * 60_000 },
+  )
+  const data = query.data
+
+  // recharts rows: one column per family key, picked by the active metric.
+  const chartRows = useMemo(() => {
+    if (!data) return []
+    return data.buckets.map((b) => {
+      const row: Record<string, number | string> = { label: b.label }
+      for (const f of data.families) {
+        row[f.family] = b.perFamily[f.family]?.[metric] ?? 0
+      }
+      return row
+    })
+  }, [data, metric])
+
+  if (query.isLoading) {
+    return (
+      <div className="rounded-2xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+        <div className="h-[220px] flex items-center justify-center text-sm" style={{ color: 'var(--t3)' }}>
+          Loading family comparison…
+        </div>
+      </div>
+    )
+  }
+  if (!data || data.families.length === 0) return null
+
+  return (
+    <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h3 className="text-sm font-bold" style={{ color: 'var(--heading)' }}>Compare event types</h3>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--t4)' }}>
+            Every program family on one graph over the last {periodLabel}
+          </p>
+        </div>
+        <div className="inline-flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--card-border)' }}>
+          {([['participants', 'Signups'], ['sessions', 'Sessions']] as const).map(([key, label]) => {
+            const active = metric === key
+            return (
+              <button
+                key={key}
+                onClick={() => setMetric(key)}
+                className="px-3 py-1.5 text-xs font-semibold transition-colors"
+                style={{
+                  background: active ? 'var(--accent, #A855F7)' : 'var(--subtle)',
+                  color: active ? '#fff' : 'var(--t2)',
+                }}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={260}>
+        <LineChart data={chartRows} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+          <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
+          <XAxis dataKey="label" stroke="var(--chart-axis)" tick={{ fill: 'var(--chart-tick)', fontSize: 11 }} />
+          <YAxis stroke="var(--chart-axis)" tick={{ fill: 'var(--chart-tick)', fontSize: 11 }} allowDecimals={false} />
+          <Tooltip
+            contentStyle={{
+              background: 'var(--tooltip-bg)',
+              border: '1px solid var(--tooltip-border)',
+              borderRadius: 12,
+              color: 'var(--tooltip-color)',
+              fontSize: 12,
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          {data.families.map((f) => {
+            const meta = PROGRAM_FAMILY_META[f.family as ProgramFamily]
+            return (
+              <Line
+                key={f.family}
+                type="monotone"
+                dataKey={f.family}
+                name={meta?.label ?? f.family}
+                stroke={meta?.color ?? '#8B5CF6'}
+                strokeWidth={2}
+                dot={false}
+              />
+            )
+          })}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   )
 }
