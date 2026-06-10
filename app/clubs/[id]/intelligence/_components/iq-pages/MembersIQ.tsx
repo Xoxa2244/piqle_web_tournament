@@ -1262,7 +1262,11 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const [filterRisk, setFilterRisk] = useState<string>("all");
   const [filterTrend, setFilterTrend] = useState<string>("all");
   const [filterValue, setFilterValue] = useState<string>("all");
-  const [filterMembershipType, setFilterMembershipType] = useState<string>("all");
+  // `?tier=<exact CR membership_type>` pre-applies the tier filter — the
+  // Membership Health drill-down's "View in Members" deep-link lands here.
+  const [filterMembershipType, setFilterMembershipType] = useState<string>(
+    () => searchParamsForUrl?.get('tier') || "all",
+  );
   const [filterMembershipStatus, setFilterMembershipStatus] = useState<string>("all");
 
   // Real CR membership facets (raw membership_type / membership_status values

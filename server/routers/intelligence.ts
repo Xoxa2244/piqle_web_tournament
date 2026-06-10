@@ -1886,6 +1886,30 @@ export const intelligenceRouter = createTRPCRouter({
       })
     }),
 
+  // Per-member detail behind a tier card's bucket (Membership Health
+  // drill-down drawer): who's in the bucket, attendance in the window, last
+  // visit, join date. Same window + bucket predicates as getMembershipHealth,
+  // so drawer counts match the cards 1:1. getTierAudience stays ids-only for
+  // the Campaign Wizard.
+  getTierMembers: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      tierName: z.string().min(1),
+      bucket: z.enum(['zombies', 'power', 'suspended', 'active', 'all']),
+      periodDays: z.number().int().min(1).max(730).optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { getTierMembers } = await import('@/lib/ai/membership-economics')
+      return getTierMembers(input.clubId, input.tierName, input.bucket, {
+        periodDays: input.periodDays,
+        startDate: input.startDate,
+        endDate: input.endDate,
+      })
+    }),
+
   // ── Club Data Status: Check if club has AI data ──
   getClubDataStatus: protectedProcedure
     .input(z.object({ clubId: z.string().uuid() }))

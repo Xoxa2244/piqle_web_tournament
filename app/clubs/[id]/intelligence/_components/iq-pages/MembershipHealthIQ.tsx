@@ -1,14 +1,16 @@
 'use client'
 
-import { useState } from "react"
-import { motion } from "motion/react"
+import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { motion, AnimatePresence } from "motion/react"
 import {
   Heart, DollarSign, AlertTriangle, TrendingUp, ChevronDown, ChevronUp,
-  Sparkles, Activity, ShieldAlert, ArrowUpRight,
+  Sparkles, Activity, ShieldAlert, ArrowUpRight, X, Users,
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
 import { PeriodSelector, type PeriodValue } from "../shared/PeriodSelector"
+import { MemberDetailDrawer } from "../MemberDetailDrawer"
 
 // ── Verdict styling ──
 type Verdict = 'healthy' | 'watch' | 'at_risk' | 'critical' | 'tiny'
@@ -67,6 +69,196 @@ type Tier = {
   cancelDays: number | null
 }
 
+// ── Tier drill-down drawer ──
+type DrillBucket = 'all' | 'active' | 'zombies' | 'power' | 'suspended'
+
+const BUCKET_TABS: { key: DrillBucket; label: string }[] = [
+  { key: 'all', label: 'All' },
+  { key: 'active', label: 'Top attendees' },
+  { key: 'zombies', label: 'Zombies' },
+  { key: 'power', label: 'Power / upsell' },
+  { key: 'suspended', label: 'Suspended' },
+]
+
+const daysAgo = (d: string | Date | null) => {
+  if (!d) return null
+  const days = Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000)
+  return days <= 0 ? 'today' : `${days}d ago`
+}
+
+/**
+ * Right-side drawer listing the members behind a tier card's bucket counts
+ * (operator feedback 1.3 — who attends most, what each pays, upsell
+ * candidates). Same window as the page, so counts match the card 1:1.
+ * Clicking a row hands off to the shared MemberDetailDrawer (z-50), so this
+ * drawer is hidden by the parent while a member is open.
+ */
+function TierDrillDrawer({
+  clubId,
+  tierName,
+  bucket,
+  onBucketChange,
+  windowInput,
+  periodDays,
+  onClose,
+  onOpenMember,
+}: {
+  clubId: string
+  tierName: string
+  bucket: DrillBucket
+  onBucketChange: (b: DrillBucket) => void
+  windowInput: { periodDays?: number; startDate?: string; endDate?: string }
+  periodDays: number
+  onClose: () => void
+  onOpenMember: (memberId: string) => void
+}) {
+  const { data, isLoading } = trpc.intelligence.getTierMembers.useQuery(
+    { clubId, tierName, bucket, ...windowInput },
+    { staleTime: 60_000 },
+  )
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const members = data?.members ?? []
+
+  return (
+    <>
+      <motion.div
+        key="tier-drill-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[60]"
+        style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
+        onClick={onClose}
+      />
+      <motion.aside
+        key="tier-drill-drawer"
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+        className="fixed top-0 right-0 z-[70] h-screen flex flex-col"
+        style={{
+          width: 'min(520px, 100vw)',
+          background: 'var(--bg, #0B0B14)',
+          borderLeft: '1px solid var(--card-border)',
+          boxShadow: '-12px 0 32px rgba(0,0,0,0.35)',
+        }}
+        onClick={(e) => e.stopPropagation()}
+        aria-label="Tier members panel"
+      >
+        {/* Header */}
+        <div
+          className="px-5 py-4 sticky top-0 z-10"
+          style={{ background: 'var(--bg, #0B0B14)', borderBottom: '1px solid var(--card-border)' }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Users className="w-4 h-4 shrink-0" style={{ color: 'var(--t3)' }} />
+              <h3 className="truncate" style={{ fontSize: 15, fontWeight: 700, color: 'var(--heading)' }}>{tierName}</h3>
+            </div>
+            <button onClick={onClose} aria-label="Close" className="p-1 rounded-lg" style={{ color: 'var(--t3)' }}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--t4)' }}>
+            {data ? (
+              <>
+                {data.totalCount.toLocaleString()} member{data.totalCount === 1 ? '' : 's'} · last {periodDays}d
+                {!data.isFreeTier && <> · ${data.monthlyPrice}/mo each (contracted)</>}
+              </>
+            ) : 'Loading…'}
+          </div>
+          {/* Bucket tabs */}
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {BUCKET_TABS.map((tab) => {
+              const active = tab.key === bucket
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => onBucketChange(tab.key)}
+                  className="px-2.5 py-1 rounded-full text-xs font-semibold transition-colors"
+                  style={{
+                    background: active ? 'var(--accent, #A855F7)' : 'var(--subtle)',
+                    color: active ? '#fff' : 'var(--t2)',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Member rows */}
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          {isLoading && (
+            <div className="space-y-2 px-2 py-2">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-12 rounded-xl animate-pulse" style={{ background: 'rgba(255,255,255,0.05)' }} />
+              ))}
+            </div>
+          )}
+          {!isLoading && members.length === 0 && (
+            <div className="text-sm text-center py-10" style={{ color: 'var(--t4)' }}>
+              No members in this bucket for the selected period.
+            </div>
+          )}
+          {members.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => onOpenMember(m.id)}
+              className="w-full text-left px-2 py-2.5 rounded-xl flex items-center justify-between gap-3 transition-colors hover:bg-white/5"
+            >
+              <div className="min-w-0">
+                <div className="truncate" style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1, var(--heading))' }}>
+                  {m.name || m.email || 'Unnamed member'}
+                </div>
+                <div className="truncate text-xs" style={{ color: 'var(--t4)' }}>
+                  {m.email || '—'}
+                  {m.joinedAt && <> · joined {new Date(m.joinedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</>}
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div style={{ fontSize: 13, fontWeight: 700, color: m.bookingsInWindow === 0 ? '#EF4444' : 'var(--t2)' }}>
+                  {m.bookingsInWindow} booking{m.bookingsInWindow === 1 ? '' : 's'}
+                </div>
+                <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                  {m.lastBookedAt ? `last ${daysAgo(m.lastBookedAt)}` : 'never played'}
+                </div>
+              </div>
+            </button>
+          ))}
+          {data && data.totalCount > members.length && (
+            <div className="text-[11px] text-center py-2" style={{ color: 'var(--t4)' }}>
+              Showing first {members.length} of {data.totalCount.toLocaleString()} — open in Members for the full list.
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div
+          className="px-5 py-3"
+          style={{ background: 'var(--bg, #0B0B14)', borderTop: '1px solid var(--card-border)' }}
+        >
+          <Link
+            href={`/clubs/${clubId}/intelligence/members?tier=${encodeURIComponent(tierName)}`}
+            className="inline-flex items-center gap-1 text-xs font-semibold"
+            style={{ color: 'var(--accent, #A855F7)' }}
+          >
+            View in Members <ArrowUpRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      </motion.aside>
+    </>
+  )
+}
+
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={`rounded-2xl p-5 ${className}`} style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", backdropFilter: "var(--glass-blur)", boxShadow: "var(--card-shadow)" }}>
@@ -104,6 +296,20 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
   const tiers = (data?.tiers as Tier[] | undefined) || []
   const rollup = data?.rollup
   const periodDays = rollup?.periodDays ?? (period.kind === 'days' ? period.days : 30)
+
+  // Tier drill-down (feedback 1.3): which tier+bucket is open, and which
+  // member's detail drawer is on top of it. While a member is open the tier
+  // drawer unmounts (MemberDetailDrawer sits at z-50, below our z-70) and
+  // remounts on close — the 60s query cache makes the round-trip instant.
+  const [drill, setDrill] = useState<{ tierName: string; bucket: DrillBucket } | null>(null)
+  const [drillMemberId, setDrillMemberId] = useState<string | null>(null)
+  const windowInput = useMemo(
+    () =>
+      period.kind === 'days'
+        ? (period.days === 30 ? {} : { periodDays: period.days })
+        : { startDate: period.start, endDate: period.end },
+    [period],
+  )
 
   return (
     <motion.div
@@ -204,14 +410,42 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
                 </div>
               </div>
 
-              {/* Signals */}
+              {/* Signals — chips drill into the members behind each count */}
               <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs" style={{ color: "var(--t3)" }}>
-                <span><Activity className="w-3 h-3 inline mr-1" style={{ color: "var(--t4)" }} />{t.active.toLocaleString()} active</span>
-                <span style={{ color: t.zombieSharePct >= 45 ? "#EF4444" : t.zombieSharePct >= 25 ? "#F59E0B" : "var(--t3)" }}>
+                <button
+                  onClick={() => setDrill({ tierName: t.name, bucket: 'active' })}
+                  className="hover:underline cursor-pointer"
+                  style={{ color: 'inherit' }}
+                  title="See the members on this tier"
+                >
+                  <Activity className="w-3 h-3 inline mr-1" style={{ color: "var(--t4)" }} />{t.active.toLocaleString()} active
+                </button>
+                <button
+                  onClick={() => setDrill({ tierName: t.name, bucket: 'zombies' })}
+                  className="hover:underline cursor-pointer"
+                  style={{ color: t.zombieSharePct >= 45 ? "#EF4444" : t.zombieSharePct >= 25 ? "#F59E0B" : "var(--t3)" }}
+                  title="See the zombie members (active membership, 0 bookings)"
+                >
                   {t.zombieSharePct}% zombie
-                </span>
-                <span>{t.powerUserSharePct}% power</span>
-                {t.suspendedRatePct >= 10 && <span style={{ color: "#F59E0B" }}>{t.suspendedRatePct}% suspended</span>}
+                </button>
+                <button
+                  onClick={() => setDrill({ tierName: t.name, bucket: 'power' })}
+                  className="hover:underline cursor-pointer"
+                  style={{ color: 'inherit' }}
+                  title="See the power users (8+ bookings/month)"
+                >
+                  {t.powerUserSharePct}% power
+                </button>
+                {t.suspendedRatePct >= 10 && (
+                  <button
+                    onClick={() => setDrill({ tierName: t.name, bucket: 'suspended' })}
+                    className="hover:underline cursor-pointer"
+                    style={{ color: "#F59E0B" }}
+                    title="See the suspended members"
+                  >
+                    {t.suspendedRatePct}% suspended
+                  </button>
+                )}
                 <span>{t.bookingsPerActive}/member · {periodDays}d</span>
                 {!t.isFreeTier && t.mrrAtRiskUsd > 0 && <span style={{ color: "#EF4444" }}>{usd(t.mrrAtRiskUsd)} at risk</span>}
                 {t.isFreeTier && t.upsellPotentialMRRUsd > 0 && <span style={{ color: "#10B981" }}>{usd(t.upsellPotentialMRRUsd)} upsell</span>}
@@ -310,6 +544,29 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
             : `MRR at risk weights zombies by an estimated churn rate (not enough booking history yet to measure this club's actual rate).`}{" "}
           Treatment $ assumes a campaign recovers half of the at-risk — a rough guide for prioritisation, not a guarantee.
         </p>
+      )}
+
+      {/* Tier drill-down drawer (hidden while a member detail is on top) */}
+      <AnimatePresence>
+        {drill && !drillMemberId && (
+          <TierDrillDrawer
+            clubId={clubId}
+            tierName={drill.tierName}
+            bucket={drill.bucket}
+            onBucketChange={(b) => setDrill({ tierName: drill.tierName, bucket: b })}
+            windowInput={windowInput}
+            periodDays={periodDays}
+            onClose={() => setDrill(null)}
+            onOpenMember={setDrillMemberId}
+          />
+        )}
+      </AnimatePresence>
+      {drillMemberId && (
+        <MemberDetailDrawer
+          memberId={drillMemberId}
+          clubId={clubId}
+          onClose={() => setDrillMemberId(null)}
+        />
       )}
     </motion.div>
   )

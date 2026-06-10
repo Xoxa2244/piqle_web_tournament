@@ -829,3 +829,134 @@ export async function getTierAudience(
   const userIds = rows.map((r) => r.id).filter((id): id is string => typeof id === 'string' && id.length > 0)
   return { tierName, bucket, userIds, memberCount: userIds.length }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tier drill-down — the members behind a tier card's bucket counts
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type TierMemberRow = {
+  id: string
+  name: string | null
+  email: string | null
+  membershipStatus: string | null
+  /** Confirmed bookings inside the reporting window. */
+  bookingsInWindow: number
+  /** Most recent confirmed booking EVER (not window-scoped) — so a zombie still shows when they last played. */
+  lastBookedAt: Date | null
+  /** club_followers.created_at — when they joined this club. */
+  joinedAt: Date | null
+}
+
+export type TierMembersResult = {
+  tierName: string
+  bucket: TierAudienceBucket
+  periodDays: number
+  /** Contracted catalog price — what each member on this tier pays (not actual transactions). */
+  monthlyPrice: number
+  isFreeTier: boolean
+  totalCount: number
+  /** Sorted by bookings-in-window desc, then most-recent-visit desc. Capped at 500. */
+  members: TierMemberRow[]
+}
+
+type TierMemberQueryRow = {
+  id: string
+  name: string | null
+  email: string | null
+  membership_status: string | null
+  b30: number | bigint | null
+  last_at: Date | null
+  joined_at: Date | null
+  total: number | bigint
+}
+
+/**
+ * The per-member detail behind getTierAudience's id list, for the Membership
+ * Health drill-down drawer: who is in the bucket, how often they actually
+ * attend, when they last played, when they joined. Same `recent` CTE and
+ * bucket predicates as getTierHealth/getTierAudience, so the drawer's counts
+ * match the tier card 1:1 for the same window.
+ *
+ * getTierAudience stays untouched (ids only) — the Campaign Wizard on branch
+ * Sol2 consumes its shape.
+ */
+export async function getTierMembers(
+  clubId: string,
+  tierName: string,
+  bucket: TierAudienceBucket,
+  window?: TierWindowInput,
+  limit = 500,
+): Promise<TierMembersResult> {
+  const win = resolveTierWindow(window)
+  const cappedLimit = Math.min(Math.max(1, Math.round(limit)), 500)
+
+  const [catalog, rows] = await Promise.all([
+    getTierCatalog(clubId),
+    prisma.$queryRaw<TierMemberQueryRow[]>`
+      WITH recent AS (
+        SELECT psb."userId" AS uid, COUNT(*)::int AS b30
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${clubId}
+          AND psb.status = 'CONFIRMED'
+          AND psb."bookedAt" >= ${win.start}
+          AND psb."bookedAt" < ${win.end}
+        GROUP BY psb."userId"
+      ),
+      last_play AS (
+        SELECT psb."userId" AS uid, MAX(psb."bookedAt") AS last_at
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${clubId}
+          AND psb.status = 'CONFIRMED'
+        GROUP BY psb."userId"
+      )
+      SELECT
+        u.id,
+        u.name,
+        u.email,
+        u.membership_status,
+        COALESCE(r.b30, 0) AS b30,
+        lp.last_at,
+        cf.created_at AS joined_at,
+        COUNT(*) OVER() AS total
+      FROM users u
+      JOIN club_followers cf ON cf.user_id = u.id
+      LEFT JOIN recent r ON r.uid = u.id
+      LEFT JOIN last_play lp ON lp.uid = u.id
+      WHERE cf.club_id = ${clubId}
+        AND u.membership_type = ${tierName}
+        AND (
+          (${bucket} = 'zombies'   AND u.membership_status = 'Active'    AND COALESCE(r.b30, 0) = 0)
+       OR (${bucket} = 'power'     AND u.membership_status = 'Active'    AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} >= 8)
+       OR (${bucket} = 'suspended' AND u.membership_status = 'Suspended')
+       OR (${bucket} = 'active'    AND u.membership_status = 'Active')
+       OR (${bucket} = 'all'       AND u.membership_status IN ('Active', 'Suspended', 'Expired'))
+        )
+      ORDER BY COALESCE(r.b30, 0) DESC, lp.last_at DESC NULLS LAST, u.name ASC NULLS LAST
+      LIMIT ${cappedLimit}
+    `,
+  ])
+
+  const spec = catalog.find((t) => t.name === tierName)
+  const monthlyPrice = spec?.monthlyPrice ?? 0
+  const annualPrice = spec?.annualPrice ?? 0
+
+  return {
+    tierName,
+    bucket,
+    periodDays: win.periodDays,
+    monthlyPrice,
+    isFreeTier: monthlyPrice === 0 && annualPrice === 0,
+    totalCount: rows.length > 0 ? Number(rows[0].total) : 0,
+    members: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      email: r.email,
+      membershipStatus: r.membership_status,
+      bookingsInWindow: Number(r.b30 ?? 0),
+      lastBookedAt: r.last_at,
+      joinedAt: r.joined_at,
+    })),
+  }
+}
