@@ -14,6 +14,14 @@ import { STATUS_OPTIONS, TIER_OPTIONS } from '../MembersFilterDrawer'
 import { EMPTY_QUICK_COHORT, parseQuickCohortSearchParams, QUICK_COHORT_QUERY_KEYS, type QuickCohortState } from '../cohorts/quick-cohort-intent'
 
 // ── Filter field definitions ──
+// sol2-lean: Audiences (this page) is LIVE, but Campaigns stays gated
+// (Coming Soon). Every campaign hand-off on this page — quick-campaign
+// modal, "Save + Create Campaign", AI-card "→ Campaign" — hides behind
+// this flag so un-gating Audiences can't trigger a real send. Flip when
+// Campaigns ships. (Advisor "Draft campaign" links stay — the Advisor is
+// live and only drafts copy.)
+const CAMPAIGNS_GATED = true
+
 const NORMALIZED_MEMBERSHIP_TYPE_OPTIONS = TIER_OPTIONS
   .filter((option) => option.key !== 'all')
   .map((option) => ({ label: option.label, value: option.key }))
@@ -257,6 +265,49 @@ const QUICK_COHORT_PRESETS: Array<{
     name: 'Power Players',
     previewSort: 'activity',
     state: { activityLevel: ['power'], membershipStatus: ['active'] },
+  },
+  // ── Inactive / zombie presets (operator feedback 2.2, 2026-06-10) ──
+  // Pinned definitions so "who counts as inactive" is explicit:
+  // recency = days since last confirmed booking.
+  {
+    id: 'no-visit-7d',
+    label: 'No Visit 7+ Days',
+    description: 'Anyone without a confirmed booking in the last week — earliest reactivation window.',
+    name: 'No Visit 7+ Days',
+    previewSort: 'inactive',
+    state: { inactiveDays: '7' },
+  },
+  {
+    id: 'no-visit-14d',
+    label: 'No Visit 14+ Days',
+    description: 'Two weeks of silence — worth a nudge before habits break.',
+    name: 'No Visit 14+ Days',
+    previewSort: 'inactive',
+    state: { inactiveDays: '14' },
+  },
+  {
+    id: 'zombie-members',
+    label: 'Zombie Members',
+    description: 'Active membership but no visit in 30+ days — paying and not playing (same definition as Membership Health).',
+    name: 'Zombie Members',
+    previewSort: 'inactive',
+    state: { membershipStatus: ['active'], inactiveDays: '30' },
+  },
+  {
+    id: 'dropped-off',
+    label: 'Dropped-Off',
+    description: 'Used to be active, now fading — engagement trend declining or churning.',
+    name: 'Dropped-Off',
+    previewSort: 'inactive',
+    state: { engagementTrend: ['declining', 'churning'] },
+  },
+  {
+    id: 'churn-risk',
+    label: 'Churn Risk',
+    description: 'Health model flags these members as at-risk or critical.',
+    name: 'Churn Risk',
+    previewSort: 'risk',
+    state: { riskLevel: ['at_risk', 'critical'] },
   },
 ]
 
@@ -748,10 +799,10 @@ export default function CohortsIQ() {
         <div>
           <h1 className="text-2xl" style={{ fontWeight: 800, color: 'var(--heading)' }}>
             <Users className="w-6 h-6 inline mr-2" />
-            Cohorts
+            Audiences
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>
-            Create custom member segments for targeted AI campaigns
+            Build reusable member audiences for analysis and targeted outreach
           </p>
         </div>
         {/* Top-right "Create Cohort" CTA removed — duplicated the in-flow
@@ -805,7 +856,7 @@ export default function CohortsIQ() {
           <div className="flex items-center gap-2 mb-3">
             <Sparkles className="w-4 h-4" style={{ color: '#8B5CF6' }} />
             <h2 className="text-base" style={{ fontWeight: 800, color: 'var(--heading)' }}>
-              AI-Suggested Cohorts
+              AI-Suggested Audiences
             </h2>
             <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(139,92,246,0.12)', color: '#A78BFA', fontWeight: 600 }}>
               refreshed daily
@@ -839,8 +890,9 @@ export default function CohortsIQ() {
                   clubId={clubId}
                   suggestion={suggestion}
                   // P5-T5 fix #5: hand off to Campaign Wizard via
-                  // ?cohortId=… on the Campaigns page.
-                  onLaunchCampaign={(s) => {
+                  // ?cohortId=… on the Campaigns page. Omitted while
+                  // Campaigns is gated — the card disables its "→ Campaign".
+                  onLaunchCampaign={CAMPAIGNS_GATED ? undefined : (s) => {
                     router.push(`/clubs/${clubId}/intelligence/campaigns?cohortId=${s.id}`)
                   }}
                 />
@@ -1316,7 +1368,7 @@ export default function CohortsIQ() {
                 </span>
               </div>
               <p className="text-sm mt-2" style={{ color: 'var(--t3)', maxWidth: 760 }}>
-                The agent is suggesting reusable newcomer cohorts directly from the smart first session funnel, so you can save the audience first or jump straight into the related campaign draft.
+                The agent is suggesting reusable newcomer audiences directly from the smart first session funnel, so you can save the audience first or jump straight into the related campaign draft.
               </p>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -1389,7 +1441,7 @@ export default function CohortsIQ() {
                         style={{ background: 'rgba(139,92,246,0.12)', color: '#8B5CF6' }}
                       >
                         <Filter className="w-3.5 h-3.5" />
-                        {isAccepted ? 'Open cohort flow' : 'Build cohort'}
+                        {isAccepted ? 'Open audience flow' : 'Build audience'}
                       </button>
                       <button
                         type="button"
@@ -1467,7 +1519,7 @@ export default function CohortsIQ() {
           <div className="flex items-center gap-2 mb-3">
             <Users className="w-4 h-4" style={{ color: '#06B6D4' }} />
             <h2 className="text-base" style={{ fontWeight: 800, color: 'var(--heading)' }}>
-              Your Cohorts
+              Your Audiences
             </h2>
             <span className="text-[11px]" style={{ color: 'var(--t4)' }}>
               {cohorts?.length ?? 0} saved
@@ -1495,7 +1547,7 @@ export default function CohortsIQ() {
                       onClick={(e) => { e.stopPropagation(); if (confirm('Delete this cohort?')) deleteMutation.mutate({ clubId, cohortId: c.id }) }}
                       className="p-1.5 rounded-lg transition-all hover:bg-red-500/10"
                       style={{ color: 'var(--t4)' }}
-                      title="Delete cohort"
+                      title="Delete audience"
                     >
                       <Trash2 className="w-4 h-4 hover:text-red-400" />
                     </button>
@@ -1520,7 +1572,7 @@ export default function CohortsIQ() {
                         fontWeight: 700,
                       }}
                       maxLength={100}
-                      placeholder="Cohort name"
+                      placeholder="Audience name"
                     />
                     <button
                       onClick={() => commitRename(c.id)}
@@ -1546,7 +1598,7 @@ export default function CohortsIQ() {
                       onClick={(e) => { e.stopPropagation(); startRename(c.id, c.name) }}
                       className="p-1 rounded-md transition-opacity opacity-0 group-hover/title:opacity-100 hover:bg-violet-500/10"
                       style={{ color: 'var(--t4)' }}
-                      title="Rename cohort"
+                      title="Rename audience"
                     >
                       <Pencil className="w-3 h-3" />
                     </button>
@@ -1568,7 +1620,7 @@ export default function CohortsIQ() {
                       color: c.isDynamic ? '#06B6D4' : '#F59E0B',
                       fontWeight: 700,
                     }}
-                    title={c.isDynamic ? 'This cohort re-evaluates from filters.' : 'This cohort is frozen to an explicit member list.'}
+                    title={c.isDynamic ? 'This audience re-evaluates from filters.' : 'This audience is frozen to an explicit member list.'}
                   >
                     {c.isDynamic ? 'Dynamic' : 'Frozen'}
                   </span>
@@ -1603,9 +1655,9 @@ export default function CohortsIQ() {
                     </div>
                   )
                 })()}
-                {/* Always-visible Create campaign CTA + last-edit timestamp.
-                    Mirrors the "→ Campaign" affordance on AI-Suggested cards
-                    so saved cohorts have the same fast-path. */}
+                {/* Create-campaign CTA + last-edit timestamp. The CTA hides
+                    while Campaigns is gated (CAMPAIGNS_GATED) — un-gating
+                    Audiences must not expose a send path. */}
                 <div className="flex items-center justify-between gap-2 pt-3" style={{ borderTop: '1px solid var(--card-border)' }}>
                   {(c.updatedAt || c.createdAt) ? (
                     <span className="text-[10px] flex items-center gap-1" style={{ color: 'var(--t4)' }}>
@@ -1613,19 +1665,21 @@ export default function CohortsIQ() {
                       {new Date(c.updatedAt ?? c.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </span>
                   ) : <span />}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setCampaignCohort({ id: c.id, name: c.name, filters: c.filters }) }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-all"
-                    style={{
-                      background: 'rgba(139,92,246,0.12)',
-                      color: '#A78BFA',
-                      fontWeight: 700,
-                      border: '1px solid rgba(139,92,246,0.2)',
-                    }}
-                  >
-                    <Send className="w-3 h-3" />
-                    Create campaign
-                  </button>
+                  {!CAMPAIGNS_GATED && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setCampaignCohort({ id: c.id, name: c.name, filters: c.filters }) }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] transition-all"
+                      style={{
+                        background: 'rgba(139,92,246,0.12)',
+                        color: '#A78BFA',
+                        fontWeight: 700,
+                        border: '1px solid rgba(139,92,246,0.2)',
+                      }}
+                    >
+                      <Send className="w-3 h-3" />
+                      Create campaign
+                    </button>
+                  )}
                 </div>
               </motion.div>
             ))}
@@ -1644,7 +1698,7 @@ export default function CohortsIQ() {
               }}
             >
               <Plus className="w-8 h-8" style={{ color: '#8B5CF6' }} />
-              <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>Build a custom cohort</span>
+              <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>Build a custom audience</span>
               <span className="text-[11px] leading-relaxed max-w-[180px]" style={{ color: 'var(--t4)' }}>
                 Start with quick segments or drop into the advanced rule builder
               </span>
@@ -1653,15 +1707,16 @@ export default function CohortsIQ() {
             {cohorts?.length === 0 && (
               <div className="col-span-full sm:col-span-1 lg:col-span-2 text-center py-8" style={{ color: 'var(--t4)' }}>
                 <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">No saved cohorts yet — start with the AI suggestions above or build a custom one →</p>
+                <p className="text-sm">No saved audiences yet — start with the AI suggestions above or build a custom one →</p>
               </div>
             )}
           </div>
         </div>
       )}
 
-      {/* Quick Campaign Modal */}
-      {campaignCohort && (
+      {/* Quick Campaign Modal — unreachable while CAMPAIGNS_GATED (the only
+          setter is the gated CTA above); double-guarded for safety. */}
+      {campaignCohort && !CAMPAIGNS_GATED && (
         <QuickCampaignModal clubId={clubId} cohort={campaignCohort} onClose={() => setCampaignCohort(null)} />
       )}
     </motion.div>
@@ -2049,7 +2104,7 @@ function CohortBuilder({
 
       <div className="inline-flex rounded-2xl p-1" style={{ background: 'var(--subtle)', border: '1px solid var(--card-border)' }}>
         {([
-          { key: 'quick', label: 'Quick Cohort' },
+          { key: 'quick', label: 'Quick Audience' },
           { key: 'advanced', label: 'Advanced Builder' },
         ] as const).map((option) => {
           const active = mode === option.key
@@ -2104,7 +2159,7 @@ function CohortBuilder({
       <div className="space-y-3">
         <input
           type="text" value={name} onChange={e => setName(e.target.value)}
-          placeholder="Cohort name (e.g. At-Risk VIPs)"
+          placeholder="Audience name (e.g. At-Risk VIPs)"
           className="w-full px-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-violet-500/30"
           style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
         />
@@ -2465,26 +2520,28 @@ function CohortBuilder({
             opacity: (!name.trim() || effectiveFilters.length === 0 || saving) ? 0.5 : 1,
           }}
         >
-          {saving ? 'Creating...' : 'Save Cohort'}
+          {saving ? 'Creating...' : 'Save Audience'}
         </motion.button>
-        {/* P3-T4: Save + Create campaign bridge.
-            v1 redirects to Campaigns page; P4-T1 wizard will open
-            pre-filled with the new cohort once the wizard ships. */}
-        <motion.button
-          whileHover={{ scale: 1.03 }}
-          whileTap={{ scale: 0.97 }}
-          onClick={handleSaveAndCampaign}
-          disabled={!name.trim() || effectiveFilters.length === 0 || saving}
-          className="px-5 py-2.5 rounded-xl text-sm text-white flex items-center gap-1.5"
-          style={{
-            background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)',
-            fontWeight: 600,
-            opacity: (!name.trim() || effectiveFilters.length === 0 || saving) ? 0.5 : 1,
-          }}
-        >
-          {saving ? 'Creating...' : 'Save + Create Campaign'}
-          <ChevronRight className="w-4 h-4" />
-        </motion.button>
+        {/* P3-T4: Save + Create campaign bridge — hidden while Campaigns is
+            gated (CAMPAIGNS_GATED); the Campaigns page would render Coming
+            Soon, a dead-end. Restore when the wizard ships. */}
+        {!CAMPAIGNS_GATED && (
+          <motion.button
+            whileHover={{ scale: 1.03 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={handleSaveAndCampaign}
+            disabled={!name.trim() || effectiveFilters.length === 0 || saving}
+            className="px-5 py-2.5 rounded-xl text-sm text-white flex items-center gap-1.5"
+            style={{
+              background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)',
+              fontWeight: 600,
+              opacity: (!name.trim() || effectiveFilters.length === 0 || saving) ? 0.5 : 1,
+            }}
+          >
+            {saving ? 'Creating...' : 'Save + Create Campaign'}
+            <ChevronRight className="w-4 h-4" />
+          </motion.button>
+        )}
       </div>
     </motion.div>
   )
@@ -2509,7 +2566,7 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
       <div className="rounded-2xl p-6" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-2">
-            <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>Couldn&apos;t load cohort members</h2>
+            <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>Couldn&apos;t load audience members</h2>
             <p className="text-sm" style={{ color: '#EF4444' }}>{error.message}</p>
           </div>
           <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>

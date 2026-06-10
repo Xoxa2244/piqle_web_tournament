@@ -32,6 +32,7 @@ const LIVE_SECTIONS = new Set([
   'membership-health', // Membership Health
   'advisor',           // AI Advisor
   'members',           // Members
+  'cohorts',           // Audiences (un-gated 2026-06-10 — operator feedback 2.2; route stays /cohorts)
   'billing',           // Billing
   'settings',          // club settings (operational; /settings/automation is gated below)
   'onboarding',        // first-run setup wizard
@@ -42,7 +43,7 @@ const LIVE_SECTIONS = new Set([
 ])
 
 const SECTION_LABELS: Record<string, string> = {
-  'cohorts': 'Cohorts',
+  'cohorts': 'Audiences',
   'campaigns': 'Campaigns',
   'launch': 'Launch',
   'integrations': 'Integrations',

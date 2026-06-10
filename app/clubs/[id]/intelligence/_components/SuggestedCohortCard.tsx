@@ -167,28 +167,32 @@ export function SuggestedCohortCard({ clubId, suggestion, onLaunchCampaign }: Su
           <button
             onClick={handleCreate}
             disabled={createMutation.isPending || suggestion.userIds.length === 0}
-            title={suggestion.userIds.length === 0 ? 'Demo cohort — userIds list empty' : undefined}
+            title={suggestion.userIds.length === 0 ? 'Demo audience — userIds list empty' : undefined}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: palette.accent, color: '#FFFFFF' }}
           >
             {createMutation.isPending
               ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
               : <Users className="w-3.5 h-3.5" />}
-            Create cohort
+            Create audience
           </button>
         )}
 
-        <button
-          onClick={handleLaunchCampaign}
-          disabled={!onLaunchCampaign || createMutation.isPending}
-          title={onLaunchCampaign ? 'Save cohort and open Campaign Wizard pre-filled' : 'Wizard not wired by parent'}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--heading)' }}
-        >
-          {createMutation.isPending && pendingAction === 'campaign'
-            ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            : <>→ Campaign <ArrowRight className="w-3.5 h-3.5" /></>}
-        </button>
+        {/* Hidden (not disabled) when the parent doesn't wire the wizard —
+            a permanently-disabled button is a dead affordance (UX revision). */}
+        {onLaunchCampaign && (
+          <button
+            onClick={handleLaunchCampaign}
+            disabled={createMutation.isPending}
+            title="Save audience and open Campaign Wizard pre-filled"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--heading)' }}
+          >
+            {createMutation.isPending && pendingAction === 'campaign'
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <>→ Campaign <ArrowRight className="w-3.5 h-3.5" /></>}
+          </button>
+        )}
       </div>
     </motion.div>
   )

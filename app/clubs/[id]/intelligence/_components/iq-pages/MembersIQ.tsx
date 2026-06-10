@@ -3050,7 +3050,7 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
   }
 
   const createMutation = trpc.intelligence.createCohort.useMutation({
-    onSuccess: (cohort: any) => showSavedBadge(cohort?.name || 'Cohort'),
+    onSuccess: (cohort: any) => showSavedBadge(cohort?.name || 'Audience'),
     onError: (err: any) => showError(`Couldn't create cohort: ${err?.message || 'unknown error'}`),
   })
 
@@ -3058,8 +3058,8 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
   // Direct call — `?.useMutation?.()` style breaks `this`-binding through
   // the tRPC react-query proxy (same crash we hit on Members AI Insight).
   const addMembersMutation = (trpc.intelligence as any).addMembersToCohort.useMutation({
-    onSuccess: (cohort: any) => showSavedBadge(`${cohort?.name || 'Cohort'} (+${selectedIds.length})`),
-    onError: (err: any) => showError(`Couldn't add to cohort: ${err?.message || 'unknown error'}`),
+    onSuccess: (cohort: any) => showSavedBadge(`${cohort?.name || 'Audience'} (+${selectedIds.length})`),
+    onError: (err: any) => showError(`Couldn't add to audience: ${err?.message || 'unknown error'}`),
   })
 
   if (savedCohortName) {
@@ -3111,7 +3111,7 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
           style={{ background: 'rgba(139,92,246,0.18)', color: '#A78BFA' }}
         >
           <Users className="w-3.5 h-3.5" />
-          Add to cohort
+          Add to audience
           <ChevronRight className="w-3 h-3 rotate-90" />
         </button>
 
@@ -3142,7 +3142,7 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
                 onMouseLeave={(e: MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.background = 'transparent' }}
               >
                 {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" style={{ color: '#8B5CF6' }} />}
-                <span className="font-semibold">+ Create new cohort from selection</span>
+                <span className="font-semibold">+ Create new audience from selection</span>
               </button>
 
               {/* Existing cohorts — clickable, calls addMembersToCohort */}
@@ -3151,7 +3151,7 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
               </div>
               {existingCohorts.length === 0 ? (
                 <div className="px-3 pb-3 text-[11px]" style={{ color: 'var(--t4)' }}>
-                  No saved cohorts yet.
+                  No saved audiences yet.
                 </div>
               ) : (
                 existingCohorts.slice(0, 8).map((cohort) => (
@@ -3203,14 +3203,13 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
   )
 }
 
-// ── Save filtered members as Cohort ──
-// sol2-lean: Cohorts is gated (Coming Soon), so the "Open in Cohorts" /
-// "Save cohort" quick actions are hidden. Flip cohortsGated to false
-// when Cohorts ships.
+// ── Save filtered members as Audience ──
+// Un-gated 2026-06-10 (operator feedback 2.2): the Audiences section
+// (route /cohorts, identifiers unchanged) ships in lean.
 function SaveAsCohortButton({ clubId, dynamicHref, memberIds, filterDescription, count }: {
   clubId: string; dynamicHref: string | null; memberIds: string[]; filterDescription: string; count: number
 }) {
-  const cohortsGated = true as boolean
+  const cohortsGated = false as boolean
   const [saved, setSaved] = useState(false)
   const router = useRouter()
   const createMutation = trpc.intelligence.createCohort.useMutation({
@@ -3222,7 +3221,7 @@ function SaveAsCohortButton({ clubId, dynamicHref, memberIds, filterDescription,
   if (saved) {
     return (
       <div className="flex items-center gap-2 text-xs px-4 py-2 rounded-xl" style={{ background: 'rgba(16,185,129,0.08)', color: '#10B981' }}>
-        <Check className="w-3.5 h-3.5" /> Cohort saved!
+        <Check className="w-3.5 h-3.5" /> Audience saved!
       </div>
     )
   }
@@ -3239,7 +3238,7 @@ function SaveAsCohortButton({ clubId, dynamicHref, memberIds, filterDescription,
           style={{ background: 'rgba(139,92,246,0.1)', color: '#8B5CF6', fontWeight: 600, border: 'none', cursor: 'pointer' }}
         >
           <Users className="w-3.5 h-3.5" />
-          Open in Cohorts ({count})
+          Open in Audiences ({count})
         </motion.button>
       ) : null}
 
@@ -3264,7 +3263,7 @@ function SaveAsCohortButton({ clubId, dynamicHref, memberIds, filterDescription,
         }}
       >
         {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Users className="w-3.5 h-3.5" />}
-        {dynamicHref ? 'Freeze current members' : `Save as Cohort (${count} members)`}
+        {dynamicHref ? 'Freeze current members' : `Save as Audience (${count} members)`}
       </motion.button>
     </div>
   )

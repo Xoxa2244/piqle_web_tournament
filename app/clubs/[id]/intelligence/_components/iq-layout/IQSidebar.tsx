@@ -84,7 +84,9 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
     icon: Building2,
     items: [
       { icon: Users, label: "Members", path: "/members" },
-      { icon: UsersRound, label: "Cohorts", path: "/cohorts", comingSoon: true },
+      // "Audiences" = the Cohorts page un-gated for lean (operator feedback
+      // 2.2, 2026-06-10). Display rename only — route/identifiers unchanged.
+      { icon: UsersRound, label: "Audiences", path: "/cohorts" },
       // Reactivation removed in P1-T1 (iqsport brand). Logic redistributed:
       //   - At-Risk KPI         → Members KPI strip (P2-T1)
       //   - Churn trend chart   → Members "How Members Play" row (P2-T6)
