@@ -5,8 +5,11 @@ import Link from "next/link"
 import { motion, AnimatePresence } from "motion/react"
 import {
   Heart, DollarSign, AlertTriangle, TrendingUp, ChevronDown, ChevronUp,
-  Sparkles, Activity, ShieldAlert, ArrowUpRight, X, Users,
+  Sparkles, Activity, ShieldAlert, ArrowUpRight, X, Users, GitCompareArrows,
 } from "lucide-react"
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, Legend, ResponsiveContainer,
+} from "recharts"
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
 import { isNetworkTierName } from "@/lib/ai/network-tier"
@@ -85,6 +88,156 @@ const daysAgo = (d: string | Date | null) => {
   if (!d) return null
   const days = Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000)
   return days <= 0 ? 'today' : `${days}d ago`
+}
+
+// Line colors for the tier-compare chart (cycled by selection order).
+const COMPARE_PALETTE = ['#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', '#EF4444', '#3B82F6', '#EC4899', '#84CC16']
+
+/**
+ * Tier-compare panel (WS7, operator feedback 1.2): side-by-side metrics for
+ * the selected tiers (numbers come from the SAME payload as the cards, so
+ * they always agree) + a confirmed-bookings trend line per tier over the
+ * page's window (getTierSeries).
+ */
+function TierComparePanel({
+  clubId,
+  tiers,
+  selected,
+  windowInput,
+  periodDays,
+  onToggle,
+  onClear,
+}: {
+  clubId: string
+  tiers: Tier[]
+  selected: string[]
+  windowInput: { periodDays?: number; startDate?: string; endDate?: string }
+  periodDays: number
+  onToggle: (name: string) => void
+  onClear: () => void
+}) {
+  const seriesQuery = trpc.intelligence.getTierSeries.useQuery(
+    { clubId, tierNames: selected, ...windowInput },
+    { enabled: selected.length >= 2, staleTime: 60_000 },
+  )
+  const series = seriesQuery.data
+
+  const chartRows = (series?.buckets ?? []).map((b) => {
+    const row: Record<string, number | string> = { label: b.label }
+    for (const name of selected) row[name] = b.perTier[name] ?? 0
+    return row
+  })
+
+  const selectedTiers = selected
+    .map((name) => tiers.find((t) => t.name === name))
+    .filter((t): t is Tier => !!t)
+
+  const metricRows: Array<{ label: string; value: (t: Tier) => string; color?: (t: Tier) => string | undefined }> = [
+    { label: 'Active members', value: (t) => t.active.toLocaleString() },
+    { label: 'Est. MRR', value: (t) => (t.isFreeTier ? '—' : usd(t.estimatedMRR)) },
+    { label: 'Bookings/active', value: (t) => String(t.bookingsPerActive) },
+    {
+      label: 'Zombie share',
+      value: (t) => `${t.zombieSharePct}%`,
+      color: (t) => (t.zombieSharePct >= 45 ? '#EF4444' : t.zombieSharePct >= 25 ? '#F59E0B' : undefined),
+    },
+    { label: 'Power share', value: (t) => `${t.powerUserSharePct}%` },
+    {
+      label: 'Suspended rate',
+      value: (t) => `${t.suspendedRatePct}%`,
+      color: (t) => (t.suspendedRatePct >= 10 ? '#F59E0B' : undefined),
+    },
+    { label: 'MRR at risk', value: (t) => (t.mrrAtRiskUsd > 0 ? usd(t.mrrAtRiskUsd) : '—'), color: (t) => (t.mrrAtRiskUsd > 0 ? '#EF4444' : undefined) },
+  ]
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+        <div className="flex items-center gap-2">
+          <GitCompareArrows className="w-4 h-4" style={{ color: '#8B5CF6' }} />
+          <h3 className="text-sm font-bold" style={{ color: 'var(--heading)' }}>
+            Compare tiers <span style={{ color: 'var(--t4)', fontWeight: 500 }}>· last {periodDays}d</span>
+          </h3>
+        </div>
+        <button onClick={onClear} className="text-xs hover:underline" style={{ color: 'var(--t4)' }}>
+          Clear comparison
+        </button>
+      </div>
+
+      {/* Metric table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th className="text-left py-1.5 pr-3 font-semibold" style={{ color: 'var(--t4)' }}>Metric</th>
+              {selectedTiers.map((t, i) => (
+                <th key={t.name} className="text-right py-1.5 px-3" style={{ color: COMPARE_PALETTE[i % COMPARE_PALETTE.length], fontWeight: 700 }}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="truncate max-w-[180px] inline-block align-bottom" title={t.name}>{t.name}</span>
+                    <button onClick={() => onToggle(t.name)} aria-label={`Remove ${t.name} from comparison`} style={{ color: 'var(--t4)' }}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {metricRows.map((m) => (
+              <tr key={m.label} style={{ borderTop: '1px solid var(--card-border)' }}>
+                <td className="py-1.5 pr-3" style={{ color: 'var(--t3)' }}>{m.label}</td>
+                {selectedTiers.map((t) => (
+                  <td key={t.name} className="text-right py-1.5 px-3 tabular-nums" style={{ color: m.color?.(t) ?? 'var(--t1, var(--heading))', fontWeight: 600 }}>
+                    {m.value(t)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Usage trend */}
+      <div className="mt-4">
+        {seriesQuery.isLoading ? (
+          <div className="h-[220px] flex items-center justify-center text-sm" style={{ color: 'var(--t3)' }}>Loading trend…</div>
+        ) : series && chartRows.length > 0 ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartRows} margin={{ top: 8, right: 12, bottom: 4, left: -8 }}>
+              <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 3" />
+              <XAxis dataKey="label" stroke="var(--chart-axis)" tick={{ fill: 'var(--chart-tick)', fontSize: 11 }} />
+              <YAxis stroke="var(--chart-axis)" tick={{ fill: 'var(--chart-tick)', fontSize: 11 }} allowDecimals={false} />
+              <ChartTooltip
+                contentStyle={{
+                  background: 'var(--tooltip-bg)',
+                  border: '1px solid var(--tooltip-border)',
+                  borderRadius: 12,
+                  color: 'var(--tooltip-color)',
+                  fontSize: 12,
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {selected.map((name, i) => (
+                <Line
+                  key={name}
+                  type="monotone"
+                  dataKey={name}
+                  name={name.length > 36 ? `${name.slice(0, 36)}…` : name}
+                  stroke={COMPARE_PALETTE[i % COMPARE_PALETTE.length]}
+                  strokeWidth={2}
+                  dot={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        ) : null}
+        <p className="text-[11px] mt-2" style={{ color: 'var(--t4)' }}>
+          Trend = confirmed bookings per {series?.granularity ?? 'period'} for each tier (booking date). Retention proxies:
+          suspended/expired rates above; status-transition history lands once per-club membership sync accumulates.
+        </p>
+      </div>
+    </Card>
+  )
 }
 
 /**
@@ -311,6 +464,10 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
   // remounts on close — the 60s query cache makes the round-trip instant.
   const [drill, setDrill] = useState<{ tierName: string; bucket: DrillBucket } | null>(null)
   const [drillMemberId, setDrillMemberId] = useState<string | null>(null)
+  // Tier-compare selection (WS7) — pick 2+ tiers via the card checkboxes.
+  const [compareSet, setCompareSet] = useState<string[]>([])
+  const toggleCompare = (name: string) =>
+    setCompareSet((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name].slice(0, 8)))
   const windowInput = useMemo(
     () =>
       period.kind === 'days'
@@ -425,6 +582,19 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
         </Card>
       )}
 
+      {/* Tier compare (WS7) — appears once 2+ tiers are ticked below */}
+      {compareSet.length >= 2 && (
+        <TierComparePanel
+          clubId={clubId}
+          tiers={tiers}
+          selected={compareSet}
+          windowInput={windowInput}
+          periodDays={periodDays}
+          onToggle={toggleCompare}
+          onClear={() => setCompareSet([])}
+        />
+      )}
+
       {/* Per-tier cards */}
       <div className="space-y-3">
         {tiers.map((t) => {
@@ -460,11 +630,25 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
                     {" · "}health {t.healthScore}/100
                   </div>
                 </div>
-                <div className="text-right shrink-0">
-                  <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--heading)" }}>
-                    {t.isFreeTier ? "—" : usd(t.estimatedMRR)}
+                <div className="flex items-start gap-3 shrink-0">
+                  <div className="text-right">
+                    <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--heading)" }}>
+                      {t.isFreeTier ? "—" : usd(t.estimatedMRR)}
+                    </div>
+                    <div className="text-[11px]" style={{ color: "var(--t4)" }}>{t.isFreeTier ? "no MRR" : "MRR"}</div>
                   </div>
-                  <div className="text-[11px]" style={{ color: "var(--t4)" }}>{t.isFreeTier ? "no MRR" : "MRR"}</div>
+                  <button
+                    onClick={() => toggleCompare(t.name)}
+                    title={compareSet.includes(t.name) ? "Remove from comparison" : "Add to comparison (pick 2+)"}
+                    className="mt-0.5 p-1.5 rounded-lg transition-colors"
+                    style={{
+                      background: compareSet.includes(t.name) ? "rgba(139,92,246,0.18)" : "var(--subtle)",
+                      color: compareSet.includes(t.name) ? "#A78BFA" : "var(--t4)",
+                      border: `1px solid ${compareSet.includes(t.name) ? "rgba(139,92,246,0.35)" : "var(--card-border)"}`,
+                    }}
+                  >
+                    <GitCompareArrows className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
 

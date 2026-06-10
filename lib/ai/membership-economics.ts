@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { prisma } from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 /**
  * Tier specification — parsed from club_membership_types.raw_data (synced
@@ -958,5 +959,115 @@ export async function getTierMembers(
       lastBookedAt: r.last_at,
       joinedAt: r.joined_at,
     })),
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tier-compare booking series (WS7, operator feedback 1.2)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type TierSeriesBucket = {
+  start: string
+  label: string
+  /** Confirmed bookings per selected tier in this bucket. */
+  perTier: Record<string, number>
+}
+
+export type TierBookingSeriesResult = {
+  granularity: 'day' | 'week' | 'month'
+  periodDays: number
+  tiers: Array<{ name: string; totalBookings: number }>
+  buckets: TierSeriesBucket[]
+}
+
+const DAY_MS = 86_400_000
+
+/**
+ * Confirmed-booking time series for 2+ tiers on one shared axis — the
+ * usage half of the tier-compare view. Same bucket-granularity rules as
+ * the Programming Health series (≤14d daily / ≤120d weekly / else monthly)
+ * so charts read consistently across pages. Counts bookings by bookedAt,
+ * matching the engagement window semantics of getTierHealth.
+ */
+export async function getTierBookingSeries(
+  clubId: string,
+  tierNames: string[],
+  window?: TierWindowInput,
+): Promise<TierBookingSeriesResult> {
+  const win = resolveTierWindow(window)
+  const granularity: 'day' | 'week' | 'month' =
+    win.periodDays <= 14 ? 'day' : win.periodDays <= 120 ? 'week' : 'month'
+
+  const names = tierNames.filter((n) => n && n.trim()).slice(0, 8)
+  if (names.length === 0) {
+    return { granularity, periodDays: win.periodDays, tiers: [], buckets: [] }
+  }
+
+  const rows = await prisma.$queryRaw<Array<{ tier: string; at: Date }>>`
+    SELECT u.membership_type AS tier, psb."bookedAt" AS at
+    FROM play_session_bookings psb
+    JOIN play_sessions ps ON ps.id = psb."sessionId"
+    JOIN users u ON u.id = psb."userId"
+    JOIN club_followers cf ON cf.user_id = u.id AND cf.club_id = ps."clubId"
+    WHERE ps."clubId" = ${clubId}
+      AND psb.status = 'CONFIRMED'
+      AND psb."bookedAt" >= ${win.start}
+      AND psb."bookedAt" < ${win.end}
+      AND u.membership_type IN (${Prisma.join(names)})
+  `
+
+  // Bucket skeleton — calendar months, or fixed day/week bins from win.start.
+  type Accum = { start: Date; label: string; perTier: Record<string, number> }
+  const skeleton: Accum[] = []
+  const dayLabel = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  const monthLabel = (d: Date) =>
+    `${d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })} '${String(d.getUTCFullYear()).slice(2)}`
+
+  if (granularity === 'month') {
+    let y = win.start.getUTCFullYear()
+    let m = win.start.getUTCMonth()
+    while (y < win.end.getUTCFullYear() || (y === win.end.getUTCFullYear() && m <= win.end.getUTCMonth())) {
+      const start = new Date(Date.UTC(y, m, 1))
+      skeleton.push({ start, label: monthLabel(start), perTier: {} })
+      m++
+      if (m > 11) { m = 0; y++ }
+    }
+  } else {
+    const binMs = (granularity === 'day' ? 1 : 7) * DAY_MS
+    const numBins = Math.max(1, Math.ceil((win.end.getTime() - win.start.getTime()) / binMs))
+    for (let i = 0; i < numBins; i++) {
+      const start = new Date(win.start.getTime() + i * binMs)
+      skeleton.push({ start, label: dayLabel(start), perTier: {} })
+    }
+  }
+
+  const bucketIdx = (d: Date) => {
+    if (granularity === 'month') {
+      return (d.getUTCFullYear() - win.start.getUTCFullYear()) * 12 + (d.getUTCMonth() - win.start.getUTCMonth())
+    }
+    const binMs = (granularity === 'day' ? 1 : 7) * DAY_MS
+    const idx = Math.floor((d.getTime() - win.start.getTime()) / binMs)
+    return idx >= skeleton.length ? skeleton.length - 1 : idx
+  }
+
+  const totals = new Map<string, number>()
+  for (const r of rows) {
+    const d = r.at instanceof Date ? r.at : new Date(r.at)
+    const idx = bucketIdx(d)
+    if (idx < 0 || idx >= skeleton.length) continue
+    skeleton[idx].perTier[r.tier] = (skeleton[idx].perTier[r.tier] ?? 0) + 1
+    totals.set(r.tier, (totals.get(r.tier) ?? 0) + 1)
+  }
+
+  return {
+    granularity,
+    periodDays: win.periodDays,
+    tiers: names.map((name) => ({ name, totalBookings: totals.get(name) ?? 0 })),
+    buckets: skeleton.map((b) => {
+      // Emit zeros for every selected tier so lines slope to zero, not break.
+      const perTier: Record<string, number> = {}
+      for (const name of names) perTier[name] = b.perTier[name] ?? 0
+      return { start: b.start.toISOString().slice(0, 10), label: b.label, perTier }
+    }),
   }
 }

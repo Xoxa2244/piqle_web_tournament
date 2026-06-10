@@ -594,7 +594,7 @@ export function MembersFilterDrawer({
                         ZIP code
                       </div>
                       <p className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>
-                        Prefix match — e.g. "330" catches 33012, 33015…
+                        Prefix match — e.g. &ldquo;330&rdquo; catches 33012, 33015…
                       </p>
                     </div>
                     <input

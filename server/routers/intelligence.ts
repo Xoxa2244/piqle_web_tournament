@@ -1989,6 +1989,26 @@ export const intelligenceRouter = createTRPCRouter({
       })
     }),
 
+  // Tier-compare booking series (WS7, operator 1.2): confirmed bookings for
+  // 2+ selected tiers on one shared time axis, same window as the page.
+  getTierSeries: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      tierNames: z.array(z.string().min(1)).min(1).max(8),
+      periodDays: z.number().int().min(1).max(730).optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { getTierBookingSeries } = await import('@/lib/ai/membership-economics')
+      return getTierBookingSeries(input.clubId, input.tierNames, {
+        periodDays: input.periodDays,
+        startDate: input.startDate,
+        endDate: input.endDate,
+      })
+    }),
+
   // Network vs non-network membership split (WS6c, operator 1.1): name-based
   // ("(Network)" CourtReserve packages) + behavioral (sibling-club follower
   // rows / 90d cross-club bookings). Sibling data is aggregate-only.
