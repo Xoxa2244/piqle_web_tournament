@@ -601,9 +601,9 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   // Comparison period state
   type CompMode = 'prev_period' | 'prev_year' | 'calendar';
   const [compMode, setCompMode] = useState<CompMode>('prev_period');
-  // Calendar mode: Period A and Period B selected via calendar pickers
-  const [calAFrom, setCalAFrom] = useState("");
-  const [calATo, setCalATo] = useState("");
+  // "Pick dates" compare mode: custom BASELINE window. (The old Period A
+  // picker is gone on sol2-lean — the page period pills, incl. Custom,
+  // define the current window; this only sets what it's compared against.)
   const [calBFrom, setCalBFrom] = useState("");
   const [calBTo, setCalBTo] = useState("");
 
@@ -658,33 +658,37 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     if (compMode === 'calendar' && calBFrom && calBTo) {
       return { dateFrom: calBFrom, dateTo: calBTo };
     }
-    // Determine current period span in days
-    const spanDays = period === 'week' ? 7 : period === 'quarter' ? 90 : period === 'year' ? 365 : 30;
+    // Span derived from the ACTUAL current window — a custom 90-day range
+    // must compare against a 90-day baseline, not a hardcoded 30.
+    const spanDays = periodDates.dateFrom && periodDates.dateTo
+      ? Math.max(1, Math.round((new Date(periodDates.dateTo).getTime() - new Date(periodDates.dateFrom).getTime()) / 86400000) + 1)
+      : (period === 'week' ? 7 : period === 'quarter' ? 90 : period === 'year' ? 365 : 30);
     const now = new Date();
-    if (compMode === 'prev_year') {
-      const to = new Date(now.getTime() - 365 * 86400000);
-      const from = new Date(to.getTime() - spanDays * 86400000);
-      return { dateFrom: iso(from), dateTo: iso(to) };
-    }
-    // prev_period: the same-length window immediately before current
     const curFrom = periodDates.dateFrom
       ? new Date(periodDates.dateFrom).getTime()
       : now.getTime() - spanDays * 86400000;
+    if (compMode === 'prev_year') {
+      // Shift the actual current window back exactly one year so a custom
+      // range compares to its own last-year counterpart, not to "now-365d".
+      const from = new Date(curFrom - 365 * 86400000);
+      const to = new Date(from.getTime() + (spanDays - 1) * 86400000);
+      return { dateFrom: iso(from), dateTo: iso(to) };
+    }
+    // prev_period: the same-length window immediately before current
     const prevTo = new Date(curFrom - 86400000);
     const prevFrom = new Date(prevTo.getTime() - (spanDays - 1) * 86400000);
     return { dateFrom: iso(prevFrom), dateTo: iso(prevTo) };
   }, [compMode, calBFrom, calBTo, period, periodDates]);
 
+  // "Pick dates" with no baseline chosen yet: don't fetch (and never show)
+  // the prev-period numbers the cache may hold for the identical query key.
+  const baselineUnset = compMode === 'calendar' && !(calBFrom && calBTo);
+
   const compQuery = trpc.intelligence.getDashboardV2.useQuery(
     { clubId, ...compDates },
-    { enabled: !!clubId && !externalLoading && !isDemo && secondaryQueriesEnabled },
+    { enabled: !!clubId && !externalLoading && !isDemo && secondaryQueriesEnabled && !baselineUnset },
   );
 
-  // Calendar mode — Period A (independent from main period tabs)
-  const calAQuery = trpc.intelligence.getDashboardV2.useQuery(
-    { clubId, dateFrom: calAFrom, dateTo: calATo },
-    { enabled: compMode === 'calendar' && !!calAFrom && !!calATo && !!clubId && !isDemo && secondaryQueriesEnabled },
-  );
   // Canon-driven business insights (DASHBOARD_AND_ACTION_CENTER_SPEC.md
   // §3.6). Replaced the legacy `getClubInsights` query in Step 9 of
   // §7.5 — all 8 Dashboard insights now flow through this endpoint.
@@ -919,7 +923,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   // Hide Quick Start once the club already has real operational data
   const showQuickStart = !isStillLoading && quickStartProgress < quickStartSteps.length && !hasOperationalData;
 
-  // KPI placeholders so the 4-tile grid renders immediately on mount —
+  // KPI placeholders so the 5-tile grid renders immediately on mount —
   // real values from `data.kpis` swap in when the standalone
   // getDashboardV2 request resolves (~5-11s on prod). Operator sees a
   // "loaded" dashboard with skeleton numbers instead of an empty grid
@@ -929,8 +933,65 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
     { label: 'Active Players',  icon: Users },
     { label: 'Court Occupancy', icon: Target },
     { label: 'Player Sessions', icon: Activity },
+    { label: 'Avg Sessions/Player', icon: BarChart3 },
     { label: 'Inactive Players', icon: UserPlus },
   ]
+
+  // ── Unified KPI row (sol2-lean) ─────────────────────────────────────
+  // The old layout duplicated the same numbers twice: a 4-tile KPI row on
+  // top and a "Period Comparison" card below with the identical metrics
+  // plus "was X / ±%". Merged: ONE row of 5 tiles, each carrying the
+  // inline comparison driven by compMode (prev period / last year /
+  // picked baseline dates), each clickable — the 4 trend metrics open
+  // the PeriodComparisonDrawer drilldown, Inactive Players opens Members.
+  const toNum = (v: any): number => {
+    if (typeof v === 'number') return v
+    if (typeof v === 'string') return parseFloat(v.replace(/[^0-9.-]/g, '')) || 0
+    return 0
+  }
+  const toOcc = (v: any): number => parseFloat(String(v || '0').replace('%', '')) || 0
+
+  const kpiComparison = useMemo(() => {
+    const cur = activeDashboardData?.metrics
+    const prv = compQuery.data?.metrics
+    if (!cur) return null
+    const mk = (curN: number, prevN: number, percent = false) => {
+      const rawDelta = prevN === 0 ? 0 : ((curN - prevN) / prevN) * 100
+      const delta = Math.round(rawDelta * 10) / 10
+      return {
+        prevDisplay: prv ? (percent ? `${prevN}%` : prevN.toLocaleString()) : null,
+        delta: prv && prevN > 0 ? delta : null,
+      }
+    }
+    // Avg sessions/player: delta from the UNROUNDED ratios (rounded values
+    // are display-only — otherwise 2.349 vs 2.251 reads as a flat 0%).
+    const rawCurAvg = toNum(cur.members?.value) > 0
+      ? toNum(cur.bookings?.value) / toNum(cur.members?.value) : 0
+    const rawPrvAvg = toNum(prv?.members?.value) > 0
+      ? toNum(prv?.bookings?.value) / toNum(prv?.members?.value) : 0
+    const curAvg = Math.round(rawCurAvg * 10) / 10
+    const prvAvg = Math.round(rawPrvAvg * 10) / 10
+    const byLabel: Record<string, { prevDisplay: string | null; delta: number | null }> = {
+      'Active Players': mk(toNum(cur.members?.value), toNum(prv?.members?.value)),
+      'Court Occupancy': mk(toOcc(cur.occupancy?.value), toOcc(prv?.occupancy?.value), true),
+      'Player Sessions': mk(toNum(cur.bookings?.value), toNum(prv?.bookings?.value)),
+      'Avg Sessions/Player': {
+        prevDisplay: prv ? prvAvg.toLocaleString() : null,
+        delta: prv && rawPrvAvg > 0 ? Math.round(((rawCurAvg - rawPrvAvg) / rawPrvAvg) * 1000) / 10 : null,
+      },
+    }
+    return { byLabel, avgCurrentValue: curAvg }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDashboardData, compQuery.data])
+
+  // Tile label → drilldown drawer metric; Inactive Players navigates instead.
+  const KPI_DRAWER_METRIC: Record<string, DrawerMetric> = {
+    'Player Sessions': 'player_registrations',
+    'Court Occupancy': 'court_occupancy',
+    'Active Players': 'active_players',
+    'Avg Sessions/Player': 'avg_sessions_per_player',
+  }
+  const comparisonPending = compQuery.isFetching || !secondaryQueriesEnabled
 
   return (
     <motion.div
@@ -1100,70 +1161,166 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         </motion.div>
       )}
 
-      {/* KPI grid — always renders 4 tiles. When data isn't ready yet,
-          shows skeleton placeholders so the dashboard structure is
-          visible immediately instead of waiting ~5-11s on the slow
-          standalone getDashboardV2 query. As data arrives, real
-          numbers swap in seamlessly. */}
+      {/* Unified KPI row (sol2-lean) — 5 clickable tiles with the inline
+          period comparison. Replaces both the old 4-tile KPI grid and the
+          separate "Period Comparison" card below (same numbers twice).
+          Skeleton placeholders keep the structure visible while the slow
+          getDashboardV2 query (~5-11s) is in flight. */}
       {!showQuickStart && (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {(hasRealData && data ? data.kpis : PLACEHOLDER_KPIS).map((kpi: any, i: number) => {
-          const Icon = kpi.icon;
+      <div className="space-y-3">
+        {/* Compare toolbar: baseline mode + ranges caption */}
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px]" style={{ color: "var(--t4)" }}>Compare to:</span>
+            {([
+              { key: 'prev_period', label: 'Prev period' },
+              { key: 'prev_year', label: 'Last year' },
+              { key: 'calendar', label: '📅 Pick dates' },
+            ] as const).map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => setCompMode(opt.key)}
+                className="px-3 py-1 rounded-lg text-[11px] transition-all"
+                style={{
+                  background: compMode === opt.key ? "rgba(139,92,246,0.15)" : "var(--subtle)",
+                  color: compMode === opt.key ? "#8B5CF6" : "var(--t3)",
+                  fontWeight: compMode === opt.key ? 600 : 400,
+                  border: compMode === opt.key ? "1px solid rgba(139,92,246,0.3)" : "1px solid transparent",
+                }}
+              >{opt.label}</button>
+            ))}
+          </div>
+          <p className="text-[11px]" style={{ color: "var(--t4)" }}>
+            {compMode === 'calendar'
+              ? <><span style={{ color: "var(--t3)", fontWeight: 500 }}>{currentComparisonLabel}</span>{" vs "}{calBFrom && calBTo ? <span style={{ color: "var(--t3)", fontWeight: 500 }}>{formatPeriodRangeLabel(calBFrom, calBTo)}</span> : <span>pick baseline dates below</span>}</>
+              : <><span style={{ color: "var(--t3)", fontWeight: 500 }}>{currentComparisonLabel}</span>{" vs "}<span style={{ color: "var(--t3)", fontWeight: 500 }}>{previousComparisonLabel}</span></>
+            }
+          </p>
+        </div>
+
+        {/* Baseline date picker — "Pick dates" compares the selected page
+            period against this custom baseline window. (The old Period A
+            picker is gone: the page period pills, incl. Custom, already
+            define the current window.) */}
+        {compMode === 'calendar' && (
+          <div className="p-4 rounded-2xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+            <MonthCalendar
+              label="Compare against"
+              from={calBFrom}
+              to={calBTo}
+              onChange={(f, t) => { setCalBFrom(f); setCalBTo(t); }}
+              isDark={isDark}
+              accentColor="#06B6D4"
+            />
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {(() => {
           const isPlaceholder = !(hasRealData && data);
-          const trendTone: TrendTone = kpi.trendTone ?? "neutral";
-          const TrendIcon = trendTone === "positive"
-            ? ArrowUpRight
-            : trendTone === "negative" ? ArrowDownRight : Minus;
-          const trendColor = trendTone === "positive"
-            ? "#10B981"
-            : trendTone === "negative" ? "#EF4444" : "var(--t4)";
-          return (
-            <motion.div
-              key={kpi.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <div title={kpi.tooltip}>
-              <Card className="relative overflow-hidden">
-                <div className="flex items-start justify-between mb-3">
-                  <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient ?? 'from-slate-500/40 to-slate-600/40'} flex items-center justify-center`}>
-                    <Icon className="w-5 h-5 text-white" />
-                  </div>
-                </div>
-                {isPlaceholder ? (
-                  <div
-                    className="mb-1 h-8 w-24 rounded animate-pulse"
-                    style={{ background: 'var(--subtle)' }}
-                  />
-                ) : (
-                  <div className="mb-1" style={{ fontSize: "28px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs flex items-center gap-1" style={{ color: "var(--t3)" }}>
-                    <span className="truncate">{kpi.label}</span>
-                    {!isPlaceholder && kpi.tooltip && (
-                      <span
-                        className="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] cursor-help shrink-0"
-                        style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}
-                        aria-hidden
-                      >
-                        ?
-                      </span>
-                    )}
-                  </span>
-                  {!isPlaceholder && (
-                    <div className="flex items-center gap-1 text-xs" style={{ fontWeight: 600, color: trendColor }}>
-                      <TrendIcon className="w-3.5 h-3.5" />
-                      {kpi.change || "—"}
+          const tiles: any[] = isPlaceholder ? PLACEHOLDER_KPIS : (() => {
+            const k = data!.kpis as any[]
+            const avgTile = {
+              label: 'Avg Sessions/Player',
+              value: (kpiComparison?.avgCurrentValue ?? 0).toLocaleString(),
+              icon: BarChart3,
+              gradient: 'from-fuchsia-500/40 to-purple-600/40',
+              tooltip: 'Confirmed sessions per active player in the selected period',
+            }
+            // Order: the 4 trend metrics first, Inactive Players last.
+            return [k[0], k[1], k[2], avgTile, k[3]].filter(Boolean)
+          })()
+          return tiles.map((kpi: any, i: number) => {
+            const Icon = kpi.icon;
+            const comp = !isPlaceholder ? kpiComparison?.byLabel?.[kpi.label] ?? null : null;
+            const metricKey = KPI_DRAWER_METRIC[kpi.label];
+            const isInactiveTile = kpi.label === 'Inactive Players';
+            const delta: number | null = comp?.delta ?? null;
+            const tone: TrendTone = delta == null || delta === 0 ? 'neutral' : delta > 0 ? 'positive' : 'negative';
+            const TrendIcon = tone === 'positive' ? ArrowUpRight : tone === 'negative' ? ArrowDownRight : Minus;
+            return (
+              <motion.div
+                key={kpi.label}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.08 }}
+              >
+                <button
+                  type="button"
+                  title={kpi.tooltip}
+                  disabled={isPlaceholder}
+                  onClick={() => {
+                    if (isPlaceholder) return;
+                    if (metricKey) { setDrawerMetric(metricKey); return; }
+                    if (isInactiveTile) router.push(`/clubs/${clubId}/intelligence/members${isDemo ? '?demo=true' : ''}`);
+                  }}
+                  className="w-full text-left transition-transform hover:scale-[1.015] focus:outline-none focus:ring-2 focus:ring-purple-500/40 rounded-2xl"
+                >
+                  <Card className="relative overflow-hidden h-full">
+                    <div className="flex items-start justify-between mb-3">
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${kpi.gradient ?? 'from-slate-500/40 to-slate-600/40'} flex items-center justify-center`}>
+                        <Icon className="w-5 h-5 text-white" />
+                      </div>
+                      {!isPlaceholder && (
+                        <ArrowUpRight className="w-3.5 h-3.5" style={{ color: 'var(--t4)', opacity: 0.6 }} aria-hidden />
+                      )}
                     </div>
-                  )}
-                </div>
-              </Card>
-              </div>
-            </motion.div>
-          );
-        })}
+                    {isPlaceholder ? (
+                      <div
+                        className="mb-1 h-8 w-24 rounded animate-pulse"
+                        style={{ background: 'var(--subtle)' }}
+                      />
+                    ) : (
+                      <div className="mb-1" style={{ fontSize: "26px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
+                    )}
+                    <div className="text-xs flex items-center gap-1 mb-1.5" style={{ color: "var(--t3)" }}>
+                      <span className="truncate">{kpi.label}</span>
+                      {!isPlaceholder && kpi.tooltip && (
+                        <span
+                          className="inline-flex items-center justify-center w-3 h-3 rounded-full text-[8px] cursor-help shrink-0"
+                          style={{ background: 'var(--card-border)', color: 'var(--t4)', fontWeight: 700 }}
+                          aria-hidden
+                        >
+                          ?
+                        </span>
+                      )}
+                    </div>
+                    {/* Inline comparison line */}
+                    {!isPlaceholder && (
+                      isInactiveTile ? (
+                        <div className="text-[10px]" style={{ color: 'var(--t4)' }}>view in Members →</div>
+                      ) : baselineUnset ? (
+                        <div className="text-[10px]" style={{ color: 'var(--t4)' }}>— pick baseline dates</div>
+                      ) : comparisonPending && !comp?.prevDisplay ? (
+                        <div className="h-4 w-20 rounded animate-pulse" style={{ background: 'var(--subtle)' }} />
+                      ) : comp?.prevDisplay ? (
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] truncate" style={{ color: 'var(--t4)' }}>was {comp.prevDisplay}</span>
+                          {delta != null && (
+                            <span
+                              className="flex items-center gap-0.5 text-[11px] px-1.5 py-0.5 rounded-md shrink-0"
+                              style={{
+                                background: tone === 'positive' ? 'rgba(16,185,129,0.1)' : tone === 'negative' ? 'rgba(239,68,68,0.1)' : 'rgba(148,163,184,0.12)',
+                                color: tone === 'positive' ? '#10B981' : tone === 'negative' ? '#EF4444' : 'var(--t4)',
+                                fontWeight: 600,
+                              }}
+                            >
+                              <TrendIcon className="w-3 h-3" />
+                              {delta > 0 ? '+' : ''}{delta}%
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-[10px]" style={{ color: 'var(--t4)' }}>— no comparison data</div>
+                      )
+                    )}
+                  </Card>
+                </button>
+              </motion.div>
+            );
+          })
+        })()}
+        </div>
       </div>
       )}
 
@@ -1541,196 +1698,6 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
         </div>
       </div>
 
-      {/* Period Comparison */}
-      <Card>
-        <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
-              <Activity className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h3 style={{ fontSize: "16px", fontWeight: 700, color: "var(--heading)" }}>Period Comparison</h3>
-              <p className="text-xs mt-0.5" style={{ color: "var(--t3)" }}>
-                {compMode === 'calendar'
-                  ? <>{calAFrom && calATo ? <span style={{ color: "var(--t2)", fontWeight: 500 }}>{formatPeriodRangeLabel(calAFrom, calATo)}</span> : <span style={{ color: "var(--t4)" }}>Period A</span>} vs {calBFrom && calBTo ? <span style={{ color: "var(--t2)", fontWeight: 500 }}>{formatPeriodRangeLabel(calBFrom, calBTo)}</span> : <span style={{ color: "var(--t4)" }}>Period B</span>}</>
-                  : <><span style={{ color: "var(--t2)", fontWeight: 500 }}>{currentComparisonLabel}</span>{" vs "}<span style={{ color: "var(--t2)", fontWeight: 500 }}>{previousComparisonLabel}</span></>
-                }
-              </p>
-            </div>
-          </div>
-          {/* Compare-to mode selector */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px]" style={{ color: "var(--t4)" }}>Compare to:</span>
-            {([
-              { key: 'prev_period', label: 'Prev period' },
-              { key: 'prev_year', label: 'Last year' },
-              { key: 'calendar', label: '📅 Pick dates' },
-            ] as const).map(opt => (
-              <button
-                key={opt.key}
-                onClick={() => setCompMode(opt.key)}
-                className="px-3 py-1 rounded-lg text-[11px] transition-all"
-                style={{
-                  background: compMode === opt.key ? "rgba(139,92,246,0.15)" : "var(--subtle)",
-                  color: compMode === opt.key ? "#8B5CF6" : "var(--t3)",
-                  fontWeight: compMode === opt.key ? 600 : 400,
-                  border: compMode === opt.key ? "1px solid rgba(139,92,246,0.3)" : "1px solid transparent",
-                }}
-              >{opt.label}</button>
-            ))}
-          </div>
-        </div>
-
-        {/* Calendar pickers — shown when "Pick dates" mode selected */}
-        {compMode === 'calendar' && (
-          <div className="flex flex-col sm:flex-row gap-6 mb-6 p-4 rounded-2xl" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
-            <MonthCalendar
-              label="Period A"
-              from={calAFrom}
-              to={calATo}
-              onChange={(f, t) => { setCalAFrom(f); setCalATo(t); }}
-              isDark={isDark}
-              accentColor="#8B5CF6"
-            />
-            <div className="hidden sm:flex flex-col items-center justify-center gap-1" style={{ color: "var(--t4)" }}>
-              <div className="w-px flex-1" style={{ background: "var(--divider)" }} />
-              <span className="text-xs font-semibold px-2" style={{ color: "var(--t3)" }}>vs</span>
-              <div className="w-px flex-1" style={{ background: "var(--divider)" }} />
-            </div>
-            <div className="sm:hidden h-px w-full" style={{ background: "var(--divider)" }} />
-            <MonthCalendar
-              label="Period B"
-              from={calBFrom}
-              to={calBTo}
-              onChange={(f, t) => { setCalBFrom(f); setCalBTo(t); }}
-              isDark={isDark}
-              accentColor="#06B6D4"
-            />
-          </div>
-        )}
-
-        {/* Real comparison metrics */}
-        {(() => {
-          // In calendar mode: use calAQuery for "current", compQuery for "previous"
-          const curData = compMode === 'calendar' && (calAFrom && calATo) ? calAQuery.data : activeDashboardData;
-          const cur = curData?.metrics;
-          const prv = compQuery.data?.metrics;
-          const isLoading = compQuery.isFetching || isPeriodLoading || calAQuery.isFetching;
-          // In calendar mode, show placeholder if periods not yet selected
-          if (compMode === 'calendar' && (!calAFrom || !calATo || !calBFrom || !calBTo)) {
-            return (
-              <div className="py-4 text-center text-xs" style={{ color: "var(--t4)" }}>
-                Select Period A and Period B above to compare
-              </div>
-            );
-          }
-
-          const toNum = (v: any): number => {
-            if (typeof v === 'number') return v;
-            if (typeof v === 'string') return parseFloat(v.replace(/[^0-9.-]/g, '')) || 0;
-            return 0;
-          };
-          const toOcc = (v: any): number => parseFloat(String(v || '0').replace('%','')) || 0;
-
-          const metrics: Array<{
-            label: string;
-            cur: number;
-            prev: number;
-            format: 'number'|'percent';
-            invert?: boolean;
-            deltaCur?: number;
-            deltaPrev?: number;
-          }> = cur ? [
-            {
-              label: "Player Sessions",
-              cur: toNum(cur.bookings?.value), prev: toNum(prv?.bookings?.value), format: 'number',
-            },
-            { label: "Court Occupancy", cur: toOcc(cur.occupancy?.value), prev: toOcc(prv?.occupancy?.value), format: 'percent' },
-            { label: "Active Players", cur: toNum(cur.members?.value), prev: toNum(prv?.members?.value), format: 'number' },
-            {
-              label: "Avg Sessions/Player",
-              cur: toNum(cur.members?.value) > 0 ? Math.round((toNum(cur.bookings?.value) / toNum(cur.members?.value)) * 10) / 10 : 0,
-              prev: toNum(prv?.members?.value) > 0 ? Math.round((toNum(prv?.bookings?.value) / toNum(prv?.members?.value)) * 10) / 10 : 0,
-              format: 'number',
-              deltaCur: toNum(cur.members?.value) > 0 ? toNum(cur.bookings?.value) / toNum(cur.members?.value) : 0,
-              deltaPrev: toNum(prv?.members?.value) > 0 ? toNum(prv?.bookings?.value) / toNum(prv?.members?.value) : 0,
-            },
-          ] : [];
-
-          if (!cur) return (
-            <div className="py-6 text-center text-xs" style={{ color: "var(--t4)" }}>No data for current period</div>
-          );
-
-          // Map card label → canon metric key the drawer endpoint expects.
-          // Step 8 of DASHBOARD_AND_ACTION_CENTER_SPEC.md §3.3 — each
-          // card click opens the drill-down drawer for that metric.
-          const labelToMetric: Record<string, DrawerMetric> = {
-            "Player Sessions": 'player_registrations',
-            "Court Occupancy": 'court_occupancy',
-            "Active Players": 'active_players',
-            "Avg Sessions/Player": 'avg_sessions_per_player',
-          };
-
-          return (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {metrics.map((row) => {
-                const deltaCur = row.deltaCur ?? row.cur;
-                const deltaPrev = row.deltaPrev ?? row.prev;
-                const rawDelta = deltaPrev === 0 ? 0 : ((deltaCur - deltaPrev) / deltaPrev) * 100;
-                const delta = Math.round(rawDelta * 10) / 10;
-                const isPositive = row.invert ? delta < 0 : delta > 0;
-                const trendTone: TrendTone = delta === 0 ? "neutral" : isPositive ? "positive" : "negative";
-                const TrendIcon = trendTone === "positive"
-                  ? ArrowUpRight
-                  : trendTone === "negative" ? ArrowDownRight : Minus;
-                const dispCur = row.format === 'percent' ? `${row.cur}%` : row.cur.toLocaleString();
-                const dispPrev = row.format === 'percent' ? `${row.prev}%` : row.prev.toLocaleString();
-                const metricKey = labelToMetric[row.label];
-                return (
-                  <button
-                    type="button"
-                    key={row.label}
-                    onClick={() => {
-                      if (!metricKey) return;
-                      setDrawerMetric(metricKey);
-                    }}
-                    className="text-left rounded-xl p-4 relative overflow-hidden transition-transform hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-purple-500/40"
-                    style={{ background: "var(--subtle)" }}
-                  >
-                    {isLoading && <div className="absolute inset-0 rounded-xl animate-pulse" style={{ background: "rgba(139,92,246,0.04)" }} />}
-                    <div className="text-[11px] mb-2" style={{ color: "var(--t3)", fontWeight: 500 }}>{row.label}</div>
-                    <div className="flex items-end justify-between">
-                      <div>
-                        <div style={{ fontSize: "22px", fontWeight: 700, color: "var(--heading)" }}>{dispCur}</div>
-                        <div className="text-[10px] mt-0.5" style={{ color: "var(--t4)" }}>
-                          {prv ? `was ${dispPrev}` : '— no comparison data'}
-                        </div>
-                      </div>
-                      {prv && row.prev > 0 && (
-                        <div
-                          className="flex items-center gap-0.5 text-xs px-2 py-1 rounded-md"
-                          style={{
-                            background: trendTone === "positive"
-                              ? "rgba(16,185,129,0.1)"
-                              : trendTone === "negative" ? "rgba(239,68,68,0.1)" : "rgba(148,163,184,0.12)",
-                            color: trendTone === "positive"
-                              ? "#10B981"
-                              : trendTone === "negative" ? "#EF4444" : "var(--t4)",
-                            fontWeight: 600,
-                          }}
-                        >
-                          <TrendIcon className="w-3 h-3" />
-                          {delta > 0 ? "+" : ""}{delta}%
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })()}
-      </Card>
 
       </>}
 
