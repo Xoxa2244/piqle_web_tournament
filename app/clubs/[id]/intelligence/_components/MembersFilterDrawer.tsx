@@ -59,6 +59,26 @@ interface MembersFilterDrawerProps {
   statusOptions?: FilterChipOption[]
   tierOptions?: FilterChipOption[]
 
+  // Profile filters (operator feedback 2.1). All optional — the Profile tab
+  // renders only when the setters are provided (today: only MembersIQ).
+  filterGender?: string
+  setFilterGender?: (v: string) => void
+  filterAgeBand?: string
+  setFilterAgeBand?: (v: string) => void
+  filterSkill?: string
+  setFilterSkill?: (v: string) => void
+  filterCity?: string
+  setFilterCity?: (v: string) => void
+  filterZip?: string
+  setFilterZip?: (v: string) => void
+  filterSessionsMin?: string
+  setFilterSessionsMin?: (v: string) => void
+  filterSessionsMax?: string
+  setFilterSessionsMax?: (v: string) => void
+  genderOptions?: FilterChipOption[]
+  skillOptions?: FilterChipOption[]
+  cityOptions?: FilterChipOption[]
+
   isDark?: boolean
 }
 
@@ -118,6 +138,34 @@ const VALUE_OPTIONS = [
   { key: 'medium', label: 'Mid' },
   { key: 'low', label: 'Low' },
 ]
+
+export const AGE_BAND_OPTIONS = [
+  { key: 'all', label: 'All' },
+  { key: 'u18', label: '<18' },
+  { key: '18_34', label: '18–34' },
+  { key: '35_49', label: '35–49' },
+  { key: '50_64', label: '50–64' },
+  { key: '65p', label: '65+' },
+]
+
+/** Bucket an age into the AGE_BAND_OPTIONS keys (null = unknown DOB → matches no band). */
+export const ageBandOf = (age: number | null): string | null => {
+  if (age == null || !Number.isFinite(age)) return null
+  if (age < 18) return 'u18'
+  if (age < 35) return '18_34'
+  if (age < 50) return '35_49'
+  if (age < 65) return '50_64'
+  return '65p'
+}
+
+const GENDER_FALLBACK_OPTIONS = [
+  { key: 'all', label: 'All' },
+  { key: 'M', label: 'Male' },
+  { key: 'F', label: 'Female' },
+  { key: 'X', label: 'Other' },
+]
+
+const GENDER_LABELS: Record<string, string> = { M: 'Male', F: 'Female', X: 'Other' }
 
 interface ChipGroupProps {
   label: string
@@ -237,11 +285,33 @@ export function MembersFilterDrawer({
   setFilterValue,
   statusOptions,
   tierOptions,
+  filterGender,
+  setFilterGender,
+  filterAgeBand,
+  setFilterAgeBand,
+  filterSkill,
+  setFilterSkill,
+  filterCity,
+  setFilterCity,
+  filterZip,
+  setFilterZip,
+  filterSessionsMin,
+  setFilterSessionsMin,
+  filterSessionsMax,
+  setFilterSessionsMax,
+  genderOptions,
+  skillOptions,
+  cityOptions,
   isDark,
 }: MembersFilterDrawerProps) {
   const effectiveStatusOptions = statusOptions ?? STATUS_OPTIONS
   const effectiveTierOptions = tierOptions ?? TIER_OPTIONS
-  const [tab, setTab] = useState<'status' | 'behavior'>('status')
+  // The Profile tab exists only when the page wires its filters in.
+  const hasProfile = !!setFilterGender
+  const effectiveGenderOptions = genderOptions && genderOptions.length > 1
+    ? genderOptions.map((o) => ({ ...o, label: GENDER_LABELS[o.key] ?? o.label }))
+    : GENDER_FALLBACK_OPTIONS
+  const [tab, setTab] = useState<'status' | 'behavior' | 'profile'>('status')
 
   // Esc closes
   useEffect(() => {
@@ -275,6 +345,16 @@ export function MembersFilterDrawer({
       (filterValue !== 'all' ? 1 : 0),
     [filterActivity, filterRisk, filterTrend, filterValue],
   )
+  const profileActive = useMemo(
+    () =>
+      ((filterGender ?? 'all') !== 'all' ? 1 : 0) +
+      ((filterAgeBand ?? 'all') !== 'all' ? 1 : 0) +
+      ((filterSkill ?? 'all') !== 'all' ? 1 : 0) +
+      ((filterCity ?? 'all') !== 'all' ? 1 : 0) +
+      ((filterZip ?? '') !== '' ? 1 : 0) +
+      ((filterSessionsMin ?? '') !== '' || (filterSessionsMax ?? '') !== '' ? 1 : 0),
+    [filterGender, filterAgeBand, filterSkill, filterCity, filterZip, filterSessionsMin, filterSessionsMax],
+  )
 
   const clearAll = () => {
     setFilterMembershipStatus('all')
@@ -283,6 +363,13 @@ export function MembersFilterDrawer({
     setFilterRisk('all')
     setFilterTrend('all')
     setFilterValue('all')
+    setFilterGender?.('all')
+    setFilterAgeBand?.('all')
+    setFilterSkill?.('all')
+    setFilterCity?.('all')
+    setFilterZip?.('')
+    setFilterSessionsMin?.('')
+    setFilterSessionsMax?.('')
   }
 
   return (
@@ -341,6 +428,7 @@ export function MembersFilterDrawer({
               {[
                 { key: 'status' as const, label: 'Status', count: statusActive },
                 { key: 'behavior' as const, label: 'Behavior', count: behaviorActive },
+                ...(hasProfile ? [{ key: 'profile' as const, label: 'Profile', count: profileActive }] : []),
               ].map((t) => {
                 const active = tab === t.key
                 return (
@@ -435,6 +523,96 @@ export function MembersFilterDrawer({
                   />
                 </>
               )}
+
+              {tab === 'profile' && hasProfile && (
+                <>
+                  <ChipGroup
+                    label="Gender"
+                    hint="As recorded in CourtReserve member profiles"
+                    options={effectiveGenderOptions}
+                    value={filterGender ?? 'all'}
+                    onChange={(v) => setFilterGender?.(v)}
+                    isDark={isDark}
+                  />
+                  <ChipGroup
+                    label="Age"
+                    hint="From date of birth — members without a DOB on file match no band"
+                    options={AGE_BAND_OPTIONS}
+                    value={filterAgeBand ?? 'all'}
+                    onChange={(v) => setFilterAgeBand?.(v)}
+                    isDark={isDark}
+                  />
+                  {skillOptions && skillOptions.length > 1 && (
+                    <ChipGroup
+                      label="Skill level"
+                      hint="Exact skill values from CourtReserve profiles"
+                      options={skillOptions}
+                      value={filterSkill ?? 'all'}
+                      onChange={(v) => setFilterSkill?.(v)}
+                      isDark={isDark}
+                    />
+                  )}
+                  {cityOptions && cityOptions.length > 1 && (
+                    <ChipGroup
+                      label="City"
+                      hint="Top cities by member count — use ZIP below for anything else"
+                      options={cityOptions}
+                      value={filterCity ?? 'all'}
+                      onChange={(v) => setFilterCity?.(v)}
+                      isDark={isDark}
+                    />
+                  )}
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--t3)' }}>
+                        ZIP code
+                      </div>
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>
+                        Prefix match — e.g. "330" catches 33012, 33015…
+                      </p>
+                    </div>
+                    <input
+                      type="text"
+                      value={filterZip ?? ''}
+                      onChange={(e) => setFilterZip?.(e.target.value.trim())}
+                      placeholder="Any ZIP"
+                      className="text-xs rounded-lg px-3 py-2 w-40"
+                      style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--t2)' }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="text-[11px] uppercase tracking-wider font-semibold" style={{ color: 'var(--t3)' }}>
+                        Sessions this month
+                      </div>
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>
+                        Confirmed bookings in the last 30 days — set either or both bounds
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={0}
+                        value={filterSessionsMin ?? ''}
+                        onChange={(e) => setFilterSessionsMin?.(e.target.value)}
+                        placeholder="Min"
+                        className="text-xs rounded-lg px-3 py-2 w-20"
+                        style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--t2)' }}
+                      />
+                      <span style={{ color: 'var(--t4)', fontSize: 12 }}>→</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={filterSessionsMax ?? ''}
+                        onChange={(e) => setFilterSessionsMax?.(e.target.value)}
+                        placeholder="Max"
+                        className="text-xs rounded-lg px-3 py-2 w-20"
+                        style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--t2)' }}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Footer */}
@@ -444,7 +622,7 @@ export function MembersFilterDrawer({
             >
               <button
                 onClick={clearAll}
-                disabled={statusActive + behaviorActive === 0}
+                disabled={statusActive + behaviorActive + profileActive === 0}
                 className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg transition-all disabled:opacity-40"
                 style={{ color: 'var(--t3)', border: '1px solid var(--card-border)' }}
               >

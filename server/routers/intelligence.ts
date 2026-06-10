@@ -2026,6 +2026,30 @@ export const intelligenceRouter = createTRPCRouter({
         ORDER BY COUNT(*) DESC, u.membership_status ASC
       `
 
+      // Profile facets (gender / city / skill) for the Members filter
+      // drawer's Profile tab — real values with counts, same JOIN shape as
+      // the tier facets. One round-trip via GROUPING SETS.
+      const profileRows = await ctx.prisma.$queryRaw<Array<{ facet: string; value: string | null; count: bigint }>>`
+        SELECT facet, value, COUNT(*)::bigint AS count
+        FROM (
+          SELECT 'gender' AS facet, u.gender::text AS value FROM users u
+            JOIN club_followers cf ON cf.user_id = u.id WHERE cf.club_id = ${input.clubId}
+          UNION ALL
+          SELECT 'city' AS facet, NULLIF(TRIM(u.city), '') AS value FROM users u
+            JOIN club_followers cf ON cf.user_id = u.id WHERE cf.club_id = ${input.clubId}
+          UNION ALL
+          SELECT 'skill' AS facet, NULLIF(TRIM(u.skill_level), '') AS value FROM users u
+            JOIN club_followers cf ON cf.user_id = u.id WHERE cf.club_id = ${input.clubId}
+        ) f
+        WHERE value IS NOT NULL
+        GROUP BY facet, value
+        ORDER BY facet, COUNT(*) DESC, value ASC
+      `
+      const facetOf = (key: string) =>
+        profileRows
+          .filter((r) => r.facet === key && r.value != null)
+          .map((r) => ({ value: r.value as string, count: Number(r.count) }))
+
       return {
         tiers: tierRows.map((r) => ({
           value: r.value,
@@ -2033,6 +2057,11 @@ export const intelligenceRouter = createTRPCRouter({
           inCatalog: r.in_catalog === true,
         })),
         states: stateRows.map((r) => ({ value: r.value, count: Number(r.count) })),
+        genders: facetOf('gender'),
+        // Cap city to the top 30 — long-tail towns stay reachable via the
+        // zip free-text filter rather than a 200-chip wall.
+        cities: facetOf('city').slice(0, 30),
+        skills: facetOf('skill'),
       }
     }),
 
@@ -5043,6 +5072,7 @@ export const intelligenceRouter = createTRPCRouter({
               select: {
                 id: true, email: true, name: true, image: true,
                 gender: true, city: true,
+                dateOfBirth: true, zipCode: true, skillLevel: true,
                 duprRatingDoubles: true, duprRatingSingles: true,
                 membershipType: true, membershipStatus: true,
               },
@@ -5271,6 +5301,9 @@ export const intelligenceRouter = createTRPCRouter({
               image: f.user.image,
               gender: (f.user.gender as 'M' | 'F' | 'X') ?? null,
               city: f.user.city,
+              dateOfBirth: f.user.dateOfBirth ?? null,
+              zipCode: f.user.zipCode ?? null,
+              skillLevel: f.user.skillLevel ?? null,
               duprRatingDoubles: f.user.duprRatingDoubles ? Number(f.user.duprRatingDoubles) : null,
               duprRatingSingles: f.user.duprRatingSingles ? Number(f.user.duprRatingSingles) : null,
             },

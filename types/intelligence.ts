@@ -59,6 +59,10 @@ export interface MemberData {
   city: string | null;
   duprRatingDoubles: number | null;
   duprRatingSingles: number | null;
+  // Profile-filter fields (optional — only getMemberHealth populates them).
+  dateOfBirth?: string | Date | null;
+  zipCode?: string | null;
+  skillLevel?: string | null;
 }
 
 export interface UserPlayPreferenceData {
@@ -491,6 +495,8 @@ export interface MemberHealthResult {
   trend: 'improving' | 'stable' | 'declining'
   daysSinceLastBooking: number | null
   totalBookings: number
+  /** Confirmed bookings in the last 30 days (history.bookingsLastMonth passthrough). */
+  bookingsLast30?: number
   joinedDaysAgo: number
   // Multi-dimensional segmentation
   segment?: MemberSegment

@@ -23,7 +23,7 @@ import { EmptyStateIQ } from "./EmptyStateIQ";
 import { MembersReactivationSection } from "./MembersReactivationSection";
 import { PlayerProfileIQ } from "./PlayerProfileIQ";
 import { MemberDetailDrawer } from "../MemberDetailDrawer";
-import { MembersFilterDrawer } from "../MembersFilterDrawer";
+import { MembersFilterDrawer, ageBandOf } from "../MembersFilterDrawer";
 import { MembersChartsDrawer } from "../MembersChartsDrawer";
 import { AIInsightRibbon } from "../AIInsightRibbon";
 import type { GuestTrialExecutionContext } from "@/lib/ai/guest-trial-offers";
@@ -61,6 +61,14 @@ interface Member {
   normalizedMembershipType: string | null;
   normalizedMembershipStatus: string | null;
   suggestedAction: string;
+  // Profile-filter fields (operator feedback 2.1)
+  gender: string | null;
+  age: number | null;
+  skillLevel: string | null;
+  city: string | null;
+  zipCode: string | null;
+  /** Confirmed bookings in the last 30 days (real window count, unlike sessionsThisMonth which carries lifetime totals). */
+  bookingsLast30: number;
 }
 
 
@@ -645,6 +653,13 @@ function buildMembersAudienceContext(input: {
   filterValue: string
   filterMembershipType: string
   filterMembershipStatus: string
+  filterGender?: string
+  filterAgeBand?: string
+  filterSkill?: string
+  filterCity?: string
+  filterZip?: string
+  filterSessionsMin?: string
+  filterSessionsMax?: string
 }) {
   const parts = [
     input.view !== 'all' ? `view ${input.view}` : null,
@@ -655,6 +670,14 @@ function buildMembersAudienceContext(input: {
     input.filterValue !== 'all' ? `value ${input.filterValue}` : null,
     input.filterMembershipType !== 'all' ? `membership tier ${input.filterMembershipType === '__null__' ? 'No tier' : input.filterMembershipType}` : null,
     input.filterMembershipStatus !== 'all' ? `membership state ${input.filterMembershipStatus === '__null__' ? 'No status' : input.filterMembershipStatus}` : null,
+    input.filterGender && input.filterGender !== 'all' ? `gender ${input.filterGender}` : null,
+    input.filterAgeBand && input.filterAgeBand !== 'all' ? `age band ${input.filterAgeBand}` : null,
+    input.filterSkill && input.filterSkill !== 'all' ? `skill ${input.filterSkill}` : null,
+    input.filterCity && input.filterCity !== 'all' ? `city ${input.filterCity}` : null,
+    input.filterZip ? `zip ${input.filterZip}*` : null,
+    input.filterSessionsMin || input.filterSessionsMax
+      ? `sessions/30d ${input.filterSessionsMin || '0'}–${input.filterSessionsMax || '∞'}`
+      : null,
   ].filter(Boolean)
 
   return parts.length > 0 ? parts.join(', ') : null
@@ -1246,6 +1269,14 @@ function mapRealMembers(data: any): Member[] {
     normalizedMembershipType: m.normalizedMembershipType || null,
     normalizedMembershipStatus: m.normalizedMembershipStatus || null,
     suggestedAction: m.suggestedAction || '',
+    gender: m.member?.gender ?? null,
+    age: m.member?.dateOfBirth
+      ? Math.floor((Date.now() - new Date(m.member.dateOfBirth).getTime()) / (365.25 * 86400000))
+      : null,
+    skillLevel: m.member?.skillLevel ?? null,
+    city: m.member?.city ?? null,
+    zipCode: m.member?.zipCode ?? null,
+    bookingsLast30: m.bookingsLast30 ?? 0,
   }));
 }
 
@@ -1268,6 +1299,14 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     () => searchParamsForUrl?.get('tier') || "all",
   );
   const [filterMembershipStatus, setFilterMembershipStatus] = useState<string>("all");
+  // Profile filters (operator feedback 2.1) — drawer "Profile" tab.
+  const [filterGender, setFilterGender] = useState<string>("all");
+  const [filterAgeBand, setFilterAgeBand] = useState<string>("all");
+  const [filterSkill, setFilterSkill] = useState<string>("all");
+  const [filterCity, setFilterCity] = useState<string>("all");
+  const [filterZip, setFilterZip] = useState<string>("");
+  const [filterSessionsMin, setFilterSessionsMin] = useState<string>("");
+  const [filterSessionsMax, setFilterSessionsMax] = useState<string>("");
 
   // Real CR membership facets (raw membership_type / membership_status values
   // with counts) for the filter drawer chips. Replaces the legacy 9-bucket
@@ -1307,6 +1346,24 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     }
     return base
   }, [membershipFacetsQuery.data])
+  // Profile facets (gender / skill / city) for the drawer's Profile tab.
+  const facetChipOptions = (rows?: Array<{ value: string; count: number }>) => {
+    const base = [{ key: 'all', label: 'All' }] as Array<{ key: string; label: string; count?: number }>
+    for (const r of rows ?? []) base.push({ key: r.value, label: r.value, count: r.count })
+    return base
+  }
+  const dynamicGenderOptions = useMemo(
+    () => facetChipOptions((membershipFacetsQuery.data as any)?.genders),
+    [membershipFacetsQuery.data],
+  )
+  const dynamicSkillOptions = useMemo(
+    () => facetChipOptions((membershipFacetsQuery.data as any)?.skills),
+    [membershipFacetsQuery.data],
+  )
+  const dynamicCityOptions = useMemo(
+    () => facetChipOptions((membershipFacetsQuery.data as any)?.cities),
+    [membershipFacetsQuery.data],
+  )
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "health" | "revenue" | "sessions">("health");
   // P2-T2: viewMode defaults to "list" (compact rows, scales to 500+ members),
@@ -1356,6 +1413,13 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     setFilterRisk('all')
     setFilterTrend('all')
     setFilterValue('all')
+    setFilterGender('all')
+    setFilterAgeBand('all')
+    setFilterSkill('all')
+    setFilterCity('all')
+    setFilterZip('')
+    setFilterSessionsMin('')
+    setFilterSessionsMax('')
   }
 
   // Quick presets — each clears all filters then sets only what the preset
@@ -1426,8 +1490,35 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         onClear: () => setFilterValue('all'),
       })
     }
+    if (filterGender !== 'all') {
+      const labelMap: Record<string, string> = { M: 'Male', F: 'Female', X: 'Other' }
+      chips.push({ key: 'gender', group: 'Gender', label: labelMap[filterGender] || filterGender, onClear: () => setFilterGender('all') })
+    }
+    if (filterAgeBand !== 'all') {
+      const labelMap: Record<string, string> = { u18: '<18', '18_34': '18–34', '35_49': '35–49', '50_64': '50–64', '65p': '65+' }
+      chips.push({ key: 'age', group: 'Age', label: labelMap[filterAgeBand] || filterAgeBand, onClear: () => setFilterAgeBand('all') })
+    }
+    if (filterSkill !== 'all') {
+      chips.push({ key: 'skill', group: 'Skill', label: filterSkill, onClear: () => setFilterSkill('all') })
+    }
+    if (filterCity !== 'all') {
+      chips.push({ key: 'city', group: 'City', label: filterCity, onClear: () => setFilterCity('all') })
+    }
+    if (filterZip !== '') {
+      chips.push({ key: 'zip', group: 'ZIP', label: `${filterZip}*`, onClear: () => setFilterZip('') })
+    }
+    if (filterSessionsMin !== '' || filterSessionsMax !== '') {
+      const label = `${filterSessionsMin || '0'}–${filterSessionsMax || '∞'} /30d`
+      chips.push({
+        key: 'sessions',
+        group: 'Sessions',
+        label,
+        onClear: () => { setFilterSessionsMin(''); setFilterSessionsMax('') },
+      })
+    }
     return chips
-  }, [filterMembershipStatus, filterMembershipType, filterActivity, filterRisk, filterTrend, filterValue])
+  }, [filterMembershipStatus, filterMembershipType, filterActivity, filterRisk, filterTrend, filterValue,
+      filterGender, filterAgeBand, filterSkill, filterCity, filterZip, filterSessionsMin, filterSessionsMax])
 
   const activeFilterCount = activeFilterChips.length
 
@@ -1517,9 +1608,11 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     }
   };
 
-  // Use real data — no mock fallback
-  const realMembers = mapRealMembers(memberHealthData);
-  const allMembers = realMembers.length > 0 ? realMembers : [];
+  // Use real data — no mock fallback. Memoized: mapRealMembers over 6,800
+  // members ran on EVERY render (each filter/sort click) — the UX-revision
+  // P2 perf finding. Same for `filtered` and the charts below.
+  const realMembers = useMemo(() => mapRealMembers(memberHealthData), [memberHealthData]);
+  const allMembers = realMembers;
 
   // Counts for Quick view presets — shown next to each item in the
   // dropdown so admin sees the size of each segment before clicking.
@@ -1542,14 +1635,17 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     : [];
 
   // Activity distribution — derive from real member sessions data
-  const displayActivityDistribution = realMembers.length > 0
-    ? (() => {
-        const ranges = [{ range: "0", min: 0, max: 0 }, { range: "1-2", min: 1, max: 2 }, { range: "3-4", min: 3, max: 4 }, { range: "5-6", min: 5, max: 6 }, { range: "7-8", min: 7, max: 8 }, { range: "9+", min: 9, max: 999 }];
-        return ranges.map(r => ({ range: r.range, count: realMembers.filter((m: any) => m.sessionsThisMonth >= r.min && m.sessionsThisMonth <= r.max).length }));
-      })()
-    : [];
+  const displayActivityDistribution = useMemo(() => {
+    if (realMembers.length === 0) return [];
+    const ranges = [{ range: "0", min: 0, max: 0 }, { range: "1-2", min: 1, max: 2 }, { range: "3-4", min: 3, max: 4 }, { range: "5-6", min: 5, max: 6 }, { range: "7-8", min: 7, max: 8 }, { range: "9+", min: 9, max: 999 }];
+    return ranges.map(r => ({ range: r.range, count: realMembers.filter((m: any) => m.sessionsThisMonth >= r.min && m.sessionsThisMonth <= r.max).length }));
+  }, [realMembers]);
 
-  const filtered = allMembers
+  const filtered = useMemo(() => {
+    const search = searchQuery.toLowerCase();
+    const sessMin = filterSessionsMin === '' ? null : Number(filterSessionsMin);
+    const sessMax = filterSessionsMax === '' ? null : Number(filterSessionsMax);
+    return allMembers
     .filter((m) => {
       // At-risk subtab: only show at-risk + critical segments
       if (view === "at-risk" && m.segment !== "at-risk" && m.segment !== "critical") return false;
@@ -1577,7 +1673,16 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           return false;
         }
       }
-      if (searchQuery && !m.name.toLowerCase().includes(searchQuery.toLowerCase()) && !m.email.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      // Profile filters (operator feedback 2.1). Members missing the
+      // underlying field never match a non-"all" value — no guessing.
+      if (filterGender !== "all" && m.gender !== filterGender) return false;
+      if (filterAgeBand !== "all" && ageBandOf(m.age) !== filterAgeBand) return false;
+      if (filterSkill !== "all" && (m.skillLevel || '') !== filterSkill) return false;
+      if (filterCity !== "all" && (m.city || '') !== filterCity) return false;
+      if (filterZip && !(m.zipCode || '').startsWith(filterZip)) return false;
+      if (sessMin != null && m.bookingsLast30 < sessMin) return false;
+      if (sessMax != null && m.bookingsLast30 > sessMax) return false;
+      if (search && !m.name.toLowerCase().includes(search) && !m.email.toLowerCase().includes(search)) return false;
       return true;
     })
     .sort((a, b) => {
@@ -1587,6 +1692,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       if (sortBy === "sessions") return b.sessionsThisMonth - a.sessionsThisMonth;
       return 0;
     });
+  }, [allMembers, view, searchQuery, sortBy,
+      filterActivity, filterRisk, filterTrend, filterValue, filterMembershipType, filterMembershipStatus,
+      filterGender, filterAgeBand, filterSkill, filterCity, filterZip, filterSessionsMin, filterSessionsMax]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -1601,6 +1709,13 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     filterValue,
     filterMembershipType,
     filterMembershipStatus,
+    filterGender,
+    filterAgeBand,
+    filterSkill,
+    filterCity,
+    filterZip,
+    filterSessionsMin,
+    filterSessionsMax,
   });
   const membersQuickCohortIntent = useMemo(() => mapMembersFiltersToQuickCohort({
     view,
@@ -1611,6 +1726,13 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     filterValue,
     filterMembershipType,
     filterMembershipStatus,
+    filterGender,
+    filterAgeBand,
+    filterSkill,
+    filterCity,
+    filterZip,
+    filterSessionsMin,
+    filterSessionsMax,
   }), [
     view,
     searchQuery,
@@ -1620,6 +1742,13 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     filterValue,
     filterMembershipType,
     filterMembershipStatus,
+    filterGender,
+    filterAgeBand,
+    filterSkill,
+    filterCity,
+    filterZip,
+    filterSessionsMin,
+    filterSessionsMax,
   ])
   const dynamicCohortHref = useMemo(() => {
     if (!clubId || !membersQuickCohortIntent.supported) return null
@@ -2685,6 +2814,23 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         setFilterValue={setFilterValue}
         statusOptions={dynamicStatusOptions}
         tierOptions={dynamicTierOptions}
+        filterGender={filterGender}
+        setFilterGender={setFilterGender}
+        filterAgeBand={filterAgeBand}
+        setFilterAgeBand={setFilterAgeBand}
+        filterSkill={filterSkill}
+        setFilterSkill={setFilterSkill}
+        filterCity={filterCity}
+        setFilterCity={setFilterCity}
+        filterZip={filterZip}
+        setFilterZip={setFilterZip}
+        filterSessionsMin={filterSessionsMin}
+        setFilterSessionsMin={setFilterSessionsMin}
+        filterSessionsMax={filterSessionsMax}
+        setFilterSessionsMax={setFilterSessionsMax}
+        genderOptions={dynamicGenderOptions}
+        skillOptions={dynamicSkillOptions}
+        cityOptions={dynamicCityOptions}
         isDark={isDark}
       />
 

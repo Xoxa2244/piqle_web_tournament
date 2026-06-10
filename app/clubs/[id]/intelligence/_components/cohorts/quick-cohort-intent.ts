@@ -108,6 +108,17 @@ export function mapMembersFiltersToQuickCohort(input: {
   filterValue: string
   filterMembershipType: string
   filterMembershipStatus: string
+  // Profile filters (Members drawer "Profile" tab). Sessions min/max maps to
+  // the quick builder's frequency bounds; the rest have no quick-builder
+  // representation yet → supported:false so we never save a cohort whose
+  // audience is wider than what the admin is looking at.
+  filterGender?: string
+  filterAgeBand?: string
+  filterSkill?: string
+  filterCity?: string
+  filterZip?: string
+  filterSessionsMin?: string
+  filterSessionsMax?: string
 }) {
   const searchQuery = input.searchQuery.trim()
   if (searchQuery) {
@@ -116,10 +127,22 @@ export function mapMembersFiltersToQuickCohort(input: {
   if (input.view === 'reactivation') {
     return { supported: false as const, reason: 'reactivation' }
   }
+  if (
+    (input.filterGender && input.filterGender !== 'all') ||
+    (input.filterAgeBand && input.filterAgeBand !== 'all') ||
+    (input.filterSkill && input.filterSkill !== 'all') ||
+    (input.filterCity && input.filterCity !== 'all') ||
+    (input.filterZip && input.filterZip !== '')
+  ) {
+    return { supported: false as const, reason: 'profile' }
+  }
 
   const quickFilters: QuickCohortState = {
     ...EMPTY_QUICK_COHORT,
   }
+
+  if (input.filterSessionsMin) quickFilters.sessionsPerMonthMin = input.filterSessionsMin
+  if (input.filterSessionsMax) quickFilters.sessionsPerMonthMax = input.filterSessionsMax
 
   if (input.filterMembershipStatus !== 'all') {
     quickFilters.membershipStatus = [input.filterMembershipStatus]

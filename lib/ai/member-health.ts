@@ -331,6 +331,7 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
     trend,
     daysSinceLastBooking: history.daysSinceLastConfirmedBooking,
     totalBookings: history.totalBookings,
+    bookingsLast30: history.bookingsLastMonth,
     joinedDaysAgo,
     segment,
     segmentLabel: buildSegmentLabel(segment),
