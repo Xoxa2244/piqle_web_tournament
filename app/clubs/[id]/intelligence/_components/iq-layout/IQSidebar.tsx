@@ -243,7 +243,9 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                       {section.items.map((item) => {
                         const Icon = item.icon;
                         const fullPath = `${basePath}${item.path}`;
-                        const active = pathname === fullPath || (item.path !== "" && pathname.startsWith(fullPath));
+                        // Segment-boundary match: plain startsWith made the
+                        // Members item light up on /membership-health.
+                        const active = pathname === fullPath || (item.path !== "" && pathname.startsWith(`${fullPath}/`));
                         return (
                           <button
                             key={item.path}

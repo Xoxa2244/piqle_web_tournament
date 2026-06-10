@@ -1271,7 +1271,13 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                         style={{ background: 'var(--subtle)' }}
                       />
                     ) : (
-                      <div className="mb-1" style={{ fontSize: "26px", fontWeight: 800, color: "var(--heading)" }}>{kpi.value}</div>
+                      <div className="mb-1" style={{ fontSize: "26px", fontWeight: 800, color: "var(--heading)" }}>
+                        {/* "3190" → "3,190" — the comparison line below already
+                            renders "was 3,429", so the big value must match. */}
+                        {typeof kpi.value === 'string' && /^\d{4,}$/.test(kpi.value)
+                          ? Number(kpi.value).toLocaleString()
+                          : kpi.value}
+                      </div>
                     )}
                     <div className="text-xs flex items-center gap-1 mb-1.5" style={{ color: "var(--t3)" }}>
                       <span className="truncate">{kpi.label}</span>

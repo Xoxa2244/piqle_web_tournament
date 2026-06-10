@@ -1189,10 +1189,8 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
               const textWithoutAction = msg.role === 'assistant'
                 ? stripPendingQueueTag(stripAdvisorAction(text))
                 : text;
-              // Debug: log message structure
-              if (typeof window !== 'undefined') {
-                console.log(`[AdvisorIQ msg ${msgIdx}]`, msg.role, 'text:', text.slice(0, 100), 'parts:', JSON.stringify((msg as any).parts?.map((p: any) => ({ type: p.type, hasText: !!p.text })) || 'none'));
-              }
+              // (debug per-message console.log removed — it fired on every
+              // render of every message in production)
               // Skip assistant messages with no text/action/queue
               if (msg.role === 'assistant' && !textWithoutAction.trim() && !action && !pendingQueue) return null;
               const isLastAssistant = msg.role === 'assistant' && msgIdx === visibleMessages.length - 1;

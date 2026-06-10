@@ -519,7 +519,7 @@ export function ScheduleIQ({
                 style={{ background: 'rgba(245,158,11,0.9)', color: '#1E1B2E', fontWeight: 700 }}
                 title={`${weakWeekCount} underfilled upcoming session${weakWeekCount === 1 ? '' : 's'} this week`}
               >
-                {weakWeekCount}
+                {weakWeekCount > 99 ? '99+' : weakWeekCount}
               </span>
             )}
           </button>
