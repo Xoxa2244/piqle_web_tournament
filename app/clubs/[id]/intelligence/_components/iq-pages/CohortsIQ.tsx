@@ -203,6 +203,7 @@ type CohortFilterField =
   | 'healthScore' | 'activityLevel' | 'riskLevel' | 'engagementTrend' | 'valueTier' | 'joinedDaysAgo' | 'birthdayMonth'
   | 'normalizedMembershipType' | 'normalizedMembershipStatus'
   | 'attendedLeagueFamily' | 'attendedProgrammingTier' | 'attendedIntroProgram'
+  | 'networkClubCount' | 'visitedClubCount' | 'stoppedVisitingClub'
 
 interface CohortFilter {
   field: CohortFilterField
@@ -309,6 +310,33 @@ const QUICK_COHORT_PRESETS: Array<{
     previewSort: 'risk',
     state: { riskLevel: ['at_risk', 'critical'] },
   },
+  // ── Location / network presets (operator feedback 2.3, WS6d) ──
+  // Meaningful for clubs grouped into a club_network (IPC chain); on a
+  // standalone club these simply match nobody.
+  {
+    id: 'multi-access-one-location',
+    label: 'Multi-Club, One Location',
+    description: 'Registered at 2+ network locations but visits only one — cross-location campaign candidates.',
+    name: 'Multi-Club, One Location',
+    previewSort: 'activity',
+    state: { networkUsage: 'multi_access_single_location' },
+  },
+  {
+    id: 'only-this-location',
+    label: 'Visits One Location',
+    description: 'Active members who only ever play at a single network location.',
+    name: 'Visits One Location',
+    previewSort: 'activity',
+    state: { membershipStatus: ['active'], networkUsage: 'only_this_location' },
+  },
+  {
+    id: 'stopped-here-active-elsewhere',
+    label: 'Left for a Sibling Club',
+    description: 'Stopped visiting this location in the last 60 days but still plays at a sibling club.',
+    name: 'Left for a Sibling Club',
+    previewSort: 'inactive',
+    state: { networkUsage: 'stopped_here_active_elsewhere' },
+  },
 ]
 
 function toggleQuickValue(values: string[], nextValue: string) {
@@ -330,6 +358,7 @@ function getRecommendedPreviewSort(draft: QuickCohortState): PreviewSort {
   if (draft.inactiveDays || draft.engagementTrend.includes('churning') || draft.engagementTrend.includes('declining')) return 'inactive'
   if (draft.joinedWithinDays) return 'newest'
   if (draft.activityLevel.length > 0 || draft.sessionsPerMonthMin || draft.sessionsPerMonthMax) return 'activity'
+  if (draft.networkUsage) return 'activity'
   return 'alpha'
 }
 
@@ -345,6 +374,7 @@ function isQuickPresetActive(draft: QuickCohortState, preset: typeof QUICK_COHOR
   if (state.inactiveDays != null && draft.inactiveDays !== state.inactiveDays) return false
   if (state.sessionsPerMonthMin != null && draft.sessionsPerMonthMin !== state.sessionsPerMonthMin) return false
   if (state.sessionsPerMonthMax != null && draft.sessionsPerMonthMax !== state.sessionsPerMonthMax) return false
+  if (state.networkUsage != null && draft.networkUsage !== state.networkUsage) return false
   return true
 }
 
@@ -409,6 +439,18 @@ function buildQuickCohortFilters(draft: QuickCohortState): CohortFilter[] {
   const sessionsPerMonthMax = Number(sessionsPerMonthMaxRaw)
   if (sessionsPerMonthMaxRaw && Number.isFinite(sessionsPerMonthMax) && sessionsPerMonthMax >= 0) {
     filters.push({ field: 'frequency', op: 'lte', value: sessionsPerMonthMax })
+  }
+
+  // WS6d — location usage across the club network. Evaluated server-side via
+  // the attendance-filter pipeline (networkClubCount / visitedClubCount /
+  // stoppedVisitingClub).
+  if (draft.networkUsage === 'multi_access_single_location') {
+    filters.push({ field: 'networkClubCount' as CohortFilterField, op: 'gte', value: 2 })
+    filters.push({ field: 'visitedClubCount' as CohortFilterField, op: 'lte', value: 1 })
+  } else if (draft.networkUsage === 'only_this_location') {
+    filters.push({ field: 'visitedClubCount' as CohortFilterField, op: 'eq', value: 1 })
+  } else if (draft.networkUsage === 'stopped_here_active_elsewhere') {
+    filters.push({ field: 'stoppedVisitingClub' as CohortFilterField, op: 'eq', value: 'true' })
   }
 
   return filters
@@ -2308,6 +2350,36 @@ function CohortBuilder({
                       style={{ background: 'var(--subtle)', color: 'var(--t1)', border: '1px solid var(--card-border)' }}
                     />
                   </label>
+                </div>
+                {/* WS6d — location usage across the club network (single-select).
+                    Matches nobody on a standalone club; meaningful for chains. */}
+                <div className="space-y-1.5">
+                  <span className="text-[11px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>Location usage (network)</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {([
+                      ['', 'Any'],
+                      ['multi_access_single_location', 'Multi-club, uses one'],
+                      ['only_this_location', 'Visits one location'],
+                      ['stopped_here_active_elsewhere', 'Stopped here, active elsewhere'],
+                    ] as const).map(([key, label]) => {
+                      const active = quickFilters.networkUsage === key
+                      return (
+                        <button
+                          key={key || 'any'}
+                          onClick={() => updateQuickFilter('networkUsage', key)}
+                          className="px-3 py-1.5 rounded-lg text-xs transition-all"
+                          style={{
+                            background: active ? 'var(--pill-active)' : 'transparent',
+                            color: active ? '#C4B5FD' : 'var(--t3)',
+                            fontWeight: active ? 600 : 500,
+                            border: `1px solid ${active ? 'rgba(139,92,246,0.35)' : 'var(--card-border)'}`,
+                          }}
+                        >
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
                 <p className="text-xs" style={{ color: 'var(--t4)' }}>Every selected condition narrows the same cohort. More exact matching lives in Advanced Builder.</p>
               </div>

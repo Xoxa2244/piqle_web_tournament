@@ -644,12 +644,23 @@ async function syncMembersWithProgress(
             emailToUserId.set(email, userId)
           }
 
+          // Per-club membership on the follower row (WS6b). The global
+          // users.membership_type is last-sync-wins across clubs — for a
+          // multi-club member each club's sync overwrote the other's tier.
+          // The follower row is club-scoped, so this is the truthful copy;
+          // mirrors exactly what this path writes to users above.
+          const followerMembership = {
+            ...(canonicalizeMembershipTier(member.membershipTypeName) ? { membershipType: canonicalizeMembershipTier(member.membershipTypeName)! } : {}),
+            ...(member.membershipStatus ? { membershipStatus: member.membershipStatus } : {}),
+            membershipSyncedAt: new Date(),
+          }
+
           await Promise.all([
             !extIdToUserId.has(externalId) ? prisma.externalIdMapping.upsert({
               where: { partnerId_entityType_externalId: { partnerId, entityType: ExternalEntityType.MEMBER, externalId } },
               update: { internalId: userId }, create: { partnerId, entityType: ExternalEntityType.MEMBER, externalId, internalId: userId },
             }).then(() => extIdToUserId.set(externalId, userId)) : Promise.resolve(),
-            prisma.clubFollower.upsert({ where: { clubId_userId: { clubId, userId } }, create: { clubId, userId }, update: {} }),
+            prisma.clubFollower.upsert({ where: { clubId_userId: { clubId, userId } }, create: { clubId, userId, ...followerMembership }, update: followerMembership }),
           ]).catch(() => {})
           return resultType
         } catch { return 'error' }
@@ -753,10 +764,17 @@ async function syncSingleMember(
       await setMapping(partnerId, ExternalEntityType.MEMBER, externalId, userId)
     }
 
+    // Per-club membership on the follower row (WS6b) — see the chunked
+    // path's comment; mirrors what this path writes to users above.
+    const followerMembership = {
+      ...(member.membershipTypeName ? { membershipType: member.membershipTypeName } : {}),
+      ...(member.membershipStatus ? { membershipStatus: member.membershipStatus } : {}),
+      membershipSyncedAt: new Date(),
+    }
     await prisma.clubFollower.upsert({
       where: { clubId_userId: { clubId, userId } },
-      create: { clubId, userId },
-      update: {},
+      create: { clubId, userId, ...followerMembership },
+      update: followerMembership,
     })
 
     return result

@@ -774,6 +774,9 @@ const COHORT_ALLOWED_FIELDS = new Set([
   // buildCohortWhereClause (need joins on bookings + classifier
   // post-processing); listed here so existing storage doesn't fail Zod.
   'attendedLeagueFamily', 'attendedProgrammingTier', 'attendedIntroProgram',
+  // WS6d — network/location filters (operator 2.3). Post-processed like the
+  // attendance fields (need the club_networks grouping + cross-club lookups).
+  'networkClubCount', 'visitedClubCount', 'stoppedVisitingClub',
 ])
 const COHORT_ALLOWED_OPS = new Set(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in'])
 
@@ -791,6 +794,8 @@ export const cohortFilterSchema = z.object({
     'healthScore', 'riskLevel', 'joinedDaysAgo', 'birthdayMonth',
     // S2 P2.4 — programming-aware attendance filters:
     'attendedLeagueFamily', 'attendedProgrammingTier', 'attendedIntroProgram',
+    // WS6d — network/location filters:
+    'networkClubCount', 'visitedClubCount', 'stoppedVisitingClub',
   ]),
   op: z.enum(['eq', 'ne', 'neq', 'gt', 'gte', 'lt', 'lte', 'contains', 'in']),
   // Array cap raised 200 → 2000 to accommodate bulk cohort creation
@@ -833,6 +838,10 @@ const ATTENDANCE_COHORT_FIELDS = new Set<CohortFilter['field']>([
   'attendedLeagueFamily',
   'attendedProgrammingTier',
   'attendedIntroProgram',
+  // WS6d — same post-SQL pipeline (need club_networks + cross-club lookups):
+  'networkClubCount',
+  'visitedClubCount',
+  'stoppedVisitingClub',
 ])
 
 function splitCohortFilters(filters: CohortFilter[]) {
@@ -1025,52 +1034,137 @@ async function applyAttendanceCohortFilters(
 
   const since = new Date(Date.now() - 180 * 86400000)
 
-  // Load this club's per-club tier rules once, before the booking loop —
-  // see classifyProgrammingTierWithRules() below.
-  const customRules = await loadClubCustomRules(prisma, clubId)
+  const NETWORK_FIELDS = new Set(['networkClubCount', 'visitedClubCount', 'stoppedVisitingClub'])
+  const needsProgramming = filters.some((f) => !NETWORK_FIELDS.has(f.field))
+  const needsNetwork = filters.some((f) => NETWORK_FIELDS.has(f.field))
 
-  const bookings = await prisma.$queryRaw<Array<{
-    user_id: string
-    title: string | null
-    format: string | null
-    category: string | null
-  }>>`
-    SELECT psb."userId" AS user_id, ps.title, ps.format::text AS format, ps.category
-    FROM play_session_bookings psb
-    JOIN play_sessions ps ON ps.id = psb."sessionId"
-    WHERE ps."clubId" = ${clubId}
-      AND ps.date >= ${since}
-      AND psb.status = 'CONFIRMED'
-  `
-
-  // Build per-user index
+  // ── Programming index (S2 P2.4) — only when those filters are present ──
   const families = new Map<string, Set<string>>()
   const tiers = new Map<string, Set<string>>()
   const hadIntro = new Set<string>()
 
-  for (const b of bookings) {
-    const det = detectLeagueFamily(b.title)
-    if (det.family) {
-      let bucket = families.get(b.user_id)
-      if (!bucket) { bucket = new Set(); families.set(b.user_id, bucket) }
-      bucket.add(det.family)
+  if (needsProgramming) {
+    // Load this club's per-club tier rules once, before the booking loop —
+    // see classifyProgrammingTierWithRules() below.
+    const customRules = await loadClubCustomRules(prisma, clubId)
+
+    const bookings = await prisma.$queryRaw<Array<{
+      user_id: string
+      title: string | null
+      format: string | null
+      category: string | null
+    }>>`
+      SELECT psb."userId" AS user_id, ps.title, ps.format::text AS format, ps.category
+      FROM play_session_bookings psb
+      JOIN play_sessions ps ON ps.id = psb."sessionId"
+      WHERE ps."clubId" = ${clubId}
+        AND ps.date >= ${since}
+        AND psb.status = 'CONFIRMED'
+    `
+
+    for (const b of bookings) {
+      const det = detectLeagueFamily(b.title)
+      if (det.family) {
+        let bucket = families.get(b.user_id)
+        if (!bucket) { bucket = new Set(); families.set(b.user_id, bucket) }
+        bucket.add(det.family)
+      }
+      // Skip ball machine / equipment rentals — they aren't part of any
+      // programming tier and shouldn't count toward a user's tier taxonomy.
+      if (isEquipmentBooking({ title: b.title, format: b.format, category: b.category })) {
+        continue
+      }
+      // Use the per-club rules variant so a club's custom mappings (set
+      // in Tier Constructor) override the default regex classifier.
+      const tier = classifyProgrammingTierWithRules(
+        { title: b.title, format: b.format, category: b.category },
+        customRules,
+      )
+      let tbucket = tiers.get(b.user_id)
+      if (!tbucket) { tbucket = new Set(); tiers.set(b.user_id, tbucket) }
+      tbucket.add(tier)
+      if (isIntroSession(b.title)) {
+        hadIntro.add(b.user_id)
+      }
     }
-    // Skip ball machine / equipment rentals — they aren't part of any
-    // programming tier and shouldn't count toward a user's tier taxonomy.
-    if (isEquipmentBooking({ title: b.title, format: b.format, category: b.category })) {
-      continue
+  }
+
+  // ── Network/location index (WS6d, operator 2.3) ──
+  // Per user, across the clubs of THIS club's network (club_networks):
+  //   networkClubCount — follower rows held across network clubs
+  //   visitedClubCount — distinct network clubs with a confirmed booking (180d)
+  //   stoppedVisitingClub — played HERE 180→60d ago, silent here in the last
+  //     60d, but with ≥1 confirmed booking at a sibling club in the last 60d
+  const followerClubCount = new Map<string, number>()
+  const visitedClubs = new Map<string, Set<string>>()
+  const stoppedHereActiveElsewhere = new Set<string>()
+
+  if (needsNetwork) {
+    const networkClubRows = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM clubs
+      WHERE id = ${clubId}
+         OR (network_id IS NOT NULL AND network_id = (SELECT network_id FROM clubs WHERE id = ${clubId}))
+    `
+    const networkClubIds: string[] = networkClubRows.map((r: { id: string }) => r.id)
+    const recent60 = new Date(Date.now() - 60 * 86400000)
+
+    const [followerRows, bookingRows] = await Promise.all([
+      prisma.$queryRaw<Array<{ user_id: string; club_id: string }>>`
+        SELECT user_id, club_id FROM club_followers
+        WHERE club_id IN (${Prisma.join(networkClubIds)})
+      `,
+      prisma.$queryRaw<Array<{ user_id: string; club_id: string; recent_cnt: number | bigint; prior_cnt: number | bigint }>>`
+        SELECT psb."userId" AS user_id,
+               ps."clubId" AS club_id,
+               COUNT(*) FILTER (WHERE ps.date >= ${recent60})::int AS recent_cnt,
+               COUNT(*) FILTER (WHERE ps.date < ${recent60})::int AS prior_cnt
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" IN (${Prisma.join(networkClubIds)})
+          AND psb.status = 'CONFIRMED'
+          AND ps.date >= ${since}
+        GROUP BY psb."userId", ps."clubId"
+      `,
+    ])
+
+    for (const f of followerRows) {
+      followerClubCount.set(f.user_id, (followerClubCount.get(f.user_id) ?? 0) + 1)
     }
-    // Use the per-club rules variant so a club's custom mappings (set
-    // in Tier Constructor) override the default regex classifier.
-    const tier = classifyProgrammingTierWithRules(
-      { title: b.title, format: b.format, category: b.category },
-      customRules,
-    )
-    let tbucket = tiers.get(b.user_id)
-    if (!tbucket) { tbucket = new Set(); tiers.set(b.user_id, tbucket) }
-    tbucket.add(tier)
-    if (isIntroSession(b.title)) {
-      hadIntro.add(b.user_id)
+
+    const hereRecent = new Map<string, number>()
+    const herePrior = new Map<string, number>()
+    const elsewhereRecent = new Map<string, number>()
+    for (const b of bookingRows) {
+      let visited = visitedClubs.get(b.user_id)
+      if (!visited) { visited = new Set(); visitedClubs.set(b.user_id, visited) }
+      visited.add(b.club_id)
+      const recent = Number(b.recent_cnt)
+      const prior = Number(b.prior_cnt)
+      if (b.club_id === clubId) {
+        hereRecent.set(b.user_id, recent)
+        herePrior.set(b.user_id, prior)
+      } else if (recent > 0) {
+        elsewhereRecent.set(b.user_id, (elsewhereRecent.get(b.user_id) ?? 0) + recent)
+      }
+    }
+    herePrior.forEach((prior, uid) => {
+      if (prior > 0 && (hereRecent.get(uid) ?? 0) === 0 && (elsewhereRecent.get(uid) ?? 0) > 0) {
+        stoppedHereActiveElsewhere.add(uid)
+      }
+    })
+  }
+
+  const numericMatch = (actual: number, filter: CohortFilter) => {
+    const expected = Number(Array.isArray(filter.value) ? filter.value[0] : filter.value)
+    if (!Number.isFinite(expected)) return true
+    switch (filter.op) {
+      case 'gte': return actual >= expected
+      case 'lte': return actual <= expected
+      case 'gt': return actual > expected
+      case 'lt': return actual < expected
+      case 'ne':
+      case 'neq': return actual !== expected
+      default: return actual === expected
     }
   }
 
@@ -1099,6 +1193,15 @@ async function applyAttendanceCohortFilters(
           if (expected === 'true' || expected === '1') return member
           if (expected === 'false' || expected === '0') return !member
           return member // default truthy
+        }
+        case 'networkClubCount':
+          return numericMatch(followerClubCount.get(userId) ?? 0, filter)
+        case 'visitedClubCount':
+          return numericMatch(visitedClubs.get(userId)?.size ?? 0, filter)
+        case 'stoppedVisitingClub': {
+          const stopped = stoppedHereActiveElsewhere.has(userId)
+          if (expected === 'false' || expected === '0') return !stopped
+          return stopped
         }
         default:
           return true
@@ -1884,6 +1987,17 @@ export const intelligenceRouter = createTRPCRouter({
         startDate: input.startDate,
         endDate: input.endDate,
       })
+    }),
+
+  // Network vs non-network membership split (WS6c, operator 1.1): name-based
+  // ("(Network)" CourtReserve packages) + behavioral (sibling-club follower
+  // rows / 90d cross-club bookings). Sibling data is aggregate-only.
+  getNetworkMembershipSplit: protectedProcedure
+    .input(z.object({ clubId: z.string().uuid() }))
+    .query(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+      const { getNetworkMembershipSplit } = await import('@/lib/ai/network-membership')
+      return getNetworkMembershipSplit(input.clubId)
     }),
 
   // Per-member detail behind a tier card's bucket (Membership Health

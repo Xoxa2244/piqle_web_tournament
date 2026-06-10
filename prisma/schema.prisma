@@ -239,6 +239,11 @@ model Club {
   isVerified          Boolean        @default(false) @map("is_verified")
   courtReserveUrl     String?        @map("court_reserve_url")
   bookingRequestEmail String?        @map("booking_request_email")
+  // Chain grouping (WS6a) — clubs in the same network share members for
+  // the network/non-network membership analytics. Nullable: standalone
+  // clubs stay outside any network.
+  networkId           String?        @map("network_id")
+  network             ClubNetwork?   @relation(fields: [networkId], references: [id])
   automationSettings  Json?          @default("{}") @map("automation_settings")
   // AI Cost Tracking (null budget = unlimited)
   aiMonthlyBudgetUsd  Decimal?       @map("ai_monthly_budget_usd") @db.Decimal(10, 2)
@@ -411,13 +416,33 @@ model ClubFollower {
   clubId    String   @map("club_id")
   userId    String   @map("user_id")
   createdAt DateTime @default(now()) @map("created_at")
+  // Per-club membership (WS6a) — written by the CourtReserve sync. Fixes
+  // the global users.membership_type last-sync-wins defect for multi-club
+  // members; users.* columns stay untouched for existing readers.
+  membershipType     String?   @map("membership_type")
+  membershipStatus   String?   @map("membership_status")
+  membershipSyncedAt DateTime? @map("membership_synced_at") @db.Timestamptz()
 
   club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([clubId, userId])
   @@index([userId])
+  @@index([clubId, membershipStatus, membershipType], map: "idx_club_followers_club_membership")
   @@map("club_followers")
+}
+
+// Chain/network grouping of clubs (WS6a, operator feedback 1.1/2.3).
+// Seeded manually (one row per chain); CourtReserve has no usable org id
+// on these connectors, so grouping is ours.
+model ClubNetwork {
+  id        String   @id
+  name      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  clubs Club[]
+
+  @@map("club_networks")
 }
 
 model ClubJoinRequest {

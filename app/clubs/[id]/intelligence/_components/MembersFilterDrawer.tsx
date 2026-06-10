@@ -75,6 +75,11 @@ interface MembersFilterDrawerProps {
   setFilterSessionsMin?: (v: string) => void
   filterSessionsMax?: string
   setFilterSessionsMax?: (v: string) => void
+  /** Network vs single-club membership scope (WS6c) — rendered only when
+   *  the club belongs to a network. */
+  filterScope?: string
+  setFilterScope?: (v: string) => void
+  showScopeFilter?: boolean
   genderOptions?: FilterChipOption[]
   skillOptions?: FilterChipOption[]
   cityOptions?: FilterChipOption[]
@@ -166,6 +171,12 @@ const GENDER_FALLBACK_OPTIONS = [
 ]
 
 const GENDER_LABELS: Record<string, string> = { M: 'Male', F: 'Female', X: 'Other' }
+
+const SCOPE_OPTIONS = [
+  { key: 'all', label: 'All' },
+  { key: 'network', label: 'Network' },
+  { key: 'single', label: 'Single-club' },
+]
 
 interface ChipGroupProps {
   label: string
@@ -299,6 +310,9 @@ export function MembersFilterDrawer({
   setFilterSessionsMin,
   filterSessionsMax,
   setFilterSessionsMax,
+  filterScope,
+  setFilterScope,
+  showScopeFilter,
   genderOptions,
   skillOptions,
   cityOptions,
@@ -352,8 +366,9 @@ export function MembersFilterDrawer({
       ((filterSkill ?? 'all') !== 'all' ? 1 : 0) +
       ((filterCity ?? 'all') !== 'all' ? 1 : 0) +
       ((filterZip ?? '') !== '' ? 1 : 0) +
+      ((filterScope ?? 'all') !== 'all' ? 1 : 0) +
       ((filterSessionsMin ?? '') !== '' || (filterSessionsMax ?? '') !== '' ? 1 : 0),
-    [filterGender, filterAgeBand, filterSkill, filterCity, filterZip, filterSessionsMin, filterSessionsMax],
+    [filterGender, filterAgeBand, filterSkill, filterCity, filterZip, filterScope, filterSessionsMin, filterSessionsMax],
   )
 
   const clearAll = () => {
@@ -368,6 +383,7 @@ export function MembersFilterDrawer({
     setFilterSkill?.('all')
     setFilterCity?.('all')
     setFilterZip?.('')
+    setFilterScope?.('all')
     setFilterSessionsMin?.('')
     setFilterSessionsMax?.('')
   }
@@ -526,6 +542,16 @@ export function MembersFilterDrawer({
 
               {tab === 'profile' && hasProfile && (
                 <>
+                  {showScopeFilter && setFilterScope && (
+                    <ChipGroup
+                      label="Membership scope"
+                      hint='Network = "(Network)" chain-wide package; Single-club = location-specific membership'
+                      options={SCOPE_OPTIONS}
+                      value={filterScope ?? 'all'}
+                      onChange={(v) => setFilterScope(v)}
+                      isDark={isDark}
+                    />
+                  )}
                   <ChipGroup
                     label="Gender"
                     hint="As recorded in CourtReserve member profiles"

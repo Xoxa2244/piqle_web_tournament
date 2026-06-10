@@ -9,6 +9,10 @@ export interface QuickCohortState {
   inactiveDays: string
   sessionsPerMonthMin: string
   sessionsPerMonthMax: string
+  /** WS6d location usage across the club network: '' (off) |
+   *  'multi_access_single_location' | 'only_this_location' |
+   *  'stopped_here_active_elsewhere'. */
+  networkUsage: string
 }
 
 export const EMPTY_QUICK_COHORT: QuickCohortState = {
@@ -22,6 +26,7 @@ export const EMPTY_QUICK_COHORT: QuickCohortState = {
   inactiveDays: '',
   sessionsPerMonthMin: '',
   sessionsPerMonthMax: '',
+  networkUsage: '',
 }
 
 export const QUICK_COHORT_QUERY_KEYS = [
@@ -38,6 +43,7 @@ export const QUICK_COHORT_QUERY_KEYS = [
   'qfInactive',
   'qfFreqMin',
   'qfFreqMax',
+  'qfNetwork',
 ] as const
 
 function splitCsv(value: string | null) {
@@ -65,6 +71,7 @@ export function buildQuickCohortSearchParams(input: {
   if (input.quickFilters.inactiveDays) params.set('qfInactive', input.quickFilters.inactiveDays)
   if (input.quickFilters.sessionsPerMonthMin) params.set('qfFreqMin', input.quickFilters.sessionsPerMonthMin)
   if (input.quickFilters.sessionsPerMonthMax) params.set('qfFreqMax', input.quickFilters.sessionsPerMonthMax)
+  if (input.quickFilters.networkUsage) params.set('qfNetwork', input.quickFilters.networkUsage)
 
   return params
 }
@@ -87,6 +94,7 @@ export function parseQuickCohortSearchParams(params: { get: (key: string) => str
       inactiveDays: params.get('qfInactive') || '',
       sessionsPerMonthMin: params.get('qfFreqMin') || '',
       sessionsPerMonthMax: params.get('qfFreqMax') || '',
+      networkUsage: params.get('qfNetwork') || '',
     },
   }
 }
@@ -117,6 +125,7 @@ export function mapMembersFiltersToQuickCohort(input: {
   filterSkill?: string
   filterCity?: string
   filterZip?: string
+  filterScope?: string
   filterSessionsMin?: string
   filterSessionsMax?: string
 }) {
@@ -132,7 +141,8 @@ export function mapMembersFiltersToQuickCohort(input: {
     (input.filterAgeBand && input.filterAgeBand !== 'all') ||
     (input.filterSkill && input.filterSkill !== 'all') ||
     (input.filterCity && input.filterCity !== 'all') ||
-    (input.filterZip && input.filterZip !== '')
+    (input.filterZip && input.filterZip !== '') ||
+    (input.filterScope && input.filterScope !== 'all')
   ) {
     return { supported: false as const, reason: 'profile' }
   }

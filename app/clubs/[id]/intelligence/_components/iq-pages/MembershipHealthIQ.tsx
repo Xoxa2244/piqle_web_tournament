@@ -9,6 +9,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
+import { isNetworkTierName } from "@/lib/ai/network-tier"
 import { PeriodSelector, type PeriodValue } from "../shared/PeriodSelector"
 import { MemberDetailDrawer } from "../MemberDetailDrawer"
 
@@ -297,6 +298,13 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
   const rollup = data?.rollup
   const periodDays = rollup?.periodDays ?? (period.kind === 'days' ? period.days : 30)
 
+  // Network vs single-club split (WS6c) — renders only for clubs grouped
+  // into a club_network (the IPC chain today).
+  const { data: networkSplit } = trpc.intelligence.getNetworkMembershipSplit.useQuery(
+    { clubId },
+    { enabled: !!clubId, staleTime: 5 * 60_000 },
+  )
+
   // Tier drill-down (feedback 1.3): which tier+bucket is open, and which
   // member's detail drawer is on top of it. While a member is open the tier
   // drawer unmounts (MemberDetailDrawer sits at z-50, below our z-70) and
@@ -376,6 +384,47 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
         </div>
       )}
 
+      {/* Network split (WS6c) — operator 1.1: network vs non-network */}
+      {networkSplit?.inNetwork && tiers.length > 0 && (
+        <Card>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span
+                className="text-[10px] tracking-wider uppercase px-2 py-0.5 rounded-full"
+                style={{ background: "rgba(6,182,212,0.15)", color: "#06B6D4", fontWeight: 700 }}
+              >
+                Network
+              </span>
+              <span className="text-sm font-bold" style={{ color: "var(--heading)" }}>
+                {networkSplit.networkName || "Club network"}
+              </span>
+              <span className="text-xs" style={{ color: "var(--t4)" }}>
+                {networkSplit.siblingClubs.length + 1} locations
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs" style={{ color: "var(--t3)" }}>
+              <span>
+                <strong style={{ color: "#06B6D4" }}>{networkSplit.rollup.networkMembers.toLocaleString()}</strong> network members
+              </span>
+              <span>
+                <strong style={{ color: "var(--heading)" }}>{networkSplit.rollup.singleClubMembers.toLocaleString()}</strong> single-club
+              </span>
+              <span title="Hold a membership row at more than one location">
+                <strong style={{ color: "var(--heading)" }}>{networkSplit.rollup.multiClubMembers.toLocaleString()}</strong> registered at 2+ locations
+              </span>
+              <span title="Confirmed booking at a sibling location in the last 90 days">
+                <strong style={{ color: "var(--heading)" }}>{networkSplit.rollup.crossClubVisitors90d.toLocaleString()}</strong> visited a sibling location · 90d
+              </span>
+            </div>
+          </div>
+          <p className="text-[11px] mt-2" style={{ color: "var(--t4)" }}>
+            Network member = active subscriber on a &ldquo;(Network)&rdquo; package (chain-wide access). Many network members still
+            prefer one location — the &ldquo;visited a sibling&rdquo; count shows actual cross-location usage. Sibling-club data is
+            aggregate only.
+          </p>
+        </Card>
+      )}
+
       {/* Per-tier cards */}
       <div className="space-y-3">
         {tiers.map((t) => {
@@ -396,6 +445,15 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
                     <h3 className="truncate" style={{ fontSize: "15px", fontWeight: 700, color: "var(--heading)" }}>
                       {t.name}
                     </h3>
+                    {networkSplit?.inNetwork && isNetworkTierName(t.name) && (
+                      <span
+                        className="text-[10px] tracking-wider uppercase px-2 py-0.5 rounded-full shrink-0"
+                        style={{ background: "rgba(6,182,212,0.15)", color: "#06B6D4", fontWeight: 700 }}
+                        title="Chain-wide package — valid at every location in the network"
+                      >
+                        Network
+                      </span>
+                    )}
                   </div>
                   <div className="text-xs mt-1" style={{ color: "var(--t4)" }}>
                     {t.isFreeTier ? "Free / comped / partner" : `$${t.monthlyPrice}/mo`}

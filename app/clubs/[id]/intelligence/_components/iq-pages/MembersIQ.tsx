@@ -24,6 +24,7 @@ import { MembersReactivationSection } from "./MembersReactivationSection";
 import { PlayerProfileIQ } from "./PlayerProfileIQ";
 import { MemberDetailDrawer } from "../MemberDetailDrawer";
 import { MembersFilterDrawer, ageBandOf } from "../MembersFilterDrawer";
+import { isNetworkTierName } from "@/lib/ai/network-tier";
 import { MembersChartsDrawer } from "../MembersChartsDrawer";
 import { AIInsightRibbon } from "../AIInsightRibbon";
 import type { GuestTrialExecutionContext } from "@/lib/ai/guest-trial-offers";
@@ -658,6 +659,7 @@ function buildMembersAudienceContext(input: {
   filterSkill?: string
   filterCity?: string
   filterZip?: string
+  filterScope?: string
   filterSessionsMin?: string
   filterSessionsMax?: string
 }) {
@@ -675,6 +677,9 @@ function buildMembersAudienceContext(input: {
     input.filterSkill && input.filterSkill !== 'all' ? `skill ${input.filterSkill}` : null,
     input.filterCity && input.filterCity !== 'all' ? `city ${input.filterCity}` : null,
     input.filterZip ? `zip ${input.filterZip}*` : null,
+    input.filterScope && input.filterScope !== 'all'
+      ? `membership scope ${input.filterScope === 'network' ? 'network' : 'single-club'}`
+      : null,
     input.filterSessionsMin || input.filterSessionsMax
       ? `sessions/30d ${input.filterSessionsMin || '0'}–${input.filterSessionsMax || '∞'}`
       : null,
@@ -1307,6 +1312,14 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const [filterZip, setFilterZip] = useState<string>("");
   const [filterSessionsMin, setFilterSessionsMin] = useState<string>("");
   const [filterSessionsMax, setFilterSessionsMax] = useState<string>("");
+  // Network vs single-club membership scope (WS6c) — chip group renders only
+  // when this club belongs to a network.
+  const [filterScope, setFilterScope] = useState<string>("all");
+  const networkSplitQuery = trpc.intelligence.getNetworkMembershipSplit.useQuery(
+    { clubId: clubId || '' },
+    { enabled: !!clubId, staleTime: 5 * 60_000 },
+  );
+  const clubInNetwork = !!networkSplitQuery.data?.inNetwork;
 
   // Real CR membership facets (raw membership_type / membership_status values
   // with counts) for the filter drawer chips. Replaces the legacy 9-bucket
@@ -1418,6 +1431,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     setFilterSkill('all')
     setFilterCity('all')
     setFilterZip('')
+    setFilterScope('all')
     setFilterSessionsMin('')
     setFilterSessionsMax('')
   }
@@ -1507,6 +1521,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     if (filterZip !== '') {
       chips.push({ key: 'zip', group: 'ZIP', label: `${filterZip}*`, onClear: () => setFilterZip('') })
     }
+    if (filterScope !== 'all') {
+      chips.push({ key: 'scope', group: 'Scope', label: filterScope === 'network' ? 'Network' : 'Single-club', onClear: () => setFilterScope('all') })
+    }
     if (filterSessionsMin !== '' || filterSessionsMax !== '') {
       const label = `${filterSessionsMin || '0'}–${filterSessionsMax || '∞'} /30d`
       chips.push({
@@ -1518,7 +1535,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     }
     return chips
   }, [filterMembershipStatus, filterMembershipType, filterActivity, filterRisk, filterTrend, filterValue,
-      filterGender, filterAgeBand, filterSkill, filterCity, filterZip, filterSessionsMin, filterSessionsMax])
+      filterGender, filterAgeBand, filterSkill, filterCity, filterZip, filterScope, filterSessionsMin, filterSessionsMax])
 
   const activeFilterCount = activeFilterChips.length
 
@@ -1680,6 +1697,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       if (filterSkill !== "all" && (m.skillLevel || '') !== filterSkill) return false;
       if (filterCity !== "all" && (m.city || '') !== filterCity) return false;
       if (filterZip && !(m.zipCode || '').startsWith(filterZip)) return false;
+      if (filterScope === 'network' && !isNetworkTierName(m.membershipType)) return false;
+      if (filterScope === 'single' && isNetworkTierName(m.membershipType)) return false;
       if (sessMin != null && m.bookingsLast30 < sessMin) return false;
       if (sessMax != null && m.bookingsLast30 > sessMax) return false;
       if (search && !m.name.toLowerCase().includes(search) && !m.email.toLowerCase().includes(search)) return false;
@@ -1694,7 +1713,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     });
   }, [allMembers, view, searchQuery, sortBy,
       filterActivity, filterRisk, filterTrend, filterValue, filterMembershipType, filterMembershipStatus,
-      filterGender, filterAgeBand, filterSkill, filterCity, filterZip, filterSessionsMin, filterSessionsMax]);
+      filterGender, filterAgeBand, filterSkill, filterCity, filterZip, filterScope, filterSessionsMin, filterSessionsMax]);
 
   const totalPages = Math.ceil(filtered.length / pageSize);
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -1714,6 +1733,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     filterSkill,
     filterCity,
     filterZip,
+    filterScope,
     filterSessionsMin,
     filterSessionsMax,
   });
@@ -1731,6 +1751,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     filterSkill,
     filterCity,
     filterZip,
+    filterScope,
     filterSessionsMin,
     filterSessionsMax,
   }), [
@@ -1747,6 +1768,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     filterSkill,
     filterCity,
     filterZip,
+    filterScope,
     filterSessionsMin,
     filterSessionsMax,
   ])
@@ -2828,6 +2850,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         setFilterSessionsMin={setFilterSessionsMin}
         filterSessionsMax={filterSessionsMax}
         setFilterSessionsMax={setFilterSessionsMax}
+        filterScope={filterScope}
+        setFilterScope={setFilterScope}
+        showScopeFilter={clubInNetwork}
         genderOptions={dynamicGenderOptions}
         skillOptions={dynamicSkillOptions}
         cityOptions={dynamicCityOptions}
