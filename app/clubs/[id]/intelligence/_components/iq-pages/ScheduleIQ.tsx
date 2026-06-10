@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useMemo, useCallback } from "react"
-import { getTierMeta } from "@/lib/ai/programming-tier-classifier"
+import { getTierMeta, isEquipmentBooking } from "@/lib/ai/programming-tier-classifier"
 import {
   ChevronLeft, ChevronRight, CalendarDays, Sparkles,
 } from "lucide-react"
@@ -260,6 +260,9 @@ export function ScheduleIQ({
     return allSessions.filter((s) => {
       if (s.date < weekStart || s.date > weekEnd || s.date < today) return false
       if (!s.capacity) return false
+      // Equipment bookings (ball machine, rentals) aren't programming —
+      // the Advise engine skips them, so the badge must too.
+      if (isEquipmentBooking({ title: (s as any).title, format: s.format })) return false
       return Math.round((s.registered / s.capacity) * 100) < WEAK_FILL_PCT
     }).length
   }, [allSessions, weekPills])
@@ -634,8 +637,10 @@ export function ScheduleIQ({
                                   const colors = SKILL_COLORS[sk.tier]
                                   const pct = Math.round((s.registered / (s.capacity || 1)) * 100)
                                   // sol2-lean: amber ring on weak upcoming sessions —
-                                  // the Advise drawer explains each one.
+                                  // the Advise drawer explains each one. Equipment
+                                  // bookings are excluded, same as the engine.
                                   const isWeakUpcoming = s.date >= todayStr && (s.capacity || 0) > 0 && pct < WEAK_FILL_PCT
+                                    && !isEquipmentBooking({ title: (s as any).title, format: s.format })
                                   const timeRange = `${s.startTime} - ${s.endTime}`
                                   const title = (s.title || '').trim() || sk.label
                                   // P1.4 (Sprint 1): Programming Tier indicator.

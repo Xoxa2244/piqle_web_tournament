@@ -17,6 +17,8 @@
  * mutation (see the no-fake-writes rule, action-center cleanup 9af48540).
  */
 
+import { isEquipmentBooking } from './programming-tier-classifier'
+
 export type AdviceSessionRow = {
   id: string
   title: string | null
@@ -124,11 +126,18 @@ export function buildScheduleAdvice(input: {
   weekStart: string // Monday, YYYY-MM-DD
   today: string // YYYY-MM-DD
 }): ScheduleAdvice {
-  const { weekSessions, weekStart, today } = input
+  const { weekStart, today } = input
+  // Equipment bookings (ball machine, court/paddle rental) are not
+  // programming — never advise removing them, never let them shape peer
+  // stats or create suggestions. They still occupy court slots, so the
+  // raw week list keeps them for slot-conflict context below.
+  const isPlayable = (s: AdviceSessionRow) =>
+    !isEquipmentBooking({ title: s.title ?? undefined, format: s.format })
+  const weekSessions = input.weekSessions
   // Strictly-past history only: sessions dated today can appear in BOTH the
   // history fetch and the analyzed week, letting a currently-weak session
   // drag down its own peer average toward a false "remove" verdict.
-  const historySessions = input.historySessions.filter((s) => s.date < today)
+  const historySessions = input.historySessions.filter((s) => s.date < today && isPlayable(s))
 
   // Historical stats: by (dow|hour|format) and a coarser (dow|hour) fallback.
   const byCombo = new Map<string, SlotStat>()
@@ -143,7 +152,7 @@ export function buildScheduleAdvice(input: {
   }
 
   // ── 1. Weak upcoming sessions: remove vs fill vs review ──
-  const upcoming = weekSessions.filter((s) => s.date >= today && s.maxPlayers > 0)
+  const upcoming = weekSessions.filter((s) => s.date >= today && s.maxPlayers > 0 && isPlayable(s))
   const weak: WeakSessionAdvice[] = []
   for (const s of upcoming) {
     const pct = fillPct(s)
