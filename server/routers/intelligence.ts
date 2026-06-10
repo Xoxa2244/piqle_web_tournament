@@ -6094,13 +6094,26 @@ export const intelligenceRouter = createTRPCRouter({
       const prevStart = new Date(startDate)
       prevStart.setDate(prevStart.getDate() - input.days)
 
+      // Both windows bounded: without `lt: now` the "last N days" totals
+      // silently included synced FUTURE sessions (CR sync imports +30d),
+      // inflating the headline, biasing the trend vs the bounded previous
+      // window, and pricing upcoming empty seats as already-lost revenue.
+      // Narrow select — full booking rows were ~5x the needed width.
+      const sessionSelect = {
+        format: true,
+        date: true,
+        pricePerSlot: true,
+        registeredCount: true,
+        maxPlayers: true,
+        bookings: { select: { status: true, userId: true } },
+      } as const
       const sessions = await ctx.prisma.playSession.findMany({
-        where: { clubId: input.clubId, date: { gte: startDate } },
-        include: { bookings: true },
+        where: { clubId: input.clubId, date: { gte: startDate, lt: now } },
+        select: sessionSelect,
       })
       const prevSessions = await ctx.prisma.playSession.findMany({
         where: { clubId: input.clubId, date: { gte: prevStart, lt: startDate } },
-        include: { bookings: true },
+        select: sessionSelect,
       })
 
       // Revenue by format
@@ -6121,9 +6134,10 @@ export const intelligenceRouter = createTRPCRouter({
           pct: totalRevenue > 0 ? Math.round((data.revenue / totalRevenue) * 100) : 0,
         }))
 
-      // Daily revenue (last N days)
+      // Daily revenue (last N days; `<=` so today's already-played sessions
+      // land in the bars and the chart sums to the headline)
       const dailyRevenue: Array<{ date: string; revenue: number }> = []
-      for (let d = 0; d < input.days; d++) {
+      for (let d = 0; d <= input.days; d++) {
         const dt = new Date(startDate)
         dt.setDate(dt.getDate() + d)
         const dateStr = dt.toISOString().slice(0, 10)
@@ -6133,9 +6147,13 @@ export const intelligenceRouter = createTRPCRouter({
         dailyRevenue.push({ date: dateStr, revenue: Math.round(dayRev) })
       }
 
-      // Lost revenue
+      // Lost revenue. Cancelled seats are subtracted from the empty-seat
+      // base — registeredCount already excludes cancels, so without this a
+      // cancelled booking was priced twice (once as an empty seat, once in
+      // the cancelled bucket below).
       const lostFromEmpty = sessions.reduce((sum, s) => {
-        const empty = Math.max(0, s.maxPlayers - (s.registeredCount ?? 0))
+        const cancelledSeats = s.bookings.filter((b: any) => b.status === 'CANCELLED').length
+        const empty = Math.max(0, s.maxPlayers - (s.registeredCount ?? 0) - cancelledSeats)
         return sum + empty * (s.pricePerSlot ?? 0)
       }, 0)
       const cancelledBookings = sessions.reduce((sum, s) => {

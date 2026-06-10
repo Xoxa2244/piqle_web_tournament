@@ -28,6 +28,7 @@ import { CourtReserveConnector } from "./shared/CourtReserveConnector";
 // distribution + executionCheck, same window). Operators get one
 // canonical surface for programming health.
 import { BusinessInsightCard, type BusinessInsightRow } from "./dashboard/BusinessInsightCard";
+import { SessionRevenueCard } from "./dashboard/SessionRevenueCard";
 import {
   PeriodComparisonDrawer,
   type DrawerMetric,
@@ -1519,6 +1520,23 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             </div>
           )}
         </Card>
+
+        {/* Session Revenue — money twin of the format donut. Occupies the
+            grid cell left empty since the AI-Attributed Revenue tile was
+            removed (6ca622c0). Follows the page period pills; the custom
+            range isn't supported by getRevenueAnalytics, so custom falls
+            back to 30 days with an honest badge. */}
+        <SessionRevenueCard
+          clubId={clubId!}
+          isDemo={isDemo}
+          days={period === 'week' ? 7 : period === 'quarter' ? 90 : period === 'year' ? 365 : 30}
+          periodLabel={
+            period === 'week' ? 'Last 7 days'
+            : period === 'quarter' ? 'Last 90 days'
+            : period === 'year' ? 'Last 365 days'
+            : 'Last 30 days'
+          }
+        />
 
         </div>
       </div>
