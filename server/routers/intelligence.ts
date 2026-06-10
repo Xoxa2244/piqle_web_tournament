@@ -1806,12 +1806,23 @@ export const intelligenceRouter = createTRPCRouter({
   // estimated MRR, diagnostics and treatment recommendations, enriched with
   // catalog detail (price, benefits, suspension policy) for the expand view.
   getMembershipHealth: protectedProcedure
-    .input(z.object({ clubId: z.string().uuid() }))
+    .input(z.object({
+      clubId: z.string().uuid(),
+      // Reporting window — omit everything for the historical 30d behavior.
+      periodDays: z.number().int().min(1).max(730).optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const { getTierHealth, getTierCatalog } = await import('@/lib/ai/membership-economics')
+      const window = {
+        periodDays: input.periodDays,
+        startDate: input.startDate,
+        endDate: input.endDate,
+      }
       const [health, catalog] = await Promise.all([
-        getTierHealth(input.clubId),
+        getTierHealth(input.clubId, window),
         getTierCatalog(input.clubId),
       ])
 
@@ -1859,11 +1870,20 @@ export const intelligenceRouter = createTRPCRouter({
       clubId: z.string().uuid(),
       tierName: z.string().min(1),
       bucket: z.enum(['zombies', 'power', 'suspended', 'active', 'all']),
+      // Reporting window — omit for the historical 30d behavior. Pass the same
+      // window as getMembershipHealth so audience counts match the cards 1:1.
+      periodDays: z.number().int().min(1).max(730).optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
       const { getTierAudience } = await import('@/lib/ai/membership-economics')
-      return getTierAudience(input.clubId, input.tierName, input.bucket)
+      return getTierAudience(input.clubId, input.tierName, input.bucket, {
+        periodDays: input.periodDays,
+        startDate: input.startDate,
+        endDate: input.endDate,
+      })
     }),
 
   // ── Club Data Status: Check if club has AI data ──

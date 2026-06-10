@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
+import { PeriodSelector, type PeriodValue } from "../shared/PeriodSelector"
 
 // ── Verdict styling ──
 type Verdict = 'healthy' | 'watch' | 'at_risk' | 'critical' | 'tiny'
@@ -89,14 +90,20 @@ function StatTile({ label, value, sub, color }: { label: string; value: string; 
 export function MembershipHealthIQ({ clubId }: { clubId: string }) {
   const { isDark } = useTheme()
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [period, setPeriod] = useState<PeriodValue>({ kind: 'days', days: 30 })
 
+  // Default 30d sends the bare input — same cache key + byte-identical
+  // backend path as before the selector existed.
   const { data, isLoading } = trpc.intelligence.getMembershipHealth.useQuery(
-    { clubId },
+    period.kind === 'days'
+      ? (period.days === 30 ? { clubId } : { clubId, periodDays: period.days })
+      : { clubId, startDate: period.start, endDate: period.end },
     { enabled: !!clubId, staleTime: 60_000 },
   )
 
   const tiers = (data?.tiers as Tier[] | undefined) || []
   const rollup = data?.rollup
+  const periodDays = rollup?.periodDays ?? (period.kind === 'days' ? period.days : 30)
 
   return (
     <motion.div
@@ -113,11 +120,14 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
             Every tier scored on engagement, revenue and churn risk — with what to do about it
           </p>
         </div>
-        {rollup?.catalogSyncedAt && (
-          <span className="text-xs shrink-0" style={{ color: "var(--t4)" }}>
-            Synced {new Date(rollup.catalogSyncedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-          </span>
-        )}
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          <PeriodSelector value={period} onChange={setPeriod} />
+          {rollup?.catalogSyncedAt && (
+            <span className="text-xs" style={{ color: "var(--t4)" }}>
+              Synced {new Date(rollup.catalogSyncedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            </span>
+          )}
+        </div>
       </div>
 
       {isLoading && (
@@ -202,7 +212,7 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
                 </span>
                 <span>{t.powerUserSharePct}% power</span>
                 {t.suspendedRatePct >= 10 && <span style={{ color: "#F59E0B" }}>{t.suspendedRatePct}% suspended</span>}
-                <span>{t.bookingsPerActive}/member · 30d</span>
+                <span>{t.bookingsPerActive}/member · {periodDays}d</span>
                 {!t.isFreeTier && t.mrrAtRiskUsd > 0 && <span style={{ color: "#EF4444" }}>{usd(t.mrrAtRiskUsd)} at risk</span>}
                 {t.isFreeTier && t.upsellPotentialMRRUsd > 0 && <span style={{ color: "#10B981" }}>{usd(t.upsellPotentialMRRUsd)} upsell</span>}
               </div>
@@ -292,8 +302,9 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
       {/* Methodology footnote */}
       {tiers.length > 0 && (
         <p className="text-[11px] leading-relaxed" style={{ color: "var(--t4)" }}>
-          Zombie = active subscriber with 0 bookings in 30 days. Power user = 8+ bookings. Est. MRR = active × monthly price
-          (contracted, not actual transactions).{" "}
+          Zombie = active subscriber with 0 bookings in the selected period ({periodDays} days). Power user = 8+ bookings/month
+          {periodDays !== 30 ? " (normalized to the period length)" : ""}. Est. MRR = active × monthly price
+          (contracted, not actual transactions). Booking activity is counted by booking date within the period.{" "}
           {rollup?.churnStats?.measured
             ? `MRR at risk = zombies × this club's measured churn rate (${100 - rollup.churnStats.returnRatePct}% of silent members historically never return, from ${rollup.churnStats.sample} past cases), not a blanket assumption.`
             : `MRR at risk weights zombies by an estimated churn rate (not enough booking history yet to measure this club's actual rate).`}{" "}

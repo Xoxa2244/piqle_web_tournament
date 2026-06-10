@@ -56,6 +56,50 @@ export type TierEconomicsResult = {
   }
 }
 
+/**
+ * Reporting window for tier analytics. Either a relative `periodDays` window
+ * ending now (default 30 — byte-identical to the historical behavior) or an
+ * absolute [startDate, endDate] range (endDate inclusive of its whole day,
+ * mirroring resolveProgrammingPeriod's contract).
+ *
+ * Engagement buckets (zombie/light/regular/power) are calibrated per-30-days;
+ * for other window lengths the booking counts are normalized to a per-30d
+ * rate (b × 30 / periodDays) before bucketing, so "power user" always means
+ * "books 8+ times per month" regardless of the window. Zombie (= exactly 0)
+ * is unaffected by scaling. At periodDays=30 the bucket edges are identical
+ * to the original integer BETWEEN logic.
+ */
+export type TierWindowInput = {
+  periodDays?: number
+  startDate?: string
+  endDate?: string
+}
+
+export type ResolvedTierWindow = {
+  start: Date
+  end: Date
+  periodDays: number
+  /** Human phrase for diagnostics, e.g. "in the last 30 days" / "in the selected period". */
+  windowText: string
+}
+
+export function resolveTierWindow(input?: TierWindowInput): ResolvedTierWindow {
+  if (input?.startDate && input?.endDate) {
+    const start = new Date(input.startDate)
+    const end = new Date(input.endDate)
+    end.setUTCDate(end.getUTCDate() + 1) // endDate inclusive → exclusive next-day bound
+    const periodDays = Math.min(
+      730,
+      Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000)),
+    )
+    return { start, end, periodDays, windowText: 'in the selected period' }
+  }
+  const days = Math.min(730, Math.max(1, Math.round(input?.periodDays ?? 30)))
+  const end = new Date()
+  const start = new Date(end.getTime() - days * 86_400_000)
+  return { start, end, periodDays: days, windowText: `in the last ${days} days` }
+}
+
 function toNumber(v: unknown): number {
   if (v == null) return 0
   const n = typeof v === 'string' ? parseFloat(v) : Number(v)
@@ -153,13 +197,18 @@ type UsageRow = {
  * Returns every tier visible in either source (catalog ∪ in-use), so admins
  * see both "selling but unstocked" and "stocked but not selling" packages.
  */
-export async function getTierEconomics(clubId: string): Promise<TierEconomicsResult> {
+export async function getTierEconomics(
+  clubId: string,
+  window?: TierWindowInput,
+): Promise<TierEconomicsResult> {
+  const win = resolveTierWindow(window)
   const [catalog, usage] = await Promise.all([
     getTierCatalog(clubId),
-    // Pre-aggregate recent bookings (30d/club/confirmed) into one row per user
-    // BEFORE joining followers — avoids the all-bookings row explosion that
-    // made this ~100s on a 12k-follower club. Active count uses CR's canonical
-    // 'Active' status (verified all 3 IPC clubs use exactly that string).
+    // Pre-aggregate recent bookings (window/club/confirmed) into one row per
+    // user BEFORE joining followers — avoids the all-bookings row explosion
+    // that made this ~100s on a 12k-follower club. Active count uses CR's
+    // canonical 'Active' status (verified all 3 IPC clubs use exactly that
+    // string). Default window = last 30 days (historical behavior).
     prisma.$queryRaw<UsageRow[]>`
       WITH recent AS (
         SELECT psb."userId" AS uid, COUNT(*)::int AS b30
@@ -167,7 +216,8 @@ export async function getTierEconomics(clubId: string): Promise<TierEconomicsRes
         JOIN play_sessions ps ON ps.id = psb."sessionId"
         WHERE ps."clubId" = ${clubId}
           AND psb.status = 'CONFIRMED'
-          AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
+          AND psb."bookedAt" >= ${win.start}
+          AND psb."bookedAt" < ${win.end}
         GROUP BY psb."userId"
       )
       SELECT
@@ -333,6 +383,8 @@ export type TierHealthResult = {
     countByVerdict: Record<TierHealthVerdict, number>
     /** Club-wide measured churn rate driving the MRR-at-risk figures. */
     churnStats: ZombieChurnStats
+    /** Reporting window (days) the engagement buckets were computed over. */
+    periodDays: number
   }
   tiers: TierHealthSnapshot[] // sorted critical → healthy
 }
@@ -436,13 +488,20 @@ export async function getZombieChurnRate(clubId: string): Promise<ZombieChurnSta
  * These assumptions are visible in the diagnostic strings so admins know
  * what they're betting on. Better than zero quantification — but not gospel.
  */
-export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
+export async function getTierHealth(
+  clubId: string,
+  window?: TierWindowInput,
+): Promise<TierHealthResult> {
+  const win = resolveTierWindow(window)
   const [catalog, distribution, churnStats] = await Promise.all([
     getTierCatalog(clubId),
-    // Pre-aggregate recent bookings FIRST (a small set — 30d/club/confirmed),
+    // Pre-aggregate recent bookings FIRST (a small set — window/club/confirmed),
     // then join one row per user. The earlier version LEFT JOINed every
     // booking a follower ever made and filtered after, exploding to ~100s on
     // a 12k-follower club. This form runs in ~1s (EXPLAIN ANALYZE verified).
+    // Buckets compare the per-30d-normalized rate (b × 30 / periodDays) so
+    // light/regular/power keep their per-month meaning at any window length;
+    // at the default 30d the edges are identical to the original BETWEEN logic.
     prisma.$queryRaw<HealthDistributionRow[]>`
       WITH recent AS (
         SELECT psb."userId" AS uid, COUNT(*)::int AS b30
@@ -450,7 +509,8 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
         JOIN play_sessions ps ON ps.id = psb."sessionId"
         WHERE ps."clubId" = ${clubId}
           AND psb.status = 'CONFIRMED'
-          AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
+          AND psb."bookedAt" >= ${win.start}
+          AND psb."bookedAt" < ${win.end}
         GROUP BY psb."userId"
       )
       SELECT
@@ -459,9 +519,9 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
         COUNT(*) FILTER (WHERE u.membership_status = 'Suspended') AS suspended_count,
         COUNT(*) FILTER (WHERE u.membership_status = 'Expired') AS expired_count,
         COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) = 0) AS zombies,
-        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) BETWEEN 1 AND 3) AS light_users,
-        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) BETWEEN 4 AND 7) AS regular_users,
-        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) >= 8) AS power_users,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) > 0 AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} < 4) AS light_users,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} >= 4 AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} < 8) AS regular_users,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} >= 8) AS power_users,
         SUM(COALESCE(r.b30, 0)) FILTER (WHERE u.membership_status = 'Active') AS bookings_30d
       FROM users u
       JOIN club_followers cf ON cf.user_id = u.id
@@ -470,6 +530,8 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
         AND u.membership_type IS NOT NULL
       GROUP BY u.membership_type
     `,
+    // Churn measurement stays 30d-anchored regardless of the reporting window
+    // — it's a retrospective cohort measurement, not a window-scoped count.
     getZombieChurnRate(clubId),
   ])
 
@@ -602,7 +664,7 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
           ? `this club's history shows ~${100 - churnStats.returnRatePct}% of silent members never return`
           : `assuming ~${Math.round(churnStats.churnProb * 100)}% churn (not enough history to measure this club yet)`
         diagnostics.push(
-          `${severity}: ${zombies} of ${active} active subscribers (${zombieSharePct}%) have 0 bookings in the last 30 days. At ~$${mrrAtRiskUsd.toLocaleString('en-US')}/mo MRR genuinely at risk (${churnNote}).`,
+          `${severity}: ${zombies} of ${active} active subscribers (${zombieSharePct}%) have 0 bookings ${win.windowText}. At ~$${mrrAtRiskUsd.toLocaleString('en-US')}/mo MRR genuinely at risk (${churnNote}).`,
         )
         const saveRate = 0.5
         const recoverable = Math.round(mrrAtRiskUsd * saveRate)
@@ -695,6 +757,7 @@ export async function getTierHealth(clubId: string): Promise<TierHealthResult> {
       cheapestPaidMonthlyPrice: cheapestPaidPrice,
       countByVerdict,
       churnStats,
+      periodDays: win.periodDays,
     },
     tiers: snapshots,
   }
@@ -734,7 +797,9 @@ export async function getTierAudience(
   clubId: string,
   tierName: string,
   bucket: TierAudienceBucket,
+  window?: TierWindowInput,
 ): Promise<TierAudienceResult> {
+  const win = resolveTierWindow(window)
   const rows = await prisma.$queryRaw<Array<{ id: string }>>`
     WITH recent AS (
       SELECT psb."userId" AS uid, COUNT(*)::int AS b30
@@ -742,7 +807,8 @@ export async function getTierAudience(
       JOIN play_sessions ps ON ps.id = psb."sessionId"
       WHERE ps."clubId" = ${clubId}
         AND psb.status = 'CONFIRMED'
-        AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
+        AND psb."bookedAt" >= ${win.start}
+        AND psb."bookedAt" < ${win.end}
       GROUP BY psb."userId"
     )
     SELECT u.id
@@ -753,7 +819,7 @@ export async function getTierAudience(
       AND u.membership_type = ${tierName}
       AND (
         (${bucket} = 'zombies'   AND u.membership_status = 'Active'    AND COALESCE(r.b30, 0) = 0)
-     OR (${bucket} = 'power'     AND u.membership_status = 'Active'    AND COALESCE(r.b30, 0) >= 8)
+     OR (${bucket} = 'power'     AND u.membership_status = 'Active'    AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} >= 8)
      OR (${bucket} = 'suspended' AND u.membership_status = 'Suspended')
      OR (${bucket} = 'active'    AND u.membership_status = 'Active')
      OR (${bucket} = 'all'       AND u.membership_status IN ('Active', 'Suspended', 'Expired'))
