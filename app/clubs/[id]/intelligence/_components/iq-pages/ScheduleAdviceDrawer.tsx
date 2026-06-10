@@ -22,6 +22,7 @@ import { motion, AnimatePresence } from 'motion/react'
 import {
   X, Sparkles, Trash2, Megaphone, CalendarPlus, Brain, ShieldCheck, Eye,
 } from 'lucide-react'
+import { useTheme } from '../IQThemeProvider'
 import { useScheduleAdvice } from '../../_hooks/use-intelligence'
 
 const FORMAT_LABELS: Record<string, string> = {
@@ -85,6 +86,7 @@ export function ScheduleAdviceDrawer({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { isDark } = useTheme()
   const { data: advice, isLoading, error } = useScheduleAdvice(clubId, weekStart, open)
 
   useEffect(() => {
@@ -119,7 +121,7 @@ export function ScheduleAdviceDrawer({
             exit={{ opacity: 0 }}
             onClick={onClose}
             className="fixed inset-0 z-[60]"
-            style={{ background: 'rgba(0,0,0,0.5)' }}
+            style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(4px)' }}
           />
           <motion.aside
             key="advice-drawer"
@@ -128,7 +130,10 @@ export function ScheduleAdviceDrawer({
             exit={{ x: 440 }}
             transition={{ type: 'spring', stiffness: 300, damping: 32 }}
             className="fixed inset-y-0 right-0 z-[70] w-[420px] max-w-[92vw] flex flex-col"
-            style={{ background: 'var(--card-bg)', borderLeft: '1px solid var(--card-border)' }}
+            // Solid theme-aware background (same pair as ScheduleIQ's date
+            // picker) — var(--card-bg) is 60%-alpha glass and let the grid
+            // bleed through the panel.
+            style={{ background: isDark ? '#111225' : '#FFFFFF', borderLeft: '1px solid var(--card-border)' }}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 h-16 shrink-0" style={{ borderBottom: '1px solid var(--divider)' }}>
