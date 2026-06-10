@@ -16,23 +16,25 @@
  * wires it up). For now the primary button shows the label but routes
  * to the relevant target page without prefill — enough to validate the
  * card shape on real data.
+ *
+ * sol2-lean: the draft-creating CTAs (create_cohort / create_campaign /
+ * programming) deep-link into gated or removed sections, so the action
+ * row renders advice-style only — every insight resolves via "Got it".
+ * Restore the primary/secondary CTA wiring from branch Sol2 when those
+ * sections ship.
  */
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import {
   Sparkles,
   Clock,
   X,
-  ChevronDown,
-  ExternalLink,
   MoreHorizontal,
   AlertTriangle,
   TrendingUp,
   Target,
   Shield,
 } from 'lucide-react'
-import { trpc } from '@/lib/trpc'
 
 // ── Canon types (subset shared with backend — see business-insights-engine.ts).
 // Duplicated here intentionally: the client bundle should not pull the
@@ -87,68 +89,11 @@ const SEVERITY_DOT: Record<BusinessInsightRow['severity'], string> = {
   low: '#60A5FA',
 }
 
-export function BusinessInsightCard({ insight, clubId, onResolve }: Props) {
-  const router = useRouter()
+export function BusinessInsightCard({ insight, onResolve }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [secondaryOpen, setSecondaryOpen] = useState(false)
-
-  // Draft-creating mutations — Step 11 of
-  // DASHBOARD_AND_ACTION_CENTER_SPEC.md §8.1. Each action click first
-  // POSTs a draft row capturing the prefill, then routes to the page
-  // with ?draftId=<id>. The destination page reads the draft and
-  // applies the payload.
-  const cohortDraftM = trpc.intelligence.createCohortDraft.useMutation()
-  const campaignDraftM = trpc.intelligence.createCampaignDraft.useMutation()
-  const programmingDraftM = trpc.intelligence.createProgrammingDraft.useMutation()
 
   const meta = CATEGORY_META[insight.category]
   const Icon = meta.icon
-
-  // Single dispatch for primary + secondary actions — they share the
-  // shape and the routing logic, just differ in where on the card the
-  // operator clicked.
-  const runAction = async (a: BusinessInsightRow['action']['primary']) => {
-    switch (a.type) {
-      case 'create_cohort': {
-        const { draftId } = await cohortDraftM.mutateAsync({
-          clubId,
-          filters: a.cohortRules as any,
-          sourceInsightId: insight.id,
-        })
-        router.push(`/clubs/${clubId}/intelligence/cohorts?draftId=${draftId}`)
-        return
-      }
-      case 'create_campaign': {
-        const { draftId } = await campaignDraftM.mutateAsync({
-          clubId,
-          templateKey: a.templateKey,
-          cohortRef: a.cohortRef,
-          sourceInsightId: insight.id,
-        })
-        router.push(`/clubs/${clubId}/intelligence/campaigns?draftId=${draftId}`)
-        return
-      }
-      case 'programming': {
-        const { draftId } = await programmingDraftM.mutateAsync({
-          clubId,
-          prefill: a.params,
-          sourceInsightId: insight.id,
-        })
-        router.push(`/clubs/${clubId}/intelligence/programming?draftId=${draftId}`)
-        return
-      }
-      case 'advice':
-        // Advice-only insights — clicking "Got it" marks resolved.
-        onResolve('manual')
-        return
-    }
-  }
-
-  const handlePrimary = () => {
-    void runAction(insight.action.primary)
-  }
-
-  const isAdvice = insight.action.primary.type === 'advice'
 
   return (
     <div
@@ -246,19 +191,8 @@ export function BusinessInsightCard({ insight, clubId, onResolve }: Props) {
                 >
                   <X className="w-3.5 h-3.5" /> Dismiss
                 </button>
-                <button
-                  type="button"
-                  className="flex items-center gap-2 w-full px-3 py-1.5 text-[12px] text-left hover:bg-white/5"
-                  style={{ color: 'var(--t3)' }}
-                  onClick={() => {
-                    setMenuOpen(false)
-                    // Source page wiring lands with Step 11 deeplinks — for
-                    // pilot, route to the same place the primary button does.
-                    handlePrimary()
-                  }}
-                >
-                  <ExternalLink className="w-3.5 h-3.5" /> Open in source
-                </button>
+                {/* sol2-lean: "Open in source" removed — it deep-linked into
+                    gated/removed sections. Restore from branch Sol2. */}
               </div>
             )}
           </div>
@@ -291,78 +225,20 @@ export function BusinessInsightCard({ insight, clubId, onResolve }: Props) {
           </div>
         )}
 
-        {/* Action row */}
+        {/* Action row — sol2-lean: advice-style resolve only (see header). */}
         <div className="flex items-center gap-2 pl-9">
-          {!isAdvice && (
-            <button
-              type="button"
-              onClick={handlePrimary}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors"
-              style={{
-                background: meta.tintBg,
-                color: meta.tint,
-                border: `1px solid ${meta.tint}40`,
-              }}
-            >
-              {insight.action.primary.label}
-            </button>
-          )}
-          {isAdvice && (
-            <button
-              type="button"
-              onClick={handlePrimary}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors"
-              style={{
-                background: 'rgba(255,255,255,0.04)',
-                color: 'var(--t3)',
-                border: '1px solid var(--card-border)',
-              }}
-            >
-              Got it
-            </button>
-          )}
-
-          {insight.action.secondary && insight.action.secondary.length > 0 && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setSecondaryOpen(v => !v)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px]"
-                style={{
-                  background: 'rgba(255,255,255,0.04)',
-                  color: 'var(--t3)',
-                  border: '1px solid var(--card-border)',
-                }}
-              >
-                More <ChevronDown className="w-3 h-3" />
-              </button>
-              {secondaryOpen && (
-                <div
-                  className="absolute left-0 top-full mt-1 rounded-lg py-1 z-10 min-w-[200px]"
-                  style={{
-                    background: 'var(--card-bg)',
-                    border: '1px solid var(--card-border)',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  }}
-                >
-                  {insight.action.secondary.map((a, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className="block w-full px-3 py-1.5 text-[12px] text-left hover:bg-white/5"
-                      style={{ color: 'var(--t3)' }}
-                      onClick={() => {
-                        setSecondaryOpen(false)
-                        void runAction(a)
-                      }}
-                    >
-                      {a.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={() => onResolve('manual')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium transition-colors"
+            style={{
+              background: 'rgba(255,255,255,0.04)',
+              color: 'var(--t3)',
+              border: '1px solid var(--card-border)',
+            }}
+          >
+            Got it
+          </button>
         </div>
       </div>
     </div>

@@ -1166,9 +1166,13 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           <AnimatePresence>
             {visibleMessages.map((msg, msgIdx) => {
               const text = getMessageText(msg);
-              const action = msg.role === 'assistant'
+              const rawAction = msg.role === 'assistant'
                 ? getAdvisorActionFromMetadata((msg as any).metadata) || extractAdvisorAction(text)
                 : null;
+              // sol2-lean: Programming IQ is removed — program_schedule action
+              // cards (their drafts deep-link to /programming) are dropped
+              // before render. Remove this filter when Programming IQ returns.
+              const action = rawAction && rawAction.kind === 'program_schedule' ? null : rawAction;
               const draftMetadata = msg.role === 'assistant'
                 ? ((msg as any).metadata?.advisorDraft as { sandboxMode?: boolean; status?: string } | undefined)
                 : undefined;

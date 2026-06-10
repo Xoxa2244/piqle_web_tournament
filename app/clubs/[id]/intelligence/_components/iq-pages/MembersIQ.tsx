@@ -3054,14 +3054,20 @@ function BulkSelectToolbar({ clubId, selectedIds, existingCohorts, onClear, isOp
 }
 
 // ── Save filtered members as Cohort ──
+// sol2-lean: Cohorts is gated (Coming Soon), so the "Open in Cohorts" /
+// "Save cohort" quick actions are hidden. Flip cohortsGated to false
+// when Cohorts ships.
 function SaveAsCohortButton({ clubId, dynamicHref, memberIds, filterDescription, count }: {
   clubId: string; dynamicHref: string | null; memberIds: string[]; filterDescription: string; count: number
 }) {
+  const cohortsGated = true as boolean
   const [saved, setSaved] = useState(false)
   const router = useRouter()
   const createMutation = trpc.intelligence.createCohort.useMutation({
     onSuccess: () => setSaved(true),
   })
+
+  if (cohortsGated) return null
 
   if (saved) {
     return (

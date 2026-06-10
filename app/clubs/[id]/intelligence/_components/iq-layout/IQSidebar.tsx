@@ -8,8 +8,8 @@ import {
   LayoutDashboard, CalendarDays, Brain, UserPlus, DollarSign,
   Users, Megaphone, PartyPopper, Sun, Moon, ChevronLeft, ChevronRight,
   ChevronDown, Search, Bell, Settings, BarChart3, Cpu, Building2,
-  Menu, X, CreditCard, Plug, Activity, Bot, Mail, Rocket, Sparkles,
-  FileBarChart, Inbox, Heart,
+  Menu, X, CreditCard, Plug, Activity, Bot, Mail, Rocket,
+  FileBarChart, Heart,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoIcon } from "./LogoIcon";
@@ -23,6 +23,9 @@ interface NavItem {
   label: string;
   path: string;
   isAI?: boolean;
+  // sol2-lean: section is gated by the layout — nav shows a SOON chip
+  // and the route renders ComingSoonIQ instead of the page.
+  comingSoon?: boolean;
 }
 
 interface NavSection {
@@ -33,16 +36,20 @@ interface NavSection {
 }
 
 function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[] {
+  // sol2-lean: only the core sections are live. Everything else carries
+  // comingSoon — the layout gate renders ComingSoonIQ for those routes.
+  // Action Center and Programming IQ are removed from the nav entirely
+  // (their routes redirect to the Dashboard).
   const systemItems: NavItem[] = [
-    { icon: Rocket, label: "Launch", path: "/launch" },
     { icon: CreditCard, label: "Billing", path: "/billing" },
-    { icon: Plug, label: "Integrations", path: "/integrations" },
-    { icon: Mail, label: "Email Domain", path: "/email-domain" },
+    { icon: Rocket, label: "Launch", path: "/launch", comingSoon: true },
+    { icon: Plug, label: "Integrations", path: "/integrations", comingSoon: true },
+    { icon: Mail, label: "Email Domain", path: "/email-domain", comingSoon: true },
   ]
   // Admin-only: Automation page (Agent Campaign Layer + triggers).
   // See docs/ENGAGE_REDESIGN_SPEC.md §2 P0-T2 / §3 P1-T3.
   if (isAdmin) {
-    systemItems.push({ icon: Bot, label: "Automation", path: "/settings/automation" })
+    systemItems.push({ icon: Bot, label: "Automation", path: "/settings/automation", comingSoon: true })
   }
 
   return [
@@ -53,10 +60,6 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
     items: [
       { icon: LayoutDashboard, label: "Dashboard", path: "" },
       { icon: CalendarDays, label: "Schedule", path: "/sessions" },
-      // Leagues removed from sidebar per DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.3
-      // — leagues are a form of programming (Tier 2), not a top-level section.
-      // LeaguesIQ is now reachable as a drawer inside Programming IQ.
-      // Continuity / gap detection is surfaced via Action Center signals.
       // Scorecard renamed to "Programming Health" — symmetric with
       // Customer Health, easier to grasp than the spreadsheet metaphor.
       // URL stays /scorecard for backwards compatibility.
@@ -65,19 +68,14 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
     ],
   },
   {
-    // Renamed "AI TOOLS" → "OPERATIONS" per DASHBOARD_AND_ACTION_CENTER_SPEC.md
-    // §4.1 Step 15. Action Center is the first item — it's the operator's
-    // daily landing page once it's live.
     id: "operations",
     title: "OPERATIONS",
     icon: Cpu,
     items: [
-      { icon: Inbox, label: "Action Center", path: "/action-center", isAI: true },
       // AI Agent tab retired 2026-04-24 — Advisor itself is the agent now.
       // The `/intelligence/agent` route still exists as a redirect so old
       // reminder/preflight URLs don't 404 (see agent/page.tsx).
       { icon: Brain, label: "AI Advisor", path: "/advisor", isAI: true },
-      { icon: Sparkles, label: "Programming IQ", path: "/programming", isAI: true },
     ],
   },
   {
@@ -86,14 +84,14 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
     icon: Building2,
     items: [
       { icon: Users, label: "Members", path: "/members" },
-      { icon: UsersRound, label: "Cohorts", path: "/cohorts" },
+      { icon: UsersRound, label: "Cohorts", path: "/cohorts", comingSoon: true },
       // Reactivation removed in P1-T1 (iqsport brand). Logic redistributed:
       //   - At-Risk KPI         → Members KPI strip (P2-T1)
       //   - Churn trend chart   → Members "How Members Play" row (P2-T6)
       //   - At-Risk member list → Cohorts pre-built "At-Risk" cohort (P3-T1)
       //   - Reactivation send   → Campaigns AI-Recommended template (P1-T4 / P4-T3)
       // See docs/ENGAGE_REDESIGN_SPEC.md §3 P1-T1 / PLAN.md §5.
-      { icon: Megaphone, label: "Campaigns", path: "/campaigns" },
+      { icon: Megaphone, label: "Campaigns", path: "/campaigns", comingSoon: true },
     ],
   },
   {
@@ -280,7 +278,18 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                                 </motion.span>
                               )}
                             </AnimatePresence>
-                            {showExpanded && item.isAI && (
+                            {showExpanded && item.comingSoon ? (
+                              <span
+                                className="ml-auto text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded"
+                                style={{
+                                  background: isDark ? "rgba(148,163,184,0.12)" : "rgba(100,116,139,0.08)",
+                                  color: isDark ? "#94A3B8" : "#64748B",
+                                  fontWeight: 700,
+                                }}
+                              >
+                                Soon
+                              </span>
+                            ) : showExpanded && item.isAI ? (
                               <span
                                 className="ml-auto text-[8px] tracking-wider uppercase px-1.5 py-0.5 rounded"
                                 style={{
@@ -291,7 +300,7 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                               >
                                 AI
                               </span>
-                            )}
+                            ) : null}
                           </button>
                         );
                       })}
@@ -653,14 +662,9 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                           <Settings className="w-4 h-4" style={{ color: isDark ? "#64748B" : "#94A3B8" }} />
                           <span className="text-sm" style={{ fontWeight: 500 }}>Club Settings</span>
                         </button>
-                        <button
-                          onClick={() => { router.push(`/clubs/${clubId}/intelligence/team`); setProfileOpen(false); }}
-                          className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all hover:opacity-80"
-                          style={{ color: isDark ? "#CBD5E1" : "#475569" }}
-                        >
-                          <UsersRound className="w-4 h-4" style={{ color: isDark ? "#64748B" : "#94A3B8" }} />
-                          <span className="text-sm" style={{ fontWeight: 500 }}>Team Management</span>
-                        </button>
+                        {/* sol2-lean: Team Management hidden — /team is gated
+                            (Coming Soon). Restore the button from branch Sol2
+                            when the section ships. */}
                         <button
                           onClick={toggleTheme}
                           className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all hover:opacity-80"

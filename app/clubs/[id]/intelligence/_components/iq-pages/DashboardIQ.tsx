@@ -903,11 +903,15 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
   const connectorStatusQuery = trpc.connectors.getStatus.useQuery({ clubId }, { enabled: !!clubId && !isDemo });
   const isConnected = connectorStatusQuery.data?.connected;
 
+  // sol2-lean: "Connect data source" routes to Settings (Integrations is
+  // gated; /import is just a redirect stub to the Advisor) and "AI insights
+  // ready" routes to the Advisor (Slot Filler is gated). Restore the
+  // original hrefs from branch Sol2 when those ship.
   const quickStartSteps = [
     { id: "settings", label: "Configure club settings", done: true, href: `/clubs/${clubId}/intelligence/settings`, icon: "⚙️" },
-    { id: "connect", label: "Connect data source", done: !!isConnected || hasUploads || hasSessions || hasMembers, href: `/clubs/${clubId}/intelligence/integrations`, icon: "🔗" },
+    { id: "connect", label: "Connect data source", done: !!isConnected || hasUploads || hasSessions || hasMembers, href: `/clubs/${clubId}/intelligence/settings`, icon: "🔗" },
     { id: "members", label: "Members detected", done: hasMembers, href: `/clubs/${clubId}/intelligence/members`, icon: "👥" },
-    { id: "ai", label: "AI insights ready", done: hasSessions || !!businessInsightsQuery.data?.insights?.length, href: `/clubs/${clubId}/intelligence/slot-filler`, icon: "🤖" },
+    { id: "ai", label: "AI insights ready", done: hasSessions || !!businessInsightsQuery.data?.insights?.length, href: `/clubs/${clubId}/intelligence/advisor`, icon: "🤖" },
   ];
   const quickStartProgress = quickStartSteps.filter(s => s.done).length;
   const isStillLoading = externalLoading || isPeriodLoading || periodQuery.isLoading;

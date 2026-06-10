@@ -1,19 +1,29 @@
 'use client'
 
 /**
- * Action Center route — DASHBOARD_AND_ACTION_CENTER_SPEC.md §4.1.
+ * Action Center — removed from the sol2-lean build.
  *
- * Operator-side daily landing page. The Dashboard answers "how is the
- * club doing" (strategic); Action Center answers "what hasn't been
- * done today" (operational) — feed of signals + Tier Constructor.
+ * The page, its feed components (TodayFeed / SignalFeed / TierConstructor /
+ * SignalCard) and the nav item are gone. This stub stays so durable links
+ * (notifications, bookmarks, admin-reminder hrefs) don't 404 — it lands
+ * the operator on the Dashboard instead. Restore from branch Sol2 when
+ * Action Center returns.
  */
 
-import { useParams } from 'next/navigation'
-import { ActionCenterIQ } from '../_components/iq-pages/ActionCenterIQ'
+import { useEffect } from 'react'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 
-export default function ActionCenterPage() {
+export default function ActionCenterRedirect() {
   const params = useParams()
-  const clubId = (params?.id as string) || ''
-  if (!clubId) return null
-  return <ActionCenterIQ clubId={clubId} />
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const clubId = (params?.id as string) || ''
+    if (!clubId) return
+    const demoParam = searchParams?.get('demo') === 'true' ? '?demo=true' : ''
+    router.replace(`/clubs/${clubId}/intelligence${demoParam}`)
+  }, [params, router, searchParams])
+
+  return null
 }

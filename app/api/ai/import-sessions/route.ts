@@ -591,14 +591,17 @@ export async function POST(req: Request) {
           send({ phase: 'creating_sessions', message: `Warning: session records not created: ${importErr instanceof Error ? importErr.message : String(importErr)}` });
         }
 
-        // Phase 2.6: Auto-trigger campaign engine for this club
+        // Phase 2.6: Auto-trigger campaign engine for this club.
+        // sol2-lean: Campaigns is gated, so the engine runs dryRun — health
+        // scores are still recalculated, but importing a CSV never sends
+        // outreach to members. Drop the dryRun flag when Campaigns ships.
         send({ phase: 'campaign', message: 'Calculating health scores...' });
         try {
           const { runHealthCampaign } = await import('@/lib/ai/campaign-engine');
-          const campaignResult = await runHealthCampaign(prisma, clubId);
+          const campaignResult = await runHealthCampaign(prisma, clubId, { dryRun: true });
           send({
             phase: 'campaign',
-            message: `Health scores calculated: ${campaignResult.membersProcessed} members, ${campaignResult.messagesSent} messages sent.`,
+            message: `Health scores calculated: ${campaignResult.membersProcessed} members.`,
             membersProcessed: campaignResult.membersProcessed,
             messagesSent: campaignResult.messagesSent,
           });

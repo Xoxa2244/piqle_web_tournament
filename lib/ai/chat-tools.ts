@@ -227,7 +227,10 @@ export function createChatTools(clubId: string) {
               isLaterToday,
               isTonight,
               isFutureDay,
-              eventUrl: `/clubs/${clubId}/intelligence/slot-filler?session=${encodeURIComponent(s.id)}`,
+              // sol2-lean: Slot Filler is gated (Coming Soon) — session links
+              // in advisor chat land on the kept Schedule page instead.
+              // Restore the slot-filler deep-link from branch Sol2 when it ships.
+              eventUrl: `/clubs/${clubId}/intelligence/sessions?session=${encodeURIComponent(s.id)}`,
             }
           })
 

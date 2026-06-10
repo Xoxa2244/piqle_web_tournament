@@ -2,10 +2,9 @@
 
 import { useState } from "react"
 import { motion } from "motion/react"
-import Link from "next/link"
 import {
   Heart, DollarSign, AlertTriangle, TrendingUp, ChevronDown, ChevronUp,
-  Sparkles, Activity, ShieldAlert, ArrowUpRight, Megaphone,
+  Sparkles, Activity, ShieldAlert, ArrowUpRight,
 } from "lucide-react"
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
@@ -28,29 +27,9 @@ const CAMPAIGN_HINT_LABEL: Record<string, string> = {
   PRICE_REVIEW: 'Pricing',
 }
 
-// Maps a treatment's campaignHint to a Campaign Wizard goal so the
-// "Campaign" button lands on a pre-selected goal (which auto-builds the
-// matching audience) instead of an empty wizard.
-const CAMPAIGN_HINT_GOAL: Record<string, string> = {
-  RETENTION_BOOST: 'retention_boost',
-  UPSELL: 'upsell_tier',
-  WINBACK: 'reactivate_dormant',
-  BILLING_AUDIT: 'renewal_reminder',
-  PRICE_REVIEW: 'custom',
-}
-
-// Maps a treatment's campaignHint to the tier member bucket it targets, so
-// the wizard pre-scopes its audience to exactly those members (not the goal's
-// club-wide default). Buckets mirror getTierHealth's targetMemberCount:
-// RETENTION_BOOST→zombies, UPSELL→power users, BILLING_AUDIT→suspended,
-// PRICE_REVIEW→all active. Defaults to 'active' for any unmapped hint.
-const CAMPAIGN_HINT_BUCKET: Record<string, string> = {
-  RETENTION_BOOST: 'zombies',
-  UPSELL: 'power',
-  WINBACK: 'zombies',
-  BILLING_AUDIT: 'suspended',
-  PRICE_REVIEW: 'active',
-}
+// sol2-lean: CAMPAIGN_HINT_GOAL / CAMPAIGN_HINT_BUCKET (wizard deep-link
+// mappings) removed with the "Campaign" button — restore from branch Sol2
+// when Campaigns ships.
 
 type Treatment = {
   action: string
@@ -262,14 +241,9 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
                         </div>
                         <p className="text-xs" style={{ color: "var(--t2)", lineHeight: 1.5 }}>{tx.action}</p>
                       </div>
-                      <Link
-                        href={`/clubs/${clubId}/intelligence/campaigns?goal=${CAMPAIGN_HINT_GOAL[tx.campaignHint] || 'custom'}&tier=${encodeURIComponent(t.name)}&bucket=${CAMPAIGN_HINT_BUCKET[tx.campaignHint] || 'active'}`}
-                        className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs self-center"
-                        style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)", color: "#fff", fontWeight: 600 }}
-                      >
-                        <Megaphone className="w-3 h-3" />
-                        Campaign
-                      </Link>
+                      {/* sol2-lean: the "Campaign" deep-link is hidden while
+                          Campaigns is gated (Coming Soon). Restore the Link
+                          (see branch Sol2) when Campaigns ships. */}
                     </div>
                   ))}
                 </div>

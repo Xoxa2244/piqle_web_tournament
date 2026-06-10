@@ -16,7 +16,48 @@ import { PageContextCtx, createPageContext } from './_hooks/usePageContext'
 import { useBrand } from '@/components/BrandProvider'
 import { IQSidebar } from './_components/iq-layout/IQSidebar'
 import { IQThemeProvider } from './_components/IQThemeProvider'
+import { ComingSoonIQ } from './_components/iq-pages/ComingSoonIQ'
 import './iqsport-theme.css'
+
+// ── sol2-lean section gate ────────────────────────────────────────────
+// The lean build ships only the core sections; every other route under
+// /intelligence/* renders ComingSoonIQ instead of its page. Pages and
+// server code stay untouched — re-enabling a section is one line here.
+// Action Center and Programming IQ are removed harder: their page files
+// redirect to the Dashboard, so they never reach this gate.
+const LIVE_SECTIONS = new Set([
+  '',                  // Dashboard
+  'sessions',          // Schedule
+  'scorecard',         // Programming Health
+  'membership-health', // Membership Health
+  'advisor',           // AI Advisor
+  'members',           // Members
+  'billing',           // Billing
+  'settings',          // club settings (operational; /settings/automation is gated below)
+  'onboarding',        // first-run setup wizard
+  'import',            // CSV import (reachable from empty states / settings)
+  'agent',             // legacy redirect → /advisor (old reminder URLs)
+  'action-center',     // page self-redirects to Dashboard
+  'programming',       // page self-redirects to Dashboard
+])
+
+const SECTION_LABELS: Record<string, string> = {
+  'cohorts': 'Cohorts',
+  'campaigns': 'Campaigns',
+  'launch': 'Launch',
+  'integrations': 'Integrations',
+  'email-domain': 'Email Domain',
+  'analytics': 'Analytics',
+  'events': 'Events',
+  'revenue': 'Revenue',
+  'slot-filler': 'Slot Filler',
+  'reactivation': 'Reactivation',
+  'leagues': 'Leagues',
+  'marketplace': 'Marketplace',
+  'packages': 'Packages',
+  'team': 'Team Management',
+  'tournament-ai': 'Tournament AI',
+}
 
 const navItems = [
   { label: 'Overview', href: '', icon: LayoutDashboard },
@@ -53,11 +94,20 @@ export default function IntelligenceLayout({
   // IQSport brand → dark sidebar layout with IQ theme
   if (brand.key === 'iqsport') {
     const isAdvisorPage = pathname.endsWith('/advisor')
+    // sol2-lean gate: first path segment after /intelligence decides
+    // whether the real page renders or the Coming Soon placeholder.
+    const relPath = pathname.startsWith(basePath) ? pathname.slice(basePath.length) : ''
+    const section = relPath.split('/')[1] ?? ''
+    const isAutomationSettings = relPath.startsWith('/settings/automation')
+    const isLive = LIVE_SECTIONS.has(section) && !isAutomationSettings
+    const sectionLabel = isAutomationSettings
+      ? 'Automation'
+      : SECTION_LABELS[section] ?? 'This section'
     return (
       <PageContextCtx.Provider value={pageContextStore}>
         <IQThemeProvider>
           <IQSidebar clubId={clubId}>
-            {children}
+            {isLive ? children : <ComingSoonIQ sectionLabel={sectionLabel} />}
             {!isAdvisorPage && <ChatWidget clubId={clubId} />}
           </IQSidebar>
         </IQThemeProvider>

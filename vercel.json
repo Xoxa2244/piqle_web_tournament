@@ -8,40 +8,12 @@
       "schedule": "*/10 * * * *"
     },
     {
-      "path": "/api/campaigns/health",
-      "schedule": "0 14 * * *"
-    },
-    {
-      "path": "/api/campaigns/weekly-summary",
-      "schedule": "0 15 * * 1"
-    },
-    {
       "path": "/api/emails/trial-reminder",
       "schedule": "0 14 * * *"
     },
     {
       "path": "/api/ai/generate-member-profiles",
       "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/campaigns/conversion-check",
-      "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/campaigns/calibrate-weights",
-      "schedule": "0 5 * * 0"
-    },
-    {
-      "path": "/api/campaigns/review-request",
-      "schedule": "0 21 * * *"
-    },
-    {
-      "path": "/api/campaigns/morning-digest",
-      "schedule": "0 14 * * *"
-    },
-    {
-      "path": "/api/agent/events",
-      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/agent/admin-reminders",
@@ -52,24 +24,12 @@
       "schedule": "*/10 * * * *"
     },
     {
-      "path": "/api/campaigns/campaign-sends",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/ai/sync-embeddings",
       "schedule": "0 3 * * *"
     },
     {
       "path": "/api/ai/enrich-members",
       "schedule": "0 6 1 * *"
-    },
-    {
-      "path": "/api/campaigns/slot-filler?mode=tomorrow",
-      "schedule": "0 12 * * *"
-    },
-    {
-      "path": "/api/campaigns/slot-filler?mode=lastminute",
-      "schedule": "0 */2 * * *"
     },
     {
       "path": "/api/cron/ai-budget-check",
@@ -88,20 +48,8 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/lifecycle-segments",
-      "schedule": "0 13 * * *"
-    },
-    {
-      "path": "/api/cron/league-gap-detector",
-      "schedule": "30 13 * * *"
-    },
-    {
       "path": "/api/cron/business-insights",
       "schedule": "30 3 * * *"
-    },
-    {
-      "path": "/api/cron/operational-signals",
-      "schedule": "5 * * * *"
     },
     {
       "path": "/api/cron/draft-cleanup",

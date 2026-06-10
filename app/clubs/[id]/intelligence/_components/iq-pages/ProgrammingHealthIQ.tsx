@@ -26,7 +26,7 @@
 import { useState } from 'react'
 import {
   FileBarChart, ChevronRight, ChevronDown, TrendingUp, TrendingDown, Minus,
-  Lightbulb, AlertCircle, AlertTriangle, ArrowRight,
+  Lightbulb, AlertCircle, AlertTriangle,
 } from 'lucide-react'
 import { trpc } from '@/lib/trpc'
 import { ProgrammingDynamicsModal, type DrillTarget } from './ProgrammingDynamicsModal'
@@ -44,20 +44,14 @@ const PERIOD_PRESETS = [
 
 type Trend = { deltaPct: number; direction: 'up' | 'down' | 'flat' } | null
 
-// Insight treatment → short tag (chip) + the Campaign wizard's goal code.
-// Every insight's action is "create a campaign"; the tag says which kind, and
-// the goal code pre-selects the wizard's Goal step (the wizard's vocabulary).
+// Insight treatment → short tag (chip). The companion GOAL_WIZARD map
+// (Campaign wizard goal codes) was removed on sol2-lean together with the
+// "Create campaign" deep-link — restore from branch Sol2 when Campaigns ships.
 const GOAL_TAG: Record<string, string> = {
   reengage: 'Re-engage',
   fill: 'Fill seats',
   intro: 'Recruit',
   relaunch: 'Relaunch',
-}
-const GOAL_WIZARD: Record<string, string> = {
-  reengage: 'retention_boost',
-  fill: 'promote_event',
-  intro: 'onboard_new',
-  relaunch: 'promote_event',
 }
 
 export function ProgrammingHealthIQ({ clubId }: Props) {
@@ -364,15 +358,6 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                 const sevColor = ins.severity === 'critical' ? '#EF4444' : '#F59E0B'
                 const Icon = ins.severity === 'critical' ? AlertCircle : AlertTriangle
                 const hasCard = data.families.some((f) => f.family === ins.family)
-                // Audience prefill (current program players) only where that's
-                // the right target: re-engage (declining) + fill. Recruit /
-                // relaunch open goal-only — their audience isn't current players.
-                const wantsAudience = ins.treatmentGoal === 'reengage' || ins.treatmentGoal === 'fill'
-                const goalParam = GOAL_WIZARD[ins.treatmentGoal] ?? 'custom'
-                const periodQs = custom ? `&start=${custom.start}&end=${custom.end}` : `&days=${periodDays}`
-                const campaignHref = wantsAudience
-                  ? `/clubs/${clubId}/intelligence/campaigns?goal=${goalParam}&family=${ins.family}&familyLabel=${encodeURIComponent(ins.familyLabel)}${periodQs}`
-                  : `/clubs/${clubId}/intelligence/campaigns?goal=${goalParam}`
                 return (
                   <div
                     key={ins.id}
@@ -409,13 +394,8 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                       >
                         {GOAL_TAG[ins.treatmentGoal] ?? ins.treatmentGoal}
                       </span>
-                      <a
-                        href={campaignHref}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 whitespace-nowrap"
-                        style={{ background: 'var(--accent, #A855F7)', color: '#fff' }}
-                      >
-                        Create campaign <ArrowRight className="w-3.5 h-3.5" />
-                      </a>
+                      {/* sol2-lean: "Create campaign" deep-link hidden while
+                          Campaigns is gated — restore from branch Sol2. */}
                     </div>
                   </div>
                 )

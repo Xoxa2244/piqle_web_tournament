@@ -2773,9 +2773,11 @@ export async function POST(req: Request) {
             reason: message.length >= 3 ? message.slice(0, 500) : 'Stopped via Advisor chat',
           }),
         )
+        // sol2-lean: Launch Runbook is gated — point operators at Club
+        // Settings (agent control plane) instead. Restore from branch Sol2.
         assistantMessage = withSuggested(
-          '🛑 All AI sending is now stopped. The agent will not send any messages until you re-enable live mode.\n\nTo re-enable, go to Launch Runbook: /clubs/' + clubId + '/intelligence/launch',
-          ['Open Launch Runbook', 'What did the agent do today?'],
+          '🛑 All AI sending is now stopped. The agent will not send any messages until you re-enable live mode.\n\nTo re-enable, open Club Settings: /clubs/' + clubId + '/intelligence/settings',
+          ['Open Club Settings', 'What did the agent do today?'],
         )
         assistantState = {
           ...(memory.state || {}),
@@ -2787,8 +2789,8 @@ export async function POST(req: Request) {
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error'
         assistantMessage = withSuggested(
-          `Could not activate the kill switch: ${msg}\n\nYou can stop the agent directly on the Launch Runbook: /clubs/${clubId}/intelligence/launch`,
-          ['Open Launch Runbook', 'Try again'],
+          `Could not activate the kill switch: ${msg}\n\nYou can stop the agent directly in Club Settings: /clubs/${clubId}/intelligence/settings`,
+          ['Open Club Settings', 'Try again'],
         )
       }
     } else if (
