@@ -8,14 +8,18 @@
  * empty since the AI-Attributed Revenue tile was removed (6ca622c0).
  * Data: intelligence.getRevenueAnalytics (pricePerSlot × registered) —
  * honest per-session revenue only, so membership-covered Open Play counts
- * as $0 by design and clinics/leagues carry the number. Shows an explicit
- * empty state when the club has no priced sessions at all, a reduced
- * "missed-only" layout when revenue is $0 but priced seats went unsold,
- * and a neutral error state when the query fails.
+ * as $0 by design and clinics/leagues carry the number. Membership clubs
+ * additionally get their real revenue — MRR from getMembershipHealth
+ * (tier economics) — as a secondary stat, and as the LEAD stat when no
+ * session revenue exists. Distinct states: loading skeleton, query error,
+ * missed-only ($0 collected but priced seats went unsold), MRR-led
+ * (membership club, no priced sessions), and a true empty state.
  */
 
+import { useEffect, useState } from 'react'
 import { DollarSign, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react'
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { trpc } from '@/lib/trpc'
 import { useRevenueAnalytics } from '../../../_hooks/use-intelligence'
 
 const FORMAT_LABELS: Record<string, string> = {
@@ -54,6 +58,8 @@ const DEMO_REVENUE = {
   avgOccupancy: 71,
 }
 
+const DEMO_MRR = { totalMRR: 24300, totalActiveSubscribers: 186 }
+
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`
 
 // Backend dates are ISO yyyy-mm-dd — render as "May 28" in the tooltip.
@@ -80,6 +86,36 @@ export function SessionRevenueCard({
   const hasRevenue = !!data && data.totalRevenue > 0
   const missedOnly = !!data && data.totalRevenue === 0 && data.lostRevenue.total > 0
 
+  // Membership MRR — the real revenue for membership-priced clubs, where
+  // slot-priced sessions can legitimately be ~$0. Deferred 1.5s so the
+  // ~1s tier-economics query doesn't pile onto the dashboard's initial
+  // burst (same auth-storm precaution as DashboardIQ's secondary queries).
+  const [mrrEnabled, setMrrEnabled] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setMrrEnabled(true), 1500)
+    return () => clearTimeout(t)
+  }, [])
+  const membershipQuery = trpc.intelligence.getMembershipHealth.useQuery(
+    { clubId },
+    { enabled: !!clubId && !isDemo && mrrEnabled, staleTime: 5 * 60 * 1000 },
+  )
+  const mrr = isDemo ? DEMO_MRR : membershipQuery.data?.rollup
+    ? { totalMRR: membershipQuery.data.rollup.totalMRR, totalActiveSubscribers: membershipQuery.data.rollup.totalActiveSubscribers }
+    : null
+  const hasMrr = !!mrr && mrr.totalMRR > 0
+  // While the deferred MRR query is still pending we don't yet know whether
+  // a zero-session-revenue club is "membership-led" or truly empty — keep
+  // the skeleton up instead of flashing the empty state and swapping.
+  const mrrPending = !isDemo && (!mrrEnabled || membershipQuery.isLoading)
+
+  const skeleton = (
+    <div className="animate-pulse space-y-3">
+      <div className="h-8 w-32 rounded-lg" style={{ background: 'var(--subtle)' }} />
+      <div className="h-[110px] rounded-lg" style={{ background: 'var(--subtle)' }} />
+      <div className="h-4 w-3/4 rounded" style={{ background: 'var(--subtle)' }} />
+    </div>
+  )
+
   return (
     <div
       className="rounded-2xl p-5 flex flex-col"
@@ -105,25 +141,52 @@ export function SessionRevenueCard({
           </p>
         </div>
       ) : isLoading && !data ? (
-        <div className="animate-pulse space-y-3">
-          <div className="h-8 w-32 rounded-lg" style={{ background: 'var(--subtle)' }} />
-          <div className="h-[110px] rounded-lg" style={{ background: 'var(--subtle)' }} />
-          <div className="h-4 w-3/4 rounded" style={{ background: 'var(--subtle)' }} />
-        </div>
+        skeleton
       ) : !data || (!hasRevenue && !missedOnly) ? (
-        <div className="flex flex-col items-center justify-center py-10 text-center flex-1">
-          <DollarSign className="w-8 h-8 mb-2" style={{ color: 'var(--t4)' }} />
-          <p className="text-xs max-w-[260px]" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
-            No priced sessions in this period — session revenue appears once
-            sessions carry a price per slot.
-          </p>
-        </div>
+        hasMrr && mrr ? (
+          /* Membership club with no slot-priced sessions — dues ARE the
+             revenue, so MRR leads instead of an empty state. */
+          <div className="flex flex-col flex-1">
+            <div className="mb-1" style={{ fontSize: '26px', fontWeight: 700, color: 'var(--heading)' }}>
+              {usd(mrr.totalMRR)}<span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--t3)' }}>/mo</span>
+            </div>
+            <p className="text-xs" style={{ color: 'var(--t3)' }}>
+              Membership MRR · {mrr.totalActiveSubscribers.toLocaleString()} active memberships
+            </p>
+            <p className="text-xs mt-auto pt-3" style={{ color: 'var(--t4)', borderTop: '1px solid var(--divider)' }}>
+              No slot-priced session revenue this period — membership dues
+              carry the club. Clinics and leagues will show up here once priced.
+            </p>
+          </div>
+        ) : mrrPending ? (
+          skeleton
+        ) : (
+          <div className="flex flex-col items-center justify-center py-10 text-center flex-1">
+            <DollarSign className="w-8 h-8 mb-2" style={{ color: 'var(--t4)' }} />
+            <p className="text-xs max-w-[260px]" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
+              No priced sessions in this period — session revenue appears once
+              sessions carry a price per slot.
+            </p>
+          </div>
+        )
       ) : missedOnly ? (
         /* Priced seats existed but nothing was collected — the missed
            breakdown is the whole story, so skip the empty chart. */
         <div className="flex flex-col flex-1">
-          <div className="mb-1" style={{ fontSize: '26px', fontWeight: 700, color: 'var(--heading)' }}>$0</div>
-          <p className="text-xs mb-4" style={{ color: 'var(--t3)' }}>collected this period</p>
+          <div className="flex items-start justify-between gap-4 mb-1">
+            <div style={{ fontSize: '26px', fontWeight: 700, color: 'var(--heading)' }}>$0</div>
+            {hasMrr && mrr && (
+              <div className="text-right">
+                <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--heading)' }}>
+                  {usd(mrr.totalMRR)}<span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--t4)' }}>/mo MRR</span>
+                </div>
+                <div className="text-[10px]" style={{ color: 'var(--t4)' }}>
+                  {mrr.totalActiveSubscribers.toLocaleString()} active memberships
+                </div>
+              </div>
+            )}
+          </div>
+          <p className="text-xs mb-4" style={{ color: 'var(--t3)' }}>collected from sessions this period</p>
           <div className="space-y-2">
             {[
               { label: 'Empty priced seats', value: data.lostRevenue.emptySlots },
@@ -146,28 +209,40 @@ export function SessionRevenueCard({
         </div>
       ) : (
         <div className="flex flex-col flex-1">
-          {/* Headline + trend vs previous period */}
-          <div className="flex items-end gap-3 mb-3">
-            <span style={{ fontSize: '26px', fontWeight: 700, color: 'var(--heading)', lineHeight: 1 }}>
-              {usd(data.totalRevenue)}
-            </span>
-            {data.prevTotalRevenue > 0 && (() => {
-              const pct = Math.round(((data.totalRevenue - data.prevTotalRevenue) / data.prevTotalRevenue) * 100)
-              const up = pct >= 0
-              return (
-                <span
-                  className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md mb-0.5"
-                  style={{
-                    background: up ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
-                    color: up ? '#10B981' : '#EF4444',
-                    fontWeight: 600,
-                  }}
-                >
-                  {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                  {up ? '+' : ''}{pct}% vs prior period
-                </span>
-              )
-            })()}
+          {/* Headline (sessions) + trend, with membership MRR on the right */}
+          <div className="flex items-start justify-between gap-4 mb-3">
+            <div className="flex items-end gap-3">
+              <span style={{ fontSize: '26px', fontWeight: 700, color: 'var(--heading)', lineHeight: 1 }}>
+                {usd(data.totalRevenue)}
+              </span>
+              {data.prevTotalRevenue > 0 && (() => {
+                const pct = Math.round(((data.totalRevenue - data.prevTotalRevenue) / data.prevTotalRevenue) * 100)
+                const up = pct >= 0
+                return (
+                  <span
+                    className="flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md mb-0.5"
+                    style={{
+                      background: up ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                      color: up ? '#10B981' : '#EF4444',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                    {up ? '+' : ''}{pct}% vs prior period
+                  </span>
+                )
+              })()}
+            </div>
+            {hasMrr && mrr && (
+              <div className="text-right shrink-0">
+                <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--heading)' }}>
+                  {usd(mrr.totalMRR)}<span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--t4)' }}>/mo MRR</span>
+                </div>
+                <div className="text-[10px]" style={{ color: 'var(--t4)' }}>
+                  {mrr.totalActiveSubscribers.toLocaleString()} active memberships
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Daily revenue bars */}
