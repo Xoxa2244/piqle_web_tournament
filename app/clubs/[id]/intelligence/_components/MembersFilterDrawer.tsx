@@ -115,26 +115,26 @@ const ACTIVITY_OPTIONS = [
   { key: 'all', label: 'All' },
   { key: 'power', label: 'Power Player' },
   { key: 'regular', label: 'Regular' },
-  { key: 'casual', label: 'Casual' },
-  { key: 'occasional', label: 'Occasional' },
+  { key: 'light', label: 'Light' },
+  { key: 'inactive', label: 'Inactive' },
 ]
 
 // Risk filter maps "healthy" UI -> "power" internal segment, "watch" -> "regular".
 // We surface user-facing labels matching the at-risk language they see elsewhere.
 const RISK_OPTIONS = [
   { key: 'all', label: 'All' },
-  { key: 'power', label: 'Healthy', uiKey: 'healthy' },
-  { key: 'regular', label: 'Watch', uiKey: 'watch' },
-  { key: 'at-risk', label: 'At-Risk', uiKey: 'at-risk' },
+  { key: 'healthy', label: 'Healthy', uiKey: 'healthy' },
+  { key: 'watch', label: 'Watch', uiKey: 'watch' },
+  { key: 'at-risk', label: 'At Risk', uiKey: 'at-risk' },
   { key: 'critical', label: 'Critical', uiKey: 'critical' },
 ]
 
 const TREND_OPTIONS = [
   { key: 'all', label: 'All' },
-  { key: 'growing', label: 'Growing' },
+  { key: 'improving', label: 'Improving' },
   { key: 'stable', label: 'Stable' },
   { key: 'declining', label: 'Declining' },
-  { key: 'churning', label: 'Churning' },
+  { key: 'stopped', label: 'Stopped' },
 ]
 
 const VALUE_OPTIONS = [
@@ -514,16 +514,12 @@ export function MembersFilterDrawer({
                     hint="Churn risk level — health-score computed by the AI model"
                     options={RISK_OPTIONS}
                     value={filterRisk}
-                    onChange={(v) => {
-                      // UI labels "healthy"/"watch" need to map to internal segment values
-                      const internal = v === 'healthy' ? 'power' : v === 'watch' ? 'regular' : v
-                      setFilterRisk(internal)
-                    }}
+                    onChange={setFilterRisk}
                     isDark={isDark}
                   />
                   <ChipGroup
                     label="Trend"
-                    hint="Where activity is heading — growing, holding, declining, or nearly churned"
+                    hint="Where activity is heading — improving, holding, declining, or stopped"
                     options={TREND_OPTIONS}
                     value={filterTrend}
                     onChange={setFilterTrend}

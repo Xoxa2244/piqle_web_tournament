@@ -35,7 +35,7 @@ function toStr(v: any): string {
 const playerHealthDistribution = [
   { level: "Healthy", count: 72, pct: 57, color: "#10B981" },
   { level: "Watch", count: 25, pct: 20, color: "#F59E0B" },
-  { level: "At-Risk", count: 18, pct: 14, color: "#F97316" },
+  { level: "At Risk", count: 18, pct: 14, color: "#F97316" },
   { level: "Critical", count: 12, pct: 9, color: "#EF4444" },
 ];
 
@@ -170,7 +170,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
         const ns = toNum(revenueData.lostRevenue.noShows);
         const tot = toNum(revenueData.lostRevenue.total);
         return [
-          { category: "Empty Slots", amount: es, pct: 0, recoverable: Math.round(es * 0.6) },
+          { category: "Open Spots", amount: es, pct: 0, recoverable: Math.round(es * 0.6) },
           { category: "Cancelled", amount: cn, pct: 0, recoverable: Math.round(cn * 0.3) },
           { category: "No-Shows", amount: ns, pct: 0, recoverable: Math.round(ns * 0.5) },
         ].map(l => ({ ...l, pct: tot > 0 ? Math.round((l.amount / tot) * 100) : 0 }));
@@ -188,7 +188,7 @@ export function RevenueIQ({ revenueData, dashboardData, pricingData, forecastDat
         return [
           { level: "Healthy", count: Math.round(am * 0.57) || 72, pct: 57, color: "#10B981" },
           { level: "Watch", count: Math.round(am * 0.2) || 25, pct: 20, color: "#F59E0B" },
-          { level: "At-Risk", count: Math.round(am * 0.14) || 18, pct: 14, color: "#F97316" },
+          { level: "At Risk", count: Math.round(am * 0.14) || 18, pct: 14, color: "#F97316" },
           { level: "Critical", count: Math.round(am * 0.09) || 12, pct: 9, color: "#EF4444" },
         ];
       })()

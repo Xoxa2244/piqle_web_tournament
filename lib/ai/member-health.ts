@@ -107,16 +107,16 @@ export function classifyActivityLevel(confirmedLast30: number, daySpan: number =
     : confirmedLast30 / (daySpan / 7)
   if (sessionsPerWeek >= 4) return 'power'
   if (sessionsPerWeek >= 2) return 'regular'
-  if (sessionsPerWeek >= 0.5) return 'casual'
-  return 'occasional'
+  if (sessionsPerWeek >= 0.5) return 'light'
+  return 'inactive'
 }
 
 export function classifyEngagementTrend(last30: number, prev30: number, daysSinceLast: number | null): EngagementTrend {
-  if (daysSinceLast != null && daysSinceLast >= 21) return 'churning'
-  if (prev30 === 0 && last30 > 0) return 'growing'
-  if (prev30 === 0 && last30 === 0) return 'churning'
+  if (daysSinceLast != null && daysSinceLast >= 21) return 'stopped'
+  if (prev30 === 0 && last30 > 0) return 'improving'
+  if (prev30 === 0 && last30 === 0) return 'stopped'
   const changePct = ((last30 - prev30) / Math.max(prev30, 1)) * 100
-  if (changePct > 15) return 'growing'
+  if (changePct > 15) return 'improving'
   if (changePct < -15) return 'declining'
   return 'stable'
 }
@@ -178,9 +178,9 @@ function normalizeFormat(format: string): string {
 }
 
 function buildSegmentLabel(segment: MemberSegment): SegmentLabel {
-  const activityLabels: Record<ActivityLevel, string> = { power: 'Power Player', regular: 'Regular', casual: 'Casual', occasional: 'Occasional' }
-  const riskLabels: Record<RiskLevel, string> = { healthy: 'Healthy', watch: 'Watch', at_risk: 'At-Risk', critical: 'Critical' }
-  const trendIcons: Record<EngagementTrend, SegmentLabel['trendIcon']> = { growing: 'up', stable: 'stable', declining: 'down', churning: 'inactive' }
+  const activityLabels: Record<ActivityLevel, string> = { power: 'Power Player', regular: 'Regular', light: 'Light', inactive: 'Inactive' }
+  const riskLabels: Record<RiskLevel, string> = { healthy: 'Healthy', watch: 'Watch', at_risk: 'At Risk', critical: 'Critical' }
+  const trendIcons: Record<EngagementTrend, SegmentLabel['trendIcon']> = { improving: 'up', stable: 'stable', declining: 'down', stopped: 'inactive' }
   const valueLabels: Record<ValueTier, string> = { high: 'High LTV', medium: 'Mid', low: 'Low' }
 
   return {
@@ -730,8 +730,7 @@ function getLifecycleStage(
   if (joinedDaysAgo < 60) return 'ramping';
 
   // Health-based for established members
-  if (healthScore < 25) return 'critical';
-  if (healthScore < 50) return 'at_risk';
+  if (healthScore < 50) return 'lapsing';
   return 'active';
 }
 
@@ -740,7 +739,7 @@ function getSuggestedAction(
   stage: LifecycleStage,
   topRisks: string[],
 ): string {
-  if (stage === 'churned') return 'Use Reactivation to send a win-back message';
+  if (stage === 'churned') return 'Send a win-back message';
   if (stage === 'onboarding') return 'Send welcome message with recommended first sessions';
   if (riskLevel === 'critical') return 'Urgent: Send personalized invite before they churn';
   if (riskLevel === 'at_risk') return 'Send targeted invite for their preferred session type';
@@ -774,8 +773,8 @@ function buildSummary(
   const revenueAtRisk = (atRisk + critical) * avgSubscriptionPrice;
 
   // Segment distribution counts
-  const byActivity: Record<ActivityLevel, number> = { power: 0, regular: 0, casual: 0, occasional: 0 }
-  const byTrend: Record<EngagementTrend, number> = { growing: 0, stable: 0, declining: 0, churning: 0 }
+  const byActivity: Record<ActivityLevel, number> = { power: 0, regular: 0, light: 0, inactive: 0 }
+  const byTrend: Record<EngagementTrend, number> = { improving: 0, stable: 0, declining: 0, stopped: 0 }
   const byValue: Record<ValueTier, number> = { high: 0, medium: 0, low: 0 }
   for (const m of members) {
     if (m.segment) {

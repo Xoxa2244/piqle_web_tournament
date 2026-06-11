@@ -33,22 +33,22 @@ const NORMALIZED_MEMBERSHIP_STATUS_OPTIONS = STATUS_OPTIONS
 const RISK_LEVEL_OPTIONS = [
   { label: 'Healthy', value: 'healthy' },
   { label: 'Watch', value: 'watch' },
-  { label: 'At-Risk', value: 'at_risk' },
+  { label: 'At Risk', value: 'at_risk' },
   { label: 'Critical', value: 'critical' },
 ]
 
 const ACTIVITY_LEVEL_OPTIONS = [
   { label: 'Power', value: 'power' },
   { label: 'Regular', value: 'regular' },
-  { label: 'Casual', value: 'casual' },
-  { label: 'Occasional', value: 'occasional' },
+  { label: 'Light', value: 'light' },
+  { label: 'Inactive', value: 'inactive' },
 ]
 
 const ENGAGEMENT_TREND_OPTIONS = [
-  { label: 'Growing', value: 'growing' },
+  { label: 'Improving', value: 'improving' },
   { label: 'Stable', value: 'stable' },
   { label: 'Declining', value: 'declining' },
-  { label: 'Churning', value: 'churning' },
+  { label: 'Stopped', value: 'stopped' },
 ]
 
 const VALUE_TIER_OPTIONS = [
@@ -300,7 +300,7 @@ const QUICK_COHORT_PRESETS: Array<{
     description: 'Used to be active, now fading — engagement trend declining or churning.',
     name: 'Dropped-Off',
     previewSort: 'inactive',
-    state: { engagementTrend: ['declining', 'churning'] },
+    state: { engagementTrend: ['declining', 'stopped'] },
   },
   {
     id: 'churn-risk',
@@ -355,7 +355,7 @@ function equalStringSets(a: string[], b: string[]) {
 function getRecommendedPreviewSort(draft: QuickCohortState): PreviewSort {
   if (draft.valueTier.length > 0) return 'value'
   if (draft.riskLevel.length > 0) return 'risk'
-  if (draft.inactiveDays || draft.engagementTrend.includes('churning') || draft.engagementTrend.includes('declining')) return 'inactive'
+  if (draft.inactiveDays || draft.engagementTrend.includes('stopped') || draft.engagementTrend.includes('declining')) return 'inactive'
   if (draft.joinedWithinDays) return 'newest'
   if (draft.activityLevel.length > 0 || draft.sessionsPerMonthMin || draft.sessionsPerMonthMax) return 'activity'
   if (draft.networkUsage) return 'activity'
@@ -921,7 +921,7 @@ export default function CohortsIQ() {
                 expiry from CSV import) isn&apos;t populated.
               </p>
               <p className="text-[11px]" style={{ color: 'var(--t4)' }}>
-                Cards appear here automatically once the data lines up. You can always build a custom cohort below.
+                Cards appear here automatically once the data lines up. You can always build a custom segment below.
               </p>
             </div>
           ) : (
@@ -1586,7 +1586,7 @@ export default function CohortsIQ() {
                       bottom row where it's always visible. */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                     <button
-                      onClick={(e) => { e.stopPropagation(); if (confirm('Delete this cohort?')) deleteMutation.mutate({ clubId, cohortId: c.id }) }}
+                      onClick={(e) => { e.stopPropagation(); if (confirm('Delete this segment?')) deleteMutation.mutate({ clubId, cohortId: c.id }) }}
                       className="p-1.5 rounded-lg transition-all hover:bg-red-500/10"
                       style={{ color: 'var(--t4)' }}
                       title="Delete audience"

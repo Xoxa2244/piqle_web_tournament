@@ -42,8 +42,7 @@ const stageLabels: Record<LifecycleStage, string> = {
   onboarding: 'Onboarding',
   ramping: 'Ramping Up',
   active: 'Active',
-  at_risk: 'At Risk',
-  critical: 'Critical',
+  lapsing: 'Lapsing',
   churned: 'Churned',
 }
 

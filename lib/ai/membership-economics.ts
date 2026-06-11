@@ -670,14 +670,14 @@ export async function getTierHealth(
         const saveRate = 0.5
         const recoverable = Math.round(mrrAtRiskUsd * saveRate)
         treatments.push({
-          action: `Send re-engagement campaign to ${zombies} zombie subscriber${zombies === 1 ? '' : 's'} on ${u.membership_type}. Recovering half of the at-risk MRR = $${recoverable.toLocaleString('en-US')}/mo saved.`,
+          action: `Send a win-back campaign to ${zombies} inactive subscriber${zombies === 1 ? '' : 's'} on ${u.membership_type}. Recovering half of the at-risk MRR = $${recoverable.toLocaleString('en-US')}/mo saved.`,
           campaignHint: 'RETENTION_BOOST',
           potentialMRRImpactUsd: recoverable,
           targetMemberCount: zombies,
         })
       } else {
         diagnostics.push(
-          `🟢 ${active} active, only ${zombies} zombie (${zombieSharePct}%). Engagement looks healthy.`,
+          `🟢 ${active} active, only ${zombies} inactive (${zombieSharePct}%). Engagement looks healthy.`,
         )
       }
 

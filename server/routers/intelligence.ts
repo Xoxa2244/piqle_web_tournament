@@ -949,6 +949,24 @@ function sqlBigIntCountOrZero(expression: string, alias: string, isAvailable: bo
     : `0::bigint as ${alias}`
 }
 
+/** Saved cohorts may carry pre-unification enum values (terminology rename
+ * 2026-06-11); normalize so persisted filters keep matching the renamed
+ * ActivityLevel/EngagementTrend values. Field-scoped — do NOT apply to
+ * membership/skill strings (a tier literally named "Casual" must not map). */
+const LEGACY_SEGMENT_VALUE_MAP: Record<string, string> = {
+  casual: 'light', occasional: 'inactive', // ActivityLevel
+  growing: 'improving', churning: 'stopped', // EngagementTrend
+}
+function normalizeLegacySegmentFilter(filter: CohortFilter): CohortFilter {
+  const mapOne = (v: unknown) => {
+    const s = String(v)
+    return LEGACY_SEGMENT_VALUE_MAP[s.toLowerCase()] ?? s
+  }
+  if (Array.isArray(filter.value)) return { ...filter, value: filter.value.map(mapOne) }
+  if (filter.value == null) return filter
+  return { ...filter, value: mapOne(filter.value) }
+}
+
 function matchesEnrichedStringFilter(actualValue: string | null | undefined, filter: CohortFilter) {
   const actual = actualValue || ''
 
@@ -1001,9 +1019,9 @@ function applyEnrichedCohortFilters(rows: any[], filters: CohortFilter[]) {
         case 'normalizedMembershipStatus':
           return matchesEnrichedStringFilter(row.normalizedMembershipStatus, filter)
         case 'activityLevel':
-          return matchesEnrichedStringFilter(row.activityLevel, filter)
+          return matchesEnrichedStringFilter(row.activityLevel, normalizeLegacySegmentFilter(filter))
         case 'engagementTrend':
-          return matchesEnrichedStringFilter(row.engagementTrend, filter)
+          return matchesEnrichedStringFilter(row.engagementTrend, normalizeLegacySegmentFilter(filter))
         case 'valueTier':
           return matchesEnrichedStringFilter(row.valueTier, filter)
         default:

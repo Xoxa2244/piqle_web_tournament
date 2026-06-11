@@ -241,7 +241,7 @@ export function renderDigestEmail(data: DigestData): { subject: string; html: st
         <div style="margin-bottom:8px;">
           ${healthBar('Healthy', data.healthy, '#10B981')}
           ${healthBar('Watch', data.watch, '#F59E0B')}
-          ${healthBar('At-Risk', data.atRisk, '#EF4444')}
+          ${healthBar('At Risk', data.atRisk, '#EF4444')}
         </div>
         <p style="margin:8px 0 0;font-size:13px;color:#CBD5E1;">
           Avg score: ${data.avgHealthScore}/100

@@ -32,7 +32,7 @@ import type { ReferralExecutionContext } from "@/lib/ai/referral-offers";
 import { buildQuickCohortSearchParams, mapMembersFiltersToQuickCohort } from "../cohorts/quick-cohort-intent";
 
 
-type Segment = "all" | "power" | "regular" | "casual" | "at-risk" | "critical";
+type Segment = "all" | "healthy" | "watch" | "at-risk" | "critical";
 
 interface Member {
   id: string;
@@ -52,8 +52,8 @@ interface Member {
   trend: "up" | "down" | "stable";
   favoriteTime: string;
   favoriteFormat: string;
-  activityLevel: 'power' | 'regular' | 'casual' | 'occasional';
-  engagementTrend: 'growing' | 'stable' | 'declining' | 'churning';
+  activityLevel: 'power' | 'regular' | 'light' | 'inactive';
+  engagementTrend: 'improving' | 'stable' | 'declining' | 'stopped';
   valueTier: 'high' | 'medium' | 'low';
   avgSessionsPerWeek: number;
   totalRevenue: number;
@@ -74,25 +74,24 @@ interface Member {
 
 
 const segmentConfig: Record<Exclude<Segment, "all">, { color: string; bg: string; label: string; tooltip: string }> = {
-  power: { color: "#8B5CF6", bg: "rgba(139,92,246,0.1)", label: "Power Player", tooltip: "4+ sessions/week, health score 80+" },
-  regular: { color: "#06B6D4", bg: "rgba(6,182,212,0.1)", label: "Regular", tooltip: "2-3 sessions/week, consistent attendance" },
-  casual: { color: "#10B981", bg: "rgba(16,185,129,0.1)", label: "Casual", tooltip: "1 session/week or less, still active" },
-  "at-risk": { color: "#F59E0B", bg: "rgba(245,158,11,0.1)", label: "At-Risk", tooltip: "Declining frequency, health score 25-49" },
-  critical: { color: "#EF4444", bg: "rgba(239,68,68,0.1)", label: "Critical", tooltip: "Health score below 25, immediate attention needed" },
+  healthy: { color: "#10B981", bg: "rgba(16,185,129,0.1)", label: "Healthy", tooltip: "Health score 60+, engaged and on-track" },
+  watch: { color: "#06B6D4", bg: "rgba(6,182,212,0.1)", label: "Watch", tooltip: "Health score 35-59, worth a nudge" },
+  "at-risk": { color: "#F59E0B", bg: "rgba(245,158,11,0.1)", label: "At Risk", tooltip: "Declining frequency, health score 15-34" },
+  critical: { color: "#EF4444", bg: "rgba(239,68,68,0.1)", label: "Critical", tooltip: "Health score below 15, immediate attention needed" },
 };
 
 const activityColors: Record<string, { bg: string; text: string }> = {
   power: { bg: "rgba(139,92,246,0.15)", text: "#A78BFA" },
   regular: { bg: "rgba(6,182,212,0.15)", text: "#22D3EE" },
-  casual: { bg: "rgba(16,185,129,0.15)", text: "#10B981" },
-  occasional: { bg: "rgba(148,163,184,0.15)", text: "#94A3B8" },
+  light: { bg: "rgba(16,185,129,0.15)", text: "#10B981" },
+  inactive: { bg: "rgba(148,163,184,0.15)", text: "#94A3B8" },
 };
-const activityLabels: Record<string, string> = { power: 'Power Player', regular: 'Regular', casual: 'Casual', occasional: 'Occasional' };
+const activityLabels: Record<string, string> = { power: 'Power Player', regular: 'Regular', light: 'Light', inactive: 'Inactive' };
 const trendColors: Record<string, { bg: string; text: string }> = {
-  growing: { bg: "rgba(16,185,129,0.15)", text: "#10B981" },
+  improving: { bg: "rgba(16,185,129,0.15)", text: "#10B981" },
   stable: { bg: "rgba(6,182,212,0.1)", text: "#67E8F9" },
   declining: { bg: "rgba(245,158,11,0.15)", text: "#F59E0B" },
-  churning: { bg: "rgba(239,68,68,0.15)", text: "#EF4444" },
+  stopped: { bg: "rgba(239,68,68,0.15)", text: "#EF4444" },
 };
 
 const normalizedMembershipTypeLabels: Record<string, string> = {
@@ -1229,19 +1228,19 @@ type MembersIQProps = {
 };
 
 function riskToSegment(risk: string): Exclude<Segment, "all"> {
-  if (risk === "healthy") return "power";
-  if (risk === "watch") return "regular";
+  if (risk === "healthy") return "healthy";
+  if (risk === "watch") return "watch";
   if (risk === "at_risk") return "at-risk";
   if (risk === "critical") return "critical";
-  return "casual";
+  return "watch";
 }
 
 function lifecycleToSegment(stage: string): Exclude<Segment, "all"> {
-  if (stage === "active") return "power";
-  if (stage === "ramping" || stage === "onboarding") return "regular";
-  if (stage === "at_risk") return "at-risk";
-  if (stage === "critical" || stage === "churned") return "critical";
-  return "casual";
+  if (stage === "active") return "healthy";
+  if (stage === "ramping" || stage === "onboarding") return "watch";
+  if (stage === "lapsing") return "at-risk";
+  if (stage === "churned") return "critical";
+  return "watch";
 }
 
 function mapRealMembers(data: any): Member[] {
@@ -1264,7 +1263,7 @@ function mapRealMembers(data: any): Member[] {
     trend: m.trend === "improving" ? "up" as const : m.trend === "declining" ? "down" as const : "stable" as const,
     favoriteTime: "",
     favoriteFormat: "",
-    activityLevel: m.segment?.activityLevel || (m.riskLevel === 'healthy' ? 'regular' : 'casual') as Member['activityLevel'],
+    activityLevel: m.segment?.activityLevel || (m.riskLevel === 'healthy' ? 'regular' : 'light') as Member['activityLevel'],
     engagementTrend: (m.segment?.trend || m.trend || 'stable') as Member['engagementTrend'],
     valueTier: (m.segment?.valueTier || 'medium') as Member['valueTier'],
     avgSessionsPerWeek: m.avgSessionsPerWeek || 0,
@@ -1445,7 +1444,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     else if (key === 'critical') setFilterRisk('critical')
     else if (key === 'vip') setFilterMembershipType('unlimited')
     else if (key === 'trial') setFilterMembershipType('trial')
-    else if (key === 'inactive') setFilterActivity('occasional')
+    else if (key === 'inactive') setFilterActivity('inactive')
     else if (key === 'power') setFilterActivity('power')
     setPage(1)
   }
@@ -1469,7 +1468,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       })
     }
     if (filterActivity !== 'all') {
-      const labelMap: Record<string, string> = { power: 'Power', regular: 'Regular', casual: 'Casual', occasional: 'Occasional' }
+      const labelMap: Record<string, string> = { power: 'Power', regular: 'Regular', light: 'Light', inactive: 'Inactive' }
       chips.push({
         key: 'activity',
         group: 'Activity',
@@ -1478,8 +1477,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       })
     }
     if (filterRisk !== 'all') {
-      // Risk uses internal segment values: power→Healthy, regular→Watch
-      const labelMap: Record<string, string> = { power: 'Healthy', regular: 'Watch', 'at-risk': 'At-Risk', critical: 'Critical' }
+      const labelMap: Record<string, string> = { healthy: 'Healthy', watch: 'Watch', 'at-risk': 'At Risk', critical: 'Critical' }
       chips.push({
         key: 'risk',
         group: 'Risk',
@@ -1542,7 +1540,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const currentPresetLabel = useMemo(() => {
     if (activeFilterCount === 0) return 'All members'
     if (activeFilterCount === 1) {
-      if (filterRisk === 'at-risk') return 'At-Risk'
+      if (filterRisk === 'at-risk') return 'At Risk'
       if (filterRisk === 'critical') return 'Critical'
       // Smart aliases for the most-used real CR tiers (case-insensitive
       // substring match — works regardless of pricing tier suffix).
@@ -1553,7 +1551,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         if (t.includes('open play')) return 'Open Play'
         if (t.includes('guest')) return 'Guest passes'
       }
-      if (filterActivity === 'occasional') return 'Inactive'
+      if (filterActivity === 'inactive') return 'Inactive'
       if (filterActivity === 'power') return 'Power players'
     }
     return 'Custom'
@@ -1639,7 +1637,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     critical: allMembers.filter(m => m.segment === 'critical').length,
     vip: allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length,
     trial: allMembers.filter(m => m.normalizedMembershipType === 'trial').length,
-    inactive: allMembers.filter(m => m.activityLevel === 'occasional').length,
+    inactive: allMembers.filter(m => m.activityLevel === 'inactive').length,
     power: allMembers.filter(m => m.activityLevel === 'power').length,
   }), [allMembers])
 
@@ -2179,8 +2177,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
         const reactivationCount = reactivationCandidates?.length || 0;
         const tabs: { key: typeof view; label: string; count?: number }[] = [
           { key: "all", label: "All Members" },
-          { key: "at-risk", label: "At-Risk", count: atRiskCount },
-          { key: "reactivation", label: "Reactivation", count: reactivationCount },
+          { key: "at-risk", label: "At Risk", count: atRiskCount },
+          { key: "reactivation", label: "Win-back", count: reactivationCount },
         ];
         return (
           <div className="flex rounded-xl overflow-hidden" style={{ border: "1px solid var(--card-border)" }}>
@@ -2380,7 +2378,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                   >
                     {[
                       { key: "all", label: "All members" },
-                      { key: "at-risk", label: "At-Risk" },
+                      { key: "at-risk", label: "At Risk" },
                       { key: "critical", label: "Critical" },
                       { key: "vip", label: "VIP" },
                       { key: "trial", label: "Trial members" },
@@ -2547,7 +2545,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                         {activityLabels[member.activityLevel]}
                       </span>
                       <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: trendColors[member.engagementTrend].bg, color: trendColors[member.engagementTrend].text, fontWeight: 600 }}>
-                        {member.engagementTrend === 'growing' ? '\u2191 Growing' : member.engagementTrend === 'declining' ? '\u2193 Declining' : member.engagementTrend === 'churning' ? '\u23F8 Churning' : '\u2192 Stable'}
+                        {member.engagementTrend === 'improving' ? '\u2191 Improving' : member.engagementTrend === 'declining' ? '\u2193 Declining' : member.engagementTrend === 'stopped' ? '\u23F8 Stopped' : '\u2192 Stable'}
                       </span>
                       {member.valueTier === 'high' && (
                         <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: "rgba(245,158,11,0.15)", color: "#F59E0B", fontWeight: 600 }}>
@@ -2736,7 +2734,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                 </div>
                 <div className="hidden md:flex flex-wrap gap-0.5">
                   <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: activityColors[member.activityLevel].bg, color: activityColors[member.activityLevel].text, fontWeight: 600 }}>{activityLabels[member.activityLevel]}</span>
-                  <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: trendColors[member.engagementTrend].bg, color: trendColors[member.engagementTrend].text, fontWeight: 600 }}>{member.engagementTrend === 'growing' ? '\u2191' : member.engagementTrend === 'declining' ? '\u2193' : member.engagementTrend === 'churning' ? '\u23F8' : '\u2192'}</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: trendColors[member.engagementTrend].bg, color: trendColors[member.engagementTrend].text, fontWeight: 600 }}>{member.engagementTrend === 'improving' ? '\u2191' : member.engagementTrend === 'declining' ? '\u2193' : member.engagementTrend === 'stopped' ? '\u23F8' : '\u2192'}</span>
                 </div>
                 <div className="text-center text-xs hidden md:block" style={{ color: "var(--t1)", fontWeight: 600 }}>{member.rating}</div>
                 <div className="text-center text-xs hidden md:block" style={{ color: "var(--t1)", fontWeight: 600 }}>{getSessionsForPeriod(member, period)}</div>
@@ -2955,7 +2953,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               tooltip: 'Average member health score (0–100). Computed by the AI model from booking frequency, recency, attendance ratio, and trend.',
             },
             {
-              label: 'At-Risk',
+              label: 'At Risk',
               value: String(atRisk),
               icon: AlertTriangle,
               gradient: 'from-orange-500 to-red-500',

@@ -151,7 +151,7 @@ export function MembersReactivationSection({
       {/* Toolbar */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <span className="text-xs" style={{ color: "var(--t3)" }}>{filtered.length} member{filtered.length !== 1 ? "s" : ""} to re-engage</span>
+          <span className="text-xs" style={{ color: "var(--t3)" }}>{filtered.length} member{filtered.length !== 1 ? "s" : ""} to win back</span>
           {onRegenerate && !hasAiProfiles && (
             <button
               onClick={onRegenerate}
