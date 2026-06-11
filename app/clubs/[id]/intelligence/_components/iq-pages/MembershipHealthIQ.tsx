@@ -31,12 +31,147 @@ const CAMPAIGN_HINT_LABEL: Record<string, string> = {
   UPSELL: 'Upsell',
   WINBACK: 'Win back',
   BILLING_AUDIT: 'Billing audit',
-  PRICE_REVIEW: 'Pricing',
+  PRICE_REVIEW: 'Price review',
+}
+
+const CAMPAIGN_HINT_COLOR: Record<string, string> = {
+  RETENTION_BOOST: '#8B5CF6',
+  UPSELL: '#10B981',
+  WINBACK: '#06B6D4',
+  BILLING_AUDIT: '#94A3B8',
+  PRICE_REVIEW: '#F59E0B',
 }
 
 // sol2-lean: CAMPAIGN_HINT_GOAL / CAMPAIGN_HINT_BUCKET (wizard deep-link
 // mappings) removed with the "Campaign" button — restore from branch Sol2
 // when Campaigns ships.
+
+// ── Money-first design atoms (Claude Design port, 2026-06-11) ──
+
+const fmtK = (n: number) =>
+  n >= 1000 ? `$${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K` : `$${Math.round(n)}`
+
+/** Short display name: drop "(Network)" + the pricing tail CR appends —
+ *  kills the truncation problem on 80-char catalog names. Full name stays
+ *  available via title tooltips. */
+function shortTierName(name: string): { core: string; net: boolean } {
+  const net = isNetworkTierName(name)
+  let core = name.replace(/\s*\(Network\)\s*$/i, '').trim()
+  core = core.split(/\s+[-—–]\s+(?=\$)/)[0]
+  core = core.split(/:\s*(?=\$)/)[0]
+  return { core: core.trim(), net }
+}
+
+/** Honesty badge — dotted-underline micro-caption with a tooltip. The
+ *  estimated/measured caveats are first-class UI, not 11px footnote-only. */
+function Honesty({ children, title }: { children: React.ReactNode; title: string }) {
+  return (
+    <span
+      title={title}
+      className="uppercase cursor-help"
+      style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', color: 'var(--t4)', borderBottom: '1px dotted var(--t4)', paddingBottom: 1 }}
+    >
+      {children}
+    </span>
+  )
+}
+
+function VerdictDot({ v }: { v: Verdict }) {
+  const c = (VERDICT_META[v] ?? VERDICT_META.tiny).color
+  return <span className="shrink-0" style={{ width: 8, height: 8, borderRadius: 99, background: c, boxShadow: `0 0 8px ${c}66`, display: 'inline-block' }} />
+}
+
+function VerdictPill({ v }: { v: Verdict }) {
+  const m = VERDICT_META[v] ?? VERDICT_META.tiny
+  return (
+    <span
+      className="inline-flex items-center uppercase"
+      style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color: m.color, background: `${m.color}24`, border: `1px solid ${m.color}40`, padding: '3px 8px', borderRadius: 6 }}
+    >
+      {m.label}
+    </span>
+  )
+}
+
+function NetPill() {
+  return (
+    <span
+      className="uppercase shrink-0"
+      title="Chain-wide package — valid at every location in the network"
+      style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', color: '#06B6D4', background: 'rgba(6,182,212,0.14)', border: '1px solid rgba(6,182,212,0.3)', padding: '2px 7px', borderRadius: 5 }}
+    >
+      Network
+    </span>
+  )
+}
+
+/**
+ * "Save audience" — the non-dead-end treatment action while Campaigns is
+ * gated. REAL: persists a dynamic audience via createCohort with the
+ * treatment's canonical filters (zombies / free power users / suspended).
+ */
+function SaveAudienceBtn({ clubId, tierName, coreName, hint, count }: {
+  clubId: string
+  tierName: string
+  coreName: string
+  hint: string
+  count: number
+}) {
+  const [saved, setSaved] = useState(false)
+  const createMutation = trpc.intelligence.createCohort.useMutation({ onSuccess: () => setSaved(true) })
+
+  const save = () => {
+    const filters =
+      hint === 'UPSELL'
+        ? [
+            { field: 'membershipType' as const, op: 'eq' as const, value: tierName },
+            { field: 'frequency' as const, op: 'gte' as const, value: 8 },
+          ]
+        : hint === 'WINBACK' || hint === 'BILLING_AUDIT'
+          ? [
+              { field: 'membershipType' as const, op: 'eq' as const, value: tierName },
+              { field: 'membershipStatus' as const, op: 'contains' as const, value: 'Suspend' },
+            ]
+          : [
+              { field: 'membershipType' as const, op: 'eq' as const, value: tierName },
+              { field: 'membershipStatus' as const, op: 'contains' as const, value: 'Active' },
+              { field: 'recency' as const, op: 'gte' as const, value: 30 },
+            ]
+    createMutation.mutate({
+      clubId,
+      name: `${CAMPAIGN_HINT_LABEL[hint] || 'Audience'} — ${coreName}`,
+      description: `Created from Membership Health treatment on "${tierName}"`,
+      filters,
+    })
+  }
+
+  if (saved) {
+    return (
+      <Link
+        href={`/clubs/${clubId}/intelligence/cohorts`}
+        className="inline-flex items-center gap-1.5 rounded-lg transition-all"
+        style={{ fontSize: 12.5, fontWeight: 600, color: '#10B981', background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.4)', padding: '8px 14px' }}
+      >
+        ✓ Saved — open in Audiences <ArrowUpRight className="w-3.5 h-3.5" />
+      </Link>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <button
+        onClick={save}
+        disabled={createMutation.isPending}
+        className="inline-flex items-center gap-1.5 rounded-lg transition-all disabled:opacity-60 hover:bg-[rgba(139,92,246,0.16)]"
+        style={{ fontSize: 12.5, fontWeight: 600, color: '#A855F7', background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.3)', padding: '8px 14px', cursor: 'pointer' }}
+      >
+        {createMutation.isPending ? 'Saving…' : <>＋ Save audience <span style={{ color: 'var(--t3)', fontWeight: 700 }}>· {count.toLocaleString()}</span></>}
+      </button>
+      {createMutation.isError && (
+        <span className="text-[11px]" style={{ color: '#EF4444' }}>Couldn&apos;t save — try again</span>
+      )}
+    </div>
+  )
+}
 
 type Treatment = {
   action: string
@@ -241,33 +376,41 @@ function TierComparePanel({
 }
 
 /**
- * Right-side drawer listing the members behind a tier card's bucket counts
- * (operator feedback 1.3 — who attends most, what each pays, upsell
- * candidates). Same window as the page, so counts match the card 1:1.
- * Clicking a row hands off to the shared MemberDetailDrawer (z-50), so this
- * drawer is hidden by the parent while a member is open.
+ * Tier drawer — Money-first redesign (Claude Design port, 2026-06-11).
+ * Top half = the design's tier overview: verdict header, MRR/at-risk
+ * callout pair with honesty badges, 2×2 stats grid, compact diagnostic +
+ * engine notes, treatments with a REAL "Save audience" action. Bottom half
+ * = the member list (bucket tabs) so every number stays one click from the
+ * people behind it. Same window as the page → counts match rows 1:1.
+ * Clicking a member hands off to MemberDetailDrawer (z-50); the parent
+ * unmounts this drawer (z-70) while it's open.
  */
-function TierDrillDrawer({
+function TierDrawer({
   clubId,
-  tierName,
-  bucket,
-  onBucketChange,
+  tier: t,
+  inNetwork,
   windowInput,
   periodDays,
   onClose,
   onOpenMember,
 }: {
   clubId: string
-  tierName: string
-  bucket: DrillBucket
-  onBucketChange: (b: DrillBucket) => void
+  tier: Tier
+  inNetwork: boolean
   windowInput: { periodDays?: number; startDate?: string; endDate?: string }
   periodDays: number
   onClose: () => void
   onOpenMember: (memberId: string) => void
 }) {
+  const { core, net } = shortTierName(t.name)
+  const vm = VERDICT_META[t.verdict] ?? VERDICT_META.tiny
+  const [bucket, setBucket] = useState<DrillBucket>(
+    t.zombieSharePct >= 25 ? 'zombies' : t.isFreeTier ? 'power' : 'active',
+  )
+  const [showDetails, setShowDetails] = useState(false)
+
   const { data, isLoading } = trpc.intelligence.getTierMembers.useQuery(
-    { clubId, tierName, bucket, ...windowInput },
+    { clubId, tierName: t.name, bucket, ...windowInput },
     { staleTime: 60_000 },
   )
 
@@ -278,6 +421,13 @@ function TierDrillDrawer({
   }, [onClose])
 
   const members = data?.members ?? []
+  const stats: Array<[string, string, string]> = [
+    ['Zombie', `${t.zombieSharePct}%`, t.zombieSharePct >= 65 ? '#EF4444' : t.zombieSharePct >= 45 ? '#F97316' : 'var(--t2)'],
+    ['Power', `${t.powerUserSharePct}%`, '#10B981'],
+    [`Bookings · ${periodDays}d`, `${t.bookingsPerActive}/member`, 'var(--t2)'],
+    ['Silent members', t.zombies.toLocaleString(), t.zombies > 0 ? '#EF4444' : 'var(--t2)'],
+  ]
+  const actionableTreatments = t.treatments.filter((tx) => tx.targetMemberCount > 0)
 
   return (
     <>
@@ -301,107 +451,243 @@ function TierDrillDrawer({
           width: 'min(520px, 100vw)',
           background: 'var(--bg, #0B0B14)',
           borderLeft: '1px solid var(--card-border)',
-          boxShadow: '-12px 0 32px rgba(0,0,0,0.35)',
+          boxShadow: '-20px 0 60px rgba(0,0,0,0.5)',
         }}
         onClick={(e) => e.stopPropagation()}
-        aria-label="Tier members panel"
+        aria-label="Tier panel"
       >
-        {/* Header */}
-        <div
-          className="px-5 py-4 sticky top-0 z-10"
-          style={{ background: 'var(--bg, #0B0B14)', borderBottom: '1px solid var(--card-border)' }}
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <Users className="w-4 h-4 shrink-0" style={{ color: 'var(--t3)' }} />
-              <h3 className="truncate" style={{ fontSize: 15, fontWeight: 700, color: 'var(--heading)' }}>{tierName}</h3>
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          {/* Header */}
+          <div className="flex items-start gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <VerdictPill v={t.verdict} />
+                {net && inNetwork && <NetPill />}
+              </div>
+              <div title={t.name} style={{ fontSize: 19, fontWeight: 800, color: 'var(--heading)', lineHeight: 1.25 }}>{core}</div>
+              <div className="text-xs mt-1.5" style={{ color: 'var(--t4)' }}>
+                {t.isFreeTier ? 'Free' : `$${t.monthlyPrice}/mo`} · {t.active.toLocaleString()} active · health {t.healthScore}/100
+              </div>
             </div>
-            <button onClick={onClose} aria-label="Close" className="p-1 rounded-lg" style={{ color: 'var(--t3)' }}>
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="text-xs mt-0.5" style={{ color: 'var(--t4)' }}>
-            {data ? (
-              <>
-                {data.totalCount.toLocaleString()} member{data.totalCount === 1 ? '' : 's'} · last {periodDays}d
-                {!data.isFreeTier && <> · ${data.monthlyPrice}/mo each (contracted)</>}
-              </>
-            ) : 'Loading…'}
-          </div>
-          {/* Bucket tabs */}
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {BUCKET_TABS.map((tab) => {
-              const active = tab.key === bucket
-              return (
-                <button
-                  key={tab.key}
-                  onClick={() => onBucketChange(tab.key)}
-                  className="px-2.5 py-1 rounded-full text-xs font-semibold transition-colors"
-                  style={{
-                    background: active ? 'var(--accent, #A855F7)' : 'var(--subtle)',
-                    color: active ? '#fff' : 'var(--t2)',
-                  }}
-                >
-                  {tab.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Member rows */}
-        <div className="flex-1 overflow-y-auto px-3 py-2">
-          {isLoading && (
-            <div className="space-y-2 px-2 py-2">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-12 rounded-xl animate-pulse" style={{ background: 'rgba(255,255,255,0.05)' }} />
-              ))}
-            </div>
-          )}
-          {!isLoading && members.length === 0 && (
-            <div className="text-sm text-center py-10" style={{ color: 'var(--t4)' }}>
-              No members in this bucket for the selected period.
-            </div>
-          )}
-          {members.map((m) => (
             <button
-              key={m.id}
-              onClick={() => onOpenMember(m.id)}
-              className="w-full text-left px-2 py-2.5 rounded-xl flex items-center justify-between gap-3 transition-colors hover:bg-white/5"
+              onClick={onClose}
+              aria-label="Close"
+              className="shrink-0 rounded-lg"
+              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--card-border)', color: 'var(--t3)', width: 30, height: 30 }}
             >
-              <div className="min-w-0">
-                <div className="truncate" style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1, var(--heading))' }}>
-                  {m.name || m.email || 'Unnamed member'}
-                </div>
-                <div className="truncate text-xs" style={{ color: 'var(--t4)' }}>
-                  {m.email || '—'}
-                  {m.joinedAt && <> · joined {new Date(m.joinedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</>}
-                </div>
-              </div>
-              <div className="text-right shrink-0">
-                <div style={{ fontSize: 13, fontWeight: 700, color: m.bookingsInWindow === 0 ? '#EF4444' : 'var(--t2)' }}>
-                  {m.bookingsInWindow} booking{m.bookingsInWindow === 1 ? '' : 's'}
-                </div>
-                <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
-                  {m.lastBookedAt ? `last ${daysAgo(m.lastBookedAt)}` : 'never played'}
-                </div>
-              </div>
+              ✕
             </button>
-          ))}
-          {data && data.totalCount > members.length && (
-            <div className="text-[11px] text-center py-2" style={{ color: 'var(--t4)' }}>
-              Showing first {members.length} of {data.totalCount.toLocaleString()} — open in Members for the full list.
+          </div>
+
+          {/* MRR callout pair */}
+          <div className="flex gap-3 mt-5">
+            <div className="flex-1 rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', padding: '14px 16px' }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: 'var(--heading)', letterSpacing: '-0.02em' }}>
+                {t.isFreeTier ? '—' : usd(t.estimatedMRR)}
+              </div>
+              <div className="mt-1">
+                <Honesty title="Active members × contracted catalog price — not actual transactions">
+                  {t.isFreeTier ? 'no MRR · free tier' : 'est. MRR'}
+                </Honesty>
+              </div>
+            </div>
+            <div className="flex-1 rounded-xl" style={{ background: t.isFreeTier ? 'rgba(16,185,129,0.06)' : 'rgba(239,68,68,0.06)', border: t.isFreeTier ? '1px solid rgba(16,185,129,0.22)' : '1px solid rgba(239,68,68,0.22)', padding: '14px 16px' }}>
+              <div style={{ fontSize: 26, fontWeight: 800, color: t.isFreeTier ? '#10B981' : '#EF4444', letterSpacing: '-0.02em' }}>
+                {t.isFreeTier ? usd(t.upsellPotentialMRRUsd) : usd(t.mrrAtRiskUsd)}
+              </div>
+              <div className="mt-1">
+                <Honesty title={t.isFreeTier ? 'Free-tier power users × cheapest paid tier price' : "Silent members × this club's measured never-return rate × price"}>
+                  {t.isFreeTier ? 'upsell potential' : 'at risk · measured'}
+                </Honesty>
+              </div>
+            </div>
+          </div>
+
+          {/* Stats grid */}
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            {stats.map(([k, val, c]) => (
+              <div key={k} className="rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', padding: '12px 14px' }}>
+                <div className="uppercase" style={{ fontSize: 10, color: 'var(--t4)', letterSpacing: '0.1em', marginBottom: 5 }}>{k}</div>
+                <div style={{ fontSize: 19, fontWeight: 700, color: c }}>{val}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Diagnostic */}
+          <div className="rounded-xl mt-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', padding: '14px 16px' }}>
+            <div style={{ fontSize: 13, color: 'var(--t2)', lineHeight: 1.6 }}>
+              <span style={{ color: vm.color, fontWeight: 700 }}>
+                {t.zombies.toLocaleString()} of {t.active.toLocaleString()} ({t.zombieSharePct}%)
+              </span>{' '}
+              have 0 bookings in the last {periodDays} days.{' '}
+              <span style={{ color: '#10B981', fontWeight: 600 }}>{t.powerUsers.toLocaleString()} power users</span> ({t.powerUserSharePct}%) are the core of this tier.
+            </div>
+            {t.diagnostics.length > 0 && (
+              <ul className="mt-2.5 pt-2.5 space-y-1" style={{ borderTop: '1px solid var(--card-border)' }}>
+                {t.diagnostics.map((d, i) => (
+                  <li key={i} className="text-[11px] flex gap-1.5" style={{ color: 'var(--t4)', lineHeight: 1.5 }}>
+                    <span>•</span>
+                    <span>{d}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Treatments + Save audience (non-dead-end while Campaigns is gated) */}
+          {actionableTreatments.length > 0 ? (
+            <div className="space-y-3 mt-4">
+              {actionableTreatments.map((tx, i) => {
+                const color = CAMPAIGN_HINT_COLOR[tx.campaignHint] || '#8B5CF6'
+                return (
+                  <div key={i} className="rounded-xl" style={{ background: 'rgba(139,92,246,0.07)', border: '1px solid rgba(139,92,246,0.22)', padding: 18 }}>
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span
+                        className="uppercase"
+                        style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', color, background: `${color}1f`, border: `1px solid ${color}40`, padding: '2px 7px', borderRadius: 5 }}
+                      >
+                        {CAMPAIGN_HINT_LABEL[tx.campaignHint] || tx.campaignHint}
+                      </span>
+                      {tx.potentialMRRImpactUsd > 0 && (
+                        <span style={{ fontSize: 15, fontWeight: 700, color: '#10B981' }}>+{usd(tx.potentialMRRImpactUsd)}/mo potential</span>
+                      )}
+                    </div>
+                    <p className="mb-4" style={{ fontSize: 13, color: 'var(--t3)', lineHeight: 1.5 }}>{tx.action}</p>
+                    {tx.campaignHint !== 'PRICE_REVIEW' && (
+                      <SaveAudienceBtn
+                        clubId={clubId}
+                        tierName={t.name}
+                        coreName={core}
+                        hint={tx.campaignHint}
+                        count={tx.targetMemberCount}
+                      />
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : t.verdict === 'healthy' ? (
+            <div className="rounded-xl mt-4 flex items-center gap-2" style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)', padding: 18, fontSize: 14, color: '#10B981', fontWeight: 600 }}>
+              ✓ Healthy — no action needed on this tier.
+            </div>
+          ) : null}
+
+          {/* Members — the people behind every number above */}
+          <div className="mt-6">
+            <div className="flex items-center gap-2 mb-2">
+              <Users className="w-4 h-4" style={{ color: 'var(--t3)' }} />
+              <span className="text-sm font-bold" style={{ color: 'var(--heading)' }}>Members</span>
+              <span className="text-xs" style={{ color: 'var(--t4)' }}>
+                {data ? `${data.totalCount.toLocaleString()} in this view · last ${periodDays}d` : '…'}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {BUCKET_TABS.map((tab) => {
+                const active = tab.key === bucket
+                return (
+                  <button
+                    key={tab.key}
+                    onClick={() => setBucket(tab.key)}
+                    className="px-2.5 py-1 rounded-full text-xs font-semibold transition-colors"
+                    style={{
+                      background: active ? 'var(--accent, #A855F7)' : 'var(--subtle)',
+                      color: active ? '#fff' : 'var(--t2)',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                )
+              })}
+            </div>
+            {isLoading && (
+              <div className="space-y-2 py-2">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 rounded-xl animate-pulse" style={{ background: 'rgba(255,255,255,0.05)' }} />
+                ))}
+              </div>
+            )}
+            {!isLoading && members.length === 0 && (
+              <div className="text-sm text-center py-8" style={{ color: 'var(--t4)' }}>
+                No members in this bucket for the selected period.
+              </div>
+            )}
+            {members.map((m) => (
+              <button
+                key={m.id}
+                onClick={() => onOpenMember(m.id)}
+                className="w-full text-left px-2 py-2.5 rounded-xl flex items-center justify-between gap-3 transition-colors hover:bg-white/5"
+              >
+                <div className="min-w-0">
+                  <div className="truncate" style={{ fontSize: 13, fontWeight: 600, color: 'var(--t1, var(--heading))' }}>
+                    {m.name || m.email || 'Unnamed member'}
+                  </div>
+                  <div className="truncate text-xs" style={{ color: 'var(--t4)' }}>
+                    {m.email || '—'}
+                    {m.joinedAt && <> · joined {new Date(m.joinedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</>}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div style={{ fontSize: 13, fontWeight: 700, color: m.bookingsInWindow === 0 ? '#EF4444' : 'var(--t2)' }}>
+                    {m.bookingsInWindow} booking{m.bookingsInWindow === 1 ? '' : 's'}
+                  </div>
+                  <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
+                    {m.lastBookedAt ? `last ${daysAgo(m.lastBookedAt)}` : 'never played'}
+                  </div>
+                </div>
+              </button>
+            ))}
+            {data && data.totalCount > members.length && (
+              <div className="text-[11px] text-center py-2" style={{ color: 'var(--t4)' }}>
+                Showing first {members.length} of {data.totalCount.toLocaleString()} — open in Members for the full list.
+              </div>
+            )}
+          </div>
+
+          {/* Tier details (catalog) */}
+          {(t.benefits.length > 0 || t.description || t.suspendDays != null) && (
+            <div className="mt-4">
+              <button
+                onClick={() => setShowDetails((s) => !s)}
+                className="inline-flex items-center gap-1 text-xs"
+                style={{ color: 'var(--t4)' }}
+              >
+                {showDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                {showDetails ? 'Hide tier details' : 'Tier details'}
+              </button>
+              {showDetails && (
+                <div className="mt-2 pt-3" style={{ borderTop: '1px solid var(--card-border)' }}>
+                  {t.description && (
+                    <p className="text-xs mb-2" style={{ color: 'var(--t3)', lineHeight: 1.5 }}>{t.description.slice(0, 280)}</p>
+                  )}
+                  <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs mb-2" style={{ color: 'var(--t3)' }}>
+                    {!t.isFreeTier && <span>${t.monthlyPrice}/mo · ${t.annualPrice}/yr</span>}
+                    {t.suspendDays != null && <span>Suspend after {t.suspendDays}d past due</span>}
+                    {t.cancelDays != null && <span>Cancel after {t.cancelDays}d past due</span>}
+                  </div>
+                  {t.benefits.length > 0 && (
+                    <ul className="space-y-0.5">
+                      {t.benefits.slice(0, 8).map((b, i) => (
+                        <li key={i} className="text-xs flex gap-1.5" style={{ color: 'var(--t2)' }}>
+                          <Sparkles className="w-3 h-3 mt-0.5 shrink-0" style={{ color: '#8B5CF6' }} />
+                          <span>{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Footer */}
         <div
-          className="px-5 py-3"
+          className="px-6 py-3 shrink-0"
           style={{ background: 'var(--bg, #0B0B14)', borderTop: '1px solid var(--card-border)' }}
         >
           <Link
-            href={`/clubs/${clubId}/intelligence/members?tier=${encodeURIComponent(tierName)}`}
+            href={`/clubs/${clubId}/intelligence/members?tier=${encodeURIComponent(t.name)}`}
             className="inline-flex items-center gap-1 text-xs font-semibold"
             style={{ color: 'var(--accent, #A855F7)' }}
           >
@@ -410,6 +696,120 @@ function TierDrillDrawer({
         </div>
       </motion.aside>
     </>
+  )
+}
+
+/**
+ * Money-first tier row (Claude Design port). Width of the bar encodes MRR
+ * share of the largest tier; the red segment is the at-risk share. Row
+ * typography scales with money so the eye lands on the biggest tiers first.
+ */
+function MoneyTierRow({
+  t,
+  maxMRR,
+  inNetwork,
+  isOpen,
+  isCompared,
+  onOpen,
+  onToggleCompare,
+}: {
+  t: Tier
+  maxMRR: number
+  inNetwork: boolean
+  isOpen: boolean
+  isCompared: boolean
+  onOpen: () => void
+  onToggleCompare: () => void
+}) {
+  const vm = VERDICT_META[t.verdict] ?? VERDICT_META.tiny
+  const { core, net } = shortTierName(t.name)
+  const barW = maxMRR > 0 ? Math.max(6, (t.estimatedMRR / maxMRR) * 100) : 6
+  const riskW = t.estimatedMRR > 0 ? Math.min(100, (t.mrrAtRiskUsd / t.estimatedMRR) * 100) : 0
+  const big = maxMRR > 0 && t.estimatedMRR >= maxMRR * 0.5 && t.estimatedMRR > 0
+  const mid = !big && maxMRR > 0 && t.estimatedMRR >= maxMRR * 0.15 && t.estimatedMRR > 0
+  const valSize = big ? 30 : mid ? 24 : 20
+
+  return (
+    <div
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen() } }}
+      className="rounded-[14px] cursor-pointer transition-all"
+      style={{
+        background: isOpen ? 'rgba(255,255,255,0.06)' : 'var(--card-bg)',
+        border: `1px solid ${isOpen ? `${vm.color}66` : 'var(--card-border)'}`,
+        borderLeft: `3px solid ${vm.color}`,
+        padding: big ? '20px 22px' : '15px 22px',
+      }}
+    >
+      <div className="flex items-center gap-4 md:gap-[18px]">
+        {/* identity */}
+        <div className="shrink-0 min-w-0" style={{ width: 240 }}>
+          <div className="flex items-center gap-2 mb-1">
+            <VerdictDot v={t.verdict} />
+            <span className="truncate" title={t.name} style={{ fontSize: 15, fontWeight: 700, color: 'var(--heading)' }}>{core}</span>
+            {net && inNetwork && <NetPill />}
+          </div>
+          <div className="text-[11px]" style={{ color: 'var(--t4)', paddingLeft: 16 }}>
+            {t.isFreeTier ? 'Free' : `$${t.monthlyPrice}/mo`} · {t.active.toLocaleString()} active · health {t.healthScore}/100
+          </div>
+        </div>
+
+        {/* proportional MRR bar */}
+        <div className="flex-1 min-w-0">
+          <div className="flex overflow-hidden" style={{ height: big ? 16 : 12, borderRadius: 8, background: 'rgba(255,255,255,0.05)' }}>
+            <div className="flex overflow-hidden" style={{ width: `${barW}%`, height: '100%', borderRadius: 8 }}>
+              <div style={{ width: `${100 - riskW}%`, background: t.estimatedMRR > 0 ? 'linear-gradient(90deg,#8B5CF6,#A855F7)' : '#94A3B8' }} />
+              <div style={{ width: `${riskW}%`, background: '#EF4444' }} title={`${usd(t.mrrAtRiskUsd)} at risk`} />
+            </div>
+          </div>
+          {t.mrrAtRiskUsd > 0 && (
+            <div className="flex items-center gap-1.5 text-[11px] mt-[5px]" style={{ color: 'var(--t4)' }}>
+              <span style={{ width: 7, height: 7, borderRadius: 99, background: '#EF4444', display: 'inline-block' }} />
+              <span style={{ color: '#EF4444', fontWeight: 600 }}>{usd(t.mrrAtRiskUsd)} at risk</span>
+              <span>· {t.zombieSharePct}% silent</span>
+            </div>
+          )}
+          {t.isFreeTier && t.upsellPotentialMRRUsd > 0 && (
+            <div className="flex items-center gap-1.5 text-[11px] mt-[5px]" style={{ color: 'var(--t4)' }}>
+              <span style={{ width: 7, height: 7, borderRadius: 99, background: '#10B981', display: 'inline-block' }} />
+              <span style={{ color: '#10B981', fontWeight: 600 }}>{usd(t.upsellPotentialMRRUsd)} upsell potential</span>
+              <span>· {t.powerUserSharePct}% power</span>
+            </div>
+          )}
+        </div>
+
+        {/* money */}
+        <div className="shrink-0 text-right" style={{ width: 110 }}>
+          <div style={{ fontSize: valSize, fontWeight: 800, color: 'var(--heading)', letterSpacing: '-0.02em', lineHeight: 1 }}>
+            {t.isFreeTier || t.estimatedMRR === 0 ? '—' : fmtK(t.estimatedMRR)}
+          </div>
+          <div className="mt-1">
+            <Honesty title="Active members × contracted catalog price — not actual transactions">
+              {t.isFreeTier || t.estimatedMRR === 0 ? 'no MRR' : 'est. MRR'}
+            </Honesty>
+          </div>
+        </div>
+
+        {/* compare + open affordances */}
+        <div className="shrink-0 flex items-center gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleCompare() }}
+            title={isCompared ? 'Remove from comparison' : 'Add to comparison (pick 2+)'}
+            className="p-1.5 rounded-lg transition-colors"
+            style={{
+              background: isCompared ? 'rgba(139,92,246,0.18)' : 'transparent',
+              color: isCompared ? '#A78BFA' : 'var(--t4)',
+              border: `1px solid ${isCompared ? 'rgba(139,92,246,0.35)' : 'var(--card-border)'}`,
+            }}
+          >
+            <GitCompareArrows className="w-3.5 h-3.5" />
+          </button>
+          <span style={{ color: isOpen ? vm.color : 'var(--t4)', fontSize: 18 }}>›</span>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -435,7 +835,6 @@ function StatTile({ label, value, sub, color }: { label: string; value: string; 
 
 export function MembershipHealthIQ({ clubId }: { clubId: string }) {
   const { isDark } = useTheme()
-  const [expanded, setExpanded] = useState<string | null>(null)
   const [period, setPeriod] = useState<PeriodValue>({ kind: 'days', days: 30 })
 
   // Default 30d sends the bare input — same cache key + byte-identical
@@ -458,11 +857,12 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
     { enabled: !!clubId, staleTime: 5 * 60_000 },
   )
 
-  // Tier drill-down (feedback 1.3): which tier+bucket is open, and which
-  // member's detail drawer is on top of it. While a member is open the tier
-  // drawer unmounts (MemberDetailDrawer sits at z-50, below our z-70) and
-  // remounts on close — the 60s query cache makes the round-trip instant.
-  const [drill, setDrill] = useState<{ tierName: string; bucket: DrillBucket } | null>(null)
+  // Tier drawer (feedback 1.3 + Money-first redesign): which tier is open,
+  // and which member's detail drawer is on top of it. While a member is open
+  // the tier drawer unmounts (MemberDetailDrawer sits at z-50, below our
+  // z-70) and remounts on close — the 60s query cache makes it instant.
+  // Stored as the tier NAME so a period switch re-resolves fresh numbers.
+  const [drillName, setDrillName] = useState<string | null>(null)
   const [drillMemberId, setDrillMemberId] = useState<string | null>(null)
   // Tier-compare selection (WS7) — pick 2+ tiers via the card checkboxes.
   const [compareSet, setCompareSet] = useState<string[]>([])
@@ -475,6 +875,15 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
         : { startDate: period.start, endDate: period.end },
     [period],
   )
+
+  // Money-first ordering: ranked by what each tier is worth. Free/empty-MRR
+  // tiers sink to the bottom (their story is upsell, not revenue).
+  const sortedTiers = useMemo(
+    () => [...tiers].sort((a, b) => (b.estimatedMRR - a.estimatedMRR) || (b.active - a.active)),
+    [tiers],
+  )
+  const maxMRR = sortedTiers.length > 0 ? Math.max(...sortedTiers.map((t) => t.estimatedMRR)) : 0
+  const drillTier = drillName ? tiers.find((t) => t.name === drillName) ?? null : null
 
   return (
     <motion.div
@@ -605,185 +1014,36 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
         />
       )}
 
-      {/* Per-tier cards */}
-      <div className="space-y-3">
-        {tiers.map((t) => {
-          const vm = VERDICT_META[t.verdict] ?? VERDICT_META.tiny
-          const isOpen = expanded === t.name
-          return (
-            <Card key={t.name}>
-              {/* Header row */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span
-                      className="text-[10px] tracking-wider uppercase px-2 py-0.5 rounded-full shrink-0"
-                      style={{ background: `${vm.color}20`, color: vm.color, fontWeight: 700 }}
-                    >
-                      {vm.label}
-                    </span>
-                    <h3 className="truncate" style={{ fontSize: "15px", fontWeight: 700, color: "var(--heading)" }}>
-                      {t.name}
-                    </h3>
-                    {networkSplit?.inNetwork && isNetworkTierName(t.name) && (
-                      <span
-                        className="text-[10px] tracking-wider uppercase px-2 py-0.5 rounded-full shrink-0"
-                        style={{ background: "rgba(6,182,212,0.15)", color: "#06B6D4", fontWeight: 700 }}
-                        title="Chain-wide package — valid at every location in the network"
-                      >
-                        Network
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs mt-1" style={{ color: "var(--t4)" }}>
-                    {t.isFreeTier ? "Free / comped / partner" : `$${t.monthlyPrice}/mo`}
-                    {" · "}health {t.healthScore}/100
-                  </div>
-                </div>
-                <div className="flex items-start gap-3 shrink-0">
-                  <div className="text-right">
-                    <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--heading)" }}>
-                      {t.isFreeTier ? "—" : usd(t.estimatedMRR)}
-                    </div>
-                    <div className="text-[11px]" style={{ color: "var(--t4)" }}>{t.isFreeTier ? "no MRR" : "MRR"}</div>
-                  </div>
-                  <button
-                    onClick={() => toggleCompare(t.name)}
-                    title={compareSet.includes(t.name) ? "Remove from comparison" : "Add to comparison (pick 2+)"}
-                    className="mt-0.5 p-1.5 rounded-lg transition-colors"
-                    style={{
-                      background: compareSet.includes(t.name) ? "rgba(139,92,246,0.18)" : "var(--subtle)",
-                      color: compareSet.includes(t.name) ? "#A78BFA" : "var(--t4)",
-                      border: `1px solid ${compareSet.includes(t.name) ? "rgba(139,92,246,0.35)" : "var(--card-border)"}`,
-                    }}
-                  >
-                    <GitCompareArrows className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Signals — chips drill into the members behind each count */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs" style={{ color: "var(--t3)" }}>
-                <button
-                  onClick={() => setDrill({ tierName: t.name, bucket: 'active' })}
-                  className="hover:underline cursor-pointer"
-                  style={{ color: 'inherit' }}
-                  title="See the members on this tier"
-                >
-                  <Activity className="w-3 h-3 inline mr-1" style={{ color: "var(--t4)" }} />{t.active.toLocaleString()} active
-                </button>
-                <button
-                  onClick={() => setDrill({ tierName: t.name, bucket: 'zombies' })}
-                  className="hover:underline cursor-pointer"
-                  style={{ color: t.zombieSharePct >= 45 ? "#EF4444" : t.zombieSharePct >= 25 ? "#F59E0B" : "var(--t3)" }}
-                  title="See the zombie members (active membership, 0 bookings)"
-                >
-                  {t.zombieSharePct}% zombie
-                </button>
-                <button
-                  onClick={() => setDrill({ tierName: t.name, bucket: 'power' })}
-                  className="hover:underline cursor-pointer"
-                  style={{ color: 'inherit' }}
-                  title="See the power users (8+ bookings/month)"
-                >
-                  {t.powerUserSharePct}% power
-                </button>
-                {t.suspendedRatePct >= 10 && (
-                  <button
-                    onClick={() => setDrill({ tierName: t.name, bucket: 'suspended' })}
-                    className="hover:underline cursor-pointer"
-                    style={{ color: "#F59E0B" }}
-                    title="See the suspended members"
-                  >
-                    {t.suspendedRatePct}% suspended
-                  </button>
-                )}
-                <span>{t.bookingsPerActive}/member · {periodDays}d</span>
-                {!t.isFreeTier && t.mrrAtRiskUsd > 0 && <span style={{ color: "#EF4444" }}>{usd(t.mrrAtRiskUsd)} at risk</span>}
-                {t.isFreeTier && t.upsellPotentialMRRUsd > 0 && <span style={{ color: "#10B981" }}>{usd(t.upsellPotentialMRRUsd)} upsell</span>}
-              </div>
-
-              {/* Diagnostics */}
-              {t.diagnostics.length > 0 && (
-                <ul className="mt-3 space-y-1">
-                  {t.diagnostics.map((d, i) => (
-                    <li key={i} className="text-xs flex gap-1.5" style={{ color: "var(--t2)", lineHeight: 1.5 }}>
-                      <span style={{ color: "var(--t4)" }}>•</span>
-                      <span>{d}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-
-              {/* Treatments */}
-              {t.treatments.length > 0 && (
-                <div className="mt-3 space-y-2">
-                  {t.treatments.map((tx, i) => (
-                    <div
-                      key={i}
-                      className="rounded-xl p-3 flex items-start justify-between gap-3"
-                      style={{ background: isDark ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.06)", border: "1px solid rgba(139,92,246,0.18)" }}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-[10px] tracking-wider uppercase px-2 py-0.5 rounded-full" style={{ background: "rgba(139,92,246,0.18)", color: "#8B5CF6", fontWeight: 700 }}>
-                            {CAMPAIGN_HINT_LABEL[tx.campaignHint] || tx.campaignHint}
-                          </span>
-                          {tx.potentialMRRImpactUsd > 0 && (
-                            <span className="text-xs" style={{ color: "#10B981", fontWeight: 700 }}>
-                              +{usd(tx.potentialMRRImpactUsd)}/mo potential
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs" style={{ color: "var(--t2)", lineHeight: 1.5 }}>{tx.action}</p>
-                      </div>
-                      {/* sol2-lean: the "Campaign" deep-link is hidden while
-                          Campaigns is gated (Coming Soon). Restore the Link
-                          (see branch Sol2) when Campaigns ships. */}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Expand: catalog detail */}
-              {(t.benefits.length > 0 || t.description || t.suspendDays != null) && (
-                <>
-                  <button
-                    onClick={() => setExpanded(isOpen ? null : t.name)}
-                    className="mt-3 inline-flex items-center gap-1 text-xs"
-                    style={{ color: "var(--t4)" }}
-                  >
-                    {isOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                    {isOpen ? "Hide details" : "Tier details"}
-                  </button>
-                  {isOpen && (
-                    <div className="mt-2 pt-3" style={{ borderTop: "1px solid var(--card-border)" }}>
-                      {t.description && (
-                        <p className="text-xs mb-2" style={{ color: "var(--t3)", lineHeight: 1.5 }}>{t.description.slice(0, 280)}</p>
-                      )}
-                      <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs mb-2" style={{ color: "var(--t3)" }}>
-                        {!t.isFreeTier && <span>${t.monthlyPrice}/mo · ${t.annualPrice}/yr</span>}
-                        {t.suspendDays != null && <span>Suspend after {t.suspendDays}d past due</span>}
-                        {t.cancelDays != null && <span>Cancel after {t.cancelDays}d past due</span>}
-                      </div>
-                      {t.benefits.length > 0 && (
-                        <ul className="space-y-0.5">
-                          {t.benefits.slice(0, 8).map((b, i) => (
-                            <li key={i} className="text-xs flex gap-1.5" style={{ color: "var(--t2)" }}>
-                              <Sparkles className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "#8B5CF6" }} />
-                              <span>{b}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  )}
-                </>
-              )}
-            </Card>
-          )
-        })}
-      </div>
+      {/* Money-first tier list (Claude Design port): ranked by what each
+          tier is worth, bar width = MRR share, red = at-risk share. Click
+          any row → tier drawer (overview + treatments + members). */}
+      {tiers.length > 0 && (
+        <div>
+          <div className="flex items-center gap-[18px] text-[11px] mb-3 flex-wrap" style={{ color: 'var(--t4)' }}>
+            <span className="flex items-center gap-1.5">
+              <span style={{ width: 18, height: 8, borderRadius: 4, background: 'linear-gradient(90deg,#8B5CF6,#A855F7)', display: 'inline-block' }} /> Secured MRR
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span style={{ width: 18, height: 8, borderRadius: 4, background: '#EF4444', display: 'inline-block' }} /> At-risk MRR
+            </span>
+            <span className="ml-auto">Bar width = share of largest tier · click any row to open</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {sortedTiers.map((t) => (
+              <MoneyTierRow
+                key={t.name}
+                t={t}
+                maxMRR={maxMRR}
+                inNetwork={!!networkSplit?.inNetwork}
+                isOpen={drillName === t.name}
+                isCompared={compareSet.includes(t.name)}
+                onOpen={() => setDrillName(t.name)}
+                onToggleCompare={() => toggleCompare(t.name)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Methodology footnote */}
       {tiers.length > 0 && (
@@ -798,17 +1058,17 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
         </p>
       )}
 
-      {/* Tier drill-down drawer (hidden while a member detail is on top) */}
+      {/* Tier drawer (hidden while a member detail is on top) */}
       <AnimatePresence>
-        {drill && !drillMemberId && (
-          <TierDrillDrawer
+        {drillTier && !drillMemberId && (
+          <TierDrawer
+            key={drillTier.name}
             clubId={clubId}
-            tierName={drill.tierName}
-            bucket={drill.bucket}
-            onBucketChange={(b) => setDrill({ tierName: drill.tierName, bucket: b })}
+            tier={drillTier}
+            inNetwork={!!networkSplit?.inNetwork}
             windowInput={windowInput}
             periodDays={periodDays}
-            onClose={() => setDrill(null)}
+            onClose={() => setDrillName(null)}
             onOpenMember={setDrillMemberId}
           />
         )}
