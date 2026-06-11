@@ -20,7 +20,7 @@ import { MemberDetailDrawer } from "../MemberDetailDrawer"
 type Verdict = 'healthy' | 'watch' | 'at_risk' | 'critical' | 'tiny'
 const VERDICT_META: Record<Verdict, { label: string; color: string }> = {
   critical: { label: 'Critical', color: '#EF4444' },
-  at_risk: { label: 'At risk', color: '#F97316' },
+  at_risk: { label: 'At Risk', color: '#F97316' },
   watch: { label: 'Watch', color: '#F59E0B' },
   healthy: { label: 'Healthy', color: '#10B981' },
   tiny: { label: 'Too small', color: '#94A3B8' },
@@ -214,7 +214,7 @@ type DrillBucket = 'all' | 'active' | 'zombies' | 'power' | 'suspended'
 const BUCKET_TABS: { key: DrillBucket; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'active', label: 'Top attendees' },
-  { key: 'zombies', label: 'Zombies' },
+  { key: 'zombies', label: 'Inactive' },
   { key: 'power', label: 'Power / upsell' },
   { key: 'suspended', label: 'Suspended' },
 ]
@@ -272,7 +272,7 @@ function TierComparePanel({
     { label: 'Est. MRR', value: (t) => (t.isFreeTier ? '—' : usd(t.estimatedMRR)) },
     { label: 'Bookings/active', value: (t) => String(t.bookingsPerActive) },
     {
-      label: 'Zombie share',
+      label: 'Inactive share',
       value: (t) => `${t.zombieSharePct}%`,
       color: (t) => (t.zombieSharePct >= 45 ? '#EF4444' : t.zombieSharePct >= 25 ? '#F59E0B' : undefined),
     },

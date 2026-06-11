@@ -168,7 +168,7 @@ function formatKpiTrend(trend: any): Pick<KpiItem, "change" | "trendTone"> {
 const emptyHealth = [
   { level: "Healthy", count: 0, pct: 0, color: "#10B981" },
   { level: "Watch", count: 0, pct: 0, color: "#F59E0B" },
-  { level: "At-Risk", count: 0, pct: 0, color: "#F97316" },
+  { level: "At Risk", count: 0, pct: 0, color: "#F97316" },
   { level: "Critical", count: 0, pct: 0, color: "#EF4444" },
 ];
 const emptyHealthMetrics = { improved: 0, improvedPct: 0, declined: 0, declinedPct: 0, avgScore: 0, avgScorePrev: 0, churnedThisPeriod: 0, churnChange: 0 };
@@ -398,7 +398,7 @@ function mapRealDataToPeriod(
     health: hs ? [
       { level: "Healthy", count: hs.healthy, pct: Math.round(hs.healthy / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#10B981" },
       { level: "Watch", count: hs.watch, pct: Math.round(hs.watch / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F59E0B" },
-      { level: "At-Risk", count: hs.atRisk, pct: Math.round(hs.atRisk / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F97316" },
+      { level: "At Risk", count: hs.atRisk, pct: Math.round(hs.atRisk / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F97316" },
       { level: "Critical", count: hs.critical, pct: Math.round(hs.critical / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#EF4444" },
     ] : emptyHealth,
     healthMetrics: hs ? { improved: 0, improvedPct: 0, declined: 0, declinedPct: 0, avgScore: hs.avgHealthScore, avgScorePrev: 0, churnedThisPeriod: 0, churnChange: 0 } : emptyHealthMetrics,

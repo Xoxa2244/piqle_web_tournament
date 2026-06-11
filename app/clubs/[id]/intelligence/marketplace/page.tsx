@@ -180,7 +180,7 @@ export default function ClubMarketplacePage() {
             </div>
             <Button onClick={publishAll} className="gap-2">
               <Globe className="w-4 h-4" />
-              Publish All Empty Slots
+              Publish All Open Spots
             </Button>
           </div>
         </div>

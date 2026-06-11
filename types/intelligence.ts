@@ -433,16 +433,15 @@ export type LifecycleStage =
   | 'onboarding'   // tenure < 14 days
   | 'ramping'      // tenure 14-60 days
   | 'active'       // tenure 60+, healthScore >= 50
-  | 'at_risk'      // healthScore 25-49
-  | 'critical'     // healthScore < 25
-  | 'churned'      // no booking 21+ days
+  | 'lapsing'      // healthScore < 50 — slipping toward churn
+  | 'churned'      // no booking 45+ days
 
 export type RiskLevel = 'healthy' | 'watch' | 'at_risk' | 'critical'
 
 // ── Multi-dimensional Segmentation ──
 
-export type ActivityLevel = 'power' | 'regular' | 'casual' | 'occasional'
-export type EngagementTrend = 'growing' | 'stable' | 'declining' | 'churning'
+export type ActivityLevel = 'power' | 'regular' | 'light' | 'inactive'
+export type EngagementTrend = 'improving' | 'stable' | 'declining' | 'stopped'
 export type ValueTier = 'high' | 'medium' | 'low'
 export type DayPattern = 'weekday' | 'weekend' | 'both'
 export type TimePref = 'morning' | 'afternoon' | 'evening' | 'mixed'

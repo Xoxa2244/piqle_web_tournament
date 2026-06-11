@@ -197,7 +197,7 @@ export function FilePreviewView({
         <Card>
           <CardContent className="pt-4 pb-4">
             <p className="text-2xl font-bold text-orange-600">{emptySlots}</p>
-            <p className="text-xs text-muted-foreground">Empty Slots</p>
+            <p className="text-xs text-muted-foreground">Open Spots</p>
           </CardContent>
         </Card>
         <Card>

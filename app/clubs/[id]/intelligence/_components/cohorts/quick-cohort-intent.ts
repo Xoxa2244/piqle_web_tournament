@@ -100,8 +100,9 @@ export function parseQuickCohortSearchParams(params: { get: (key: string) => str
 }
 
 function mapMembersRiskToQuickRisk(value: string) {
-  if (value === 'power') return 'healthy'
-  if (value === 'regular') return 'watch'
+  // Members view keys match engine RiskLevel except the hyphenated at-risk.
+  if (value === 'healthy') return 'healthy'
+  if (value === 'watch') return 'watch'
   if (value === 'at-risk') return 'at_risk'
   if (value === 'critical') return 'critical'
   return null

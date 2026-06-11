@@ -237,7 +237,7 @@ export function MembersChartsDrawer({
                       <Tooltip content={<CustomTooltip />} />
                       <Legend wrapperStyle={{ fontSize: 11 }} />
                       <Bar dataKey="reactivated" name="Reactivated" fill="#10B981" radius={[4, 4, 0, 0]} />
-                      <Line type="monotone" dataKey="atRisk" name="At-Risk" stroke="#F59E0B" strokeWidth={2} dot={{ r: 3, fill: '#F59E0B' }} />
+                      <Line type="monotone" dataKey="atRisk" name="At Risk" stroke="#F59E0B" strokeWidth={2} dot={{ r: 3, fill: '#F59E0B' }} />
                       <Line type="monotone" dataKey="churned" name="Churned" stroke="#EF4444" strokeWidth={2} dot={{ r: 3, fill: '#EF4444' }} />
                     </ComposedChart>
                   </ResponsiveContainer>
