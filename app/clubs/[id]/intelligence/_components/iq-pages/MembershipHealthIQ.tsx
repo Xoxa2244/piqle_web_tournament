@@ -579,6 +579,16 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
             prefer one location — the &ldquo;visited a sibling&rdquo; count shows actual cross-location usage. Sibling-club data is
             aggregate only.
           </p>
+          {networkSplit.perClubMembership.filledRows === 0 && (
+            <p className="text-[11px] mt-1.5 flex items-center gap-1.5" style={{ color: "#F59E0B" }}>
+              <span
+                className="w-1.5 h-1.5 rounded-full inline-block animate-pulse"
+                style={{ background: "#F59E0B" }}
+              />
+              Per-location membership detail hasn&apos;t synced yet — it updates with the next CourtReserve sync cycle
+              (within ~25 minutes).
+            </p>
+          )}
         </Card>
       )}
 

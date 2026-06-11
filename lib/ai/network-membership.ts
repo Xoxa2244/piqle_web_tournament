@@ -34,6 +34,16 @@ export type NetworkMembershipSplit = {
   }
   /** Per-tier flag so the UI can badge network tiers without re-deriving. */
   tiers: Array<{ name: string; isNetworkTier: boolean; activeMembers: number }>
+  /** Per-club membership columns on club_followers (WS6b). `filledRows` = 0
+   *  means the data hasn't landed yet (new club / fresh resync) — the UI
+   *  shows a "arrives with the next sync cycle" note. IPC was backfilled
+   *  from the global users columns on 2026-06-11; the incremental CR sync
+   *  refines per-club values as members change. */
+  perClubMembership: {
+    filledRows: number
+    totalRows: number
+    lastSyncedAt: Date | null
+  }
 }
 
 const EMPTY: NetworkMembershipSplit = {
@@ -42,6 +52,7 @@ const EMPTY: NetworkMembershipSplit = {
   siblingClubs: [],
   rollup: { networkMembers: 0, singleClubMembers: 0, multiClubMembers: 0, crossClubVisitors90d: 0 },
   tiers: [],
+  perClubMembership: { filledRows: 0, totalRows: 0, lastSyncedAt: null },
 }
 
 export async function getNetworkMembershipSplit(clubId: string): Promise<NetworkMembershipSplit> {
@@ -63,7 +74,7 @@ export async function getNetworkMembershipSplit(clubId: string): Promise<Network
 
   const since90 = new Date(Date.now() - 90 * 86_400_000)
 
-  const [tierRows, multiClubRows, crossVisitorRows] = await Promise.all([
+  const [tierRows, multiClubRows, crossVisitorRows, perClubRows] = await Promise.all([
     // Active members per tier at THIS club (same JOIN shape as getTierHealth).
     prisma.$queryRaw<Array<{ tier: string | null; active: number | bigint }>>`
       SELECT u.membership_type AS tier,
@@ -99,6 +110,13 @@ export async function getNetworkMembershipSplit(clubId: string): Promise<Network
               SELECT user_id FROM club_followers WHERE club_id = ${clubId}
             )
         `,
+    prisma.$queryRaw<Array<{ filled: number | bigint; total: number | bigint; last_synced: Date | null }>>`
+      SELECT COUNT(*) FILTER (WHERE membership_type IS NOT NULL) AS filled,
+             COUNT(*) AS total,
+             MAX(membership_synced_at) AS last_synced
+      FROM club_followers
+      WHERE club_id = ${clubId}
+    `,
   ])
 
   let networkMembers = 0
@@ -125,5 +143,10 @@ export async function getNetworkMembershipSplit(clubId: string): Promise<Network
       crossClubVisitors90d: Number(crossVisitorRows[0]?.cnt ?? 0),
     },
     tiers,
+    perClubMembership: {
+      filledRows: Number(perClubRows[0]?.filled ?? 0),
+      totalRows: Number(perClubRows[0]?.total ?? 0),
+      lastSyncedAt: perClubRows[0]?.last_synced ?? null,
+    },
   }
 }
