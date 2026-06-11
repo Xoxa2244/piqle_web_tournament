@@ -2139,7 +2139,7 @@ function CohortBuilder({
       <div className="flex items-center justify-between">
         <h2 className="text-lg" style={{ fontWeight: 700, color: 'var(--heading)' }}>
           <Filter className="w-5 h-5 inline mr-2" />
-          Create Cohort
+          Create Audience
         </h2>
         <button onClick={onClose} style={{ color: 'var(--t4)' }}><X className="w-5 h-5" /></button>
       </div>
