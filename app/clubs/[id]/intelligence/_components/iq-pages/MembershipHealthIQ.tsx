@@ -425,7 +425,7 @@ function TierDrawer({
     ['Zombie', `${t.zombieSharePct}%`, t.zombieSharePct >= 65 ? '#EF4444' : t.zombieSharePct >= 45 ? '#F97316' : 'var(--t2)'],
     ['Power', `${t.powerUserSharePct}%`, '#10B981'],
     [`Bookings · ${periodDays}d`, `${t.bookingsPerActive}/member`, 'var(--t2)'],
-    ['Silent members', t.zombies.toLocaleString(), t.zombies > 0 ? '#EF4444' : 'var(--t2)'],
+    ['Inactive members', t.zombies.toLocaleString(), t.zombies > 0 ? '#EF4444' : 'var(--t2)'],
   ]
   const actionableTreatments = t.treatments.filter((tx) => tx.targetMemberCount > 0)
 
@@ -497,7 +497,7 @@ function TierDrawer({
                 {t.isFreeTier ? usd(t.upsellPotentialMRRUsd) : usd(t.mrrAtRiskUsd)}
               </div>
               <div className="mt-1">
-                <Honesty title={t.isFreeTier ? 'Free-tier power users × cheapest paid tier price' : "Silent members × this club's measured never-return rate × price"}>
+                <Honesty title={t.isFreeTier ? 'Free-tier power users × cheapest paid tier price' : "Inactive members × this club's measured never-return rate × price"}>
                   {t.isFreeTier ? 'upsell potential' : 'at risk · measured'}
                 </Honesty>
               </div>
@@ -937,8 +937,8 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
             label="MRR at risk"
             value={usd(rollup.clubMRRAtRiskUsd)}
             sub={rollup.churnStats?.measured
-              ? `${100 - rollup.churnStats.returnRatePct}% of silent members churn (measured)`
-              : "zombies weighted by est. churn"}
+              ? `${100 - rollup.churnStats.returnRatePct}% of inactive members churn (measured)`
+              : "inactive members weighted by est. churn"}
             color={rollup.clubMRRAtRiskUsd > 0 ? "#EF4444" : undefined}
           />
           <StatTile label="Upsell potential" value={usd(rollup.clubUpsellPotentialMRRUsd)} sub="free power users" color={rollup.clubUpsellPotentialMRRUsd > 0 ? "#10B981" : undefined} />
@@ -1048,12 +1048,12 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
       {/* Methodology footnote */}
       {tiers.length > 0 && (
         <p className="text-[11px] leading-relaxed" style={{ color: "var(--t4)" }}>
-          Zombie = active subscriber with 0 bookings in the selected period ({periodDays} days). Power user = 8+ bookings/month
+          Inactive = active subscriber with 0 bookings in the selected period ({periodDays} days). Power user = 8+ bookings/month
           {periodDays !== 30 ? " (normalized to the period length)" : ""}. Est. MRR = active × monthly price
           (contracted, not actual transactions). Booking activity is counted by booking date within the period.{" "}
           {rollup?.churnStats?.measured
-            ? `MRR at risk = zombies × this club's measured churn rate (${100 - rollup.churnStats.returnRatePct}% of silent members historically never return, from ${rollup.churnStats.sample} past cases), not a blanket assumption.`
-            : `MRR at risk weights zombies by an estimated churn rate (not enough booking history yet to measure this club's actual rate).`}{" "}
+            ? `MRR at risk = inactive members × this club's measured churn rate (${100 - rollup.churnStats.returnRatePct}% of inactive members historically never return, from ${rollup.churnStats.sample} past cases), not a blanket assumption.`
+            : `MRR at risk weights inactive members by an estimated churn rate (not enough booking history yet to measure this club's actual rate).`}{" "}
           Treatment $ assumes a campaign recovers half of the at-risk — a rough guide for prioritisation, not a guarantee.
         </p>
       )}

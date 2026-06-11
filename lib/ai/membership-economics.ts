@@ -662,7 +662,7 @@ export async function getTierHealth(
               ? '🔴 At risk'
               : '🟡 Watch'
         const churnNote = churnStats.measured
-          ? `this club's history shows ~${100 - churnStats.returnRatePct}% of silent members never return`
+          ? `this club's history shows ~${100 - churnStats.returnRatePct}% of inactive members never return`
           : `assuming ~${Math.round(churnStats.churnProb * 100)}% churn (not enough history to measure this club yet)`
         diagnostics.push(
           `${severity}: ${zombies} of ${active} active subscribers (${zombieSharePct}%) have 0 bookings ${win.windowText}. At ~$${mrrAtRiskUsd.toLocaleString('en-US')}/mo MRR genuinely at risk (${churnNote}).`,
