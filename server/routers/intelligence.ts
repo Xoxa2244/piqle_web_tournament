@@ -11524,15 +11524,20 @@ Generate 3 campaign strategies with different goals and timings based on the dat
     }))
     .query(async ({ ctx, input }) => {
       await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
-      const [count, members] = await Promise.all([
-        countCohortMembers(ctx.prisma, input.clubId, input.filters),
-        queryCohortMembers(ctx.prisma, input.clubId, input.filters),
-      ])
+      // ONE resolve pass instead of Promise.all(count, rows). The two legs
+      // each ran the same heavy member query (the row limit is applied in
+      // JS after SQL, and the enriched-filter count path resolves the full
+      // list anyway) — and with connection_limit=1 per lambda the parallel
+      // copies contended for the single pooled connection until the loser
+      // hit the 10s pool timeout. First surfaced on IPC South (6.8k
+      // members) when Audiences un-gated. Counting the resolved rows is
+      // exact and halves the DB work.
+      const members = await queryCohortMembers(ctx.prisma, input.clubId, input.filters, null)
 
       return {
-        count,
+        count: members.length,
         sampleMembers: members.slice(0, 6),
-        truncated: count > members.length,
+        truncated: members.length > 6,
       }
     }),
 
