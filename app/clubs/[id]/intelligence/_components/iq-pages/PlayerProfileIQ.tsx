@@ -189,7 +189,11 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
     if (idx === -1) return null
     const start = selectedWeek
     const end = new Date(new Date(selectedWeek + 'T12:00:00').getTime() + 7 * 86400000).toISOString().slice(0, 10)
-    const sessions = timelineSessions.filter(s => s.date >= start && s.date < end)
+    // ps.date::text comes back as a full timestamp ("2026-06-02 00:00:00")
+    // — slice to the date part for both the window compare and rendering.
+    const sessions = timelineSessions
+      .map(s => ({ ...s, day: s.date.slice(0, 10) }))
+      .filter(s => s.day >= start && s.day < end)
     const prevCount = idx > 0 ? chartData[idx - 1].count : null
     return { range: chartData[idx].weekRange, sessions, count: chartData[idx].count, prevCount }
   })()
@@ -302,7 +306,7 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
                 {weekDrill.sessions.map((s, i) => (
                   <div key={i} className="flex items-center gap-3 py-1.5 text-xs" style={{ borderBottom: i < weekDrill.sessions.length - 1 ? "1px solid var(--divider)" : "none" }}>
                     <span className="shrink-0 w-14" style={{ color: "var(--t4)" }}>
-                      {new Date(s.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      {new Date(s.day + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                     </span>
                     <span className="flex-1 min-w-0 truncate" style={{ color: "var(--t2)", fontWeight: 600 }}>
                       {s.title || s.format.replace(/_/g, " ")}
