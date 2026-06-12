@@ -17,7 +17,7 @@
  */
 
 import { useEffect, useState } from 'react'
-import { DollarSign, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react'
+import { DollarSign, TrendingUp, TrendingDown, AlertTriangle, X } from 'lucide-react'
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { trpc } from '@/lib/trpc'
 import { useRevenueAnalytics } from '../../../_hooks/use-intelligence'
@@ -31,6 +31,12 @@ const FORMAT_LABELS: Record<string, string> = {
 }
 
 type RevenueFormatRow = { format: string; revenue: number; sessions: number; pct: number }
+
+type BreakdownRow = {
+  id: string; title: string; format: string; date: string; startTime: string | null
+  capacity: number; registered: number; cancelled: number; noShows: number
+  price: number; revenue: number; missed: number; expected: number; occupancyPct: number
+}
 
 // Static numbers for ?demo=true (the real query is disabled in demo mode) —
 // covers every field of the getRevenueAnalytics return the card reads.
@@ -85,6 +91,11 @@ export function SessionRevenueCard({
   const data = isDemo ? DEMO_REVENUE : realData
   const hasRevenue = !!data && data.totalRevenue > 0
   const missedOnly = !!data && data.totalRevenue === 0 && data.lostRevenue.total > 0
+  // §2.1 drill-down: per-session rows behind the headline/missed numbers.
+  // Demo data has no breakdown — the drill affordance simply hides.
+  const breakdown: BreakdownRow[] = ((data as any)?.sessionBreakdown ?? []) as BreakdownRow[]
+  const [breakdownOpen, setBreakdownOpen] = useState(false)
+  const canDrill = breakdown.length > 0
 
   // Membership MRR — the real revenue for membership-priced clubs, where
   // slot-priced sessions can legitimately be ~$0. Deferred 1.5s so the
@@ -200,10 +211,15 @@ export function SessionRevenueCard({
             ))}
           </div>
           <div
-            className="flex items-center justify-between mt-auto pt-3 text-xs"
+            role={canDrill ? 'button' : undefined}
+            tabIndex={canDrill ? 0 : undefined}
+            onClick={canDrill ? () => setBreakdownOpen(true) : undefined}
+            onKeyDown={canDrill ? (e) => { if (e.key === 'Enter' || e.key === ' ') setBreakdownOpen(true) } : undefined}
+            className={`flex items-center justify-between mt-auto pt-3 text-xs${canDrill ? ' cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
             style={{ borderTop: '1px solid var(--divider)' }}
+            title={canDrill ? 'See which sessions this comes from' : undefined}
           >
-            <span style={{ color: 'var(--t3)' }}>Missed revenue</span>
+            <span style={{ color: 'var(--t3)' }}>Missed revenue{canDrill ? ' →' : ''}</span>
             <span style={{ color: '#F59E0B', fontWeight: 700 }}>{usd(data.lostRevenue.total)}</span>
           </div>
         </div>
@@ -212,7 +228,15 @@ export function SessionRevenueCard({
           {/* Headline (sessions) + trend, with membership MRR on the right */}
           <div className="flex items-start justify-between gap-4 mb-3">
             <div className="flex items-end gap-3">
-              <span style={{ fontSize: '26px', fontWeight: 700, color: 'var(--heading)', lineHeight: 1 }}>
+              <span
+                role={canDrill ? 'button' : undefined}
+                tabIndex={canDrill ? 0 : undefined}
+                onClick={canDrill ? () => setBreakdownOpen(true) : undefined}
+                onKeyDown={canDrill ? (e) => { if (e.key === 'Enter' || e.key === ' ') setBreakdownOpen(true) } : undefined}
+                className={canDrill ? 'cursor-pointer hover:underline decoration-dotted underline-offset-4' : undefined}
+                title={canDrill ? 'See which sessions make up this number' : undefined}
+                style={{ fontSize: '26px', fontWeight: 700, color: 'var(--heading)', lineHeight: 1 }}
+              >
                 {usd(data.totalRevenue)}
               </span>
               {data.prevTotalRevenue > 0 && (() => {
@@ -284,20 +308,124 @@ export function SessionRevenueCard({
               flush when the grid stretches this card to the donut's height */}
           {data.lostRevenue.total > 0 && (
             <div
-              className="flex items-center justify-between gap-2 mt-auto pt-3 text-xs"
+              role={canDrill ? 'button' : undefined}
+              tabIndex={canDrill ? 0 : undefined}
+              onClick={canDrill ? () => setBreakdownOpen(true) : undefined}
+              onKeyDown={canDrill ? (e) => { if (e.key === 'Enter' || e.key === ' ') setBreakdownOpen(true) } : undefined}
+              className={`flex items-center justify-between gap-2 mt-auto pt-3 text-xs${canDrill ? ' cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
               style={{ borderTop: '1px solid var(--divider)' }}
             >
               <span
                 style={{ color: 'var(--t3)' }}
                 title={`Empty seats ${usd(data.lostRevenue.emptySlots)} · cancellations ${usd(data.lostRevenue.cancelled)} · no-shows ${usd(data.lostRevenue.noShows)}`}
               >
-                Missed revenue
+                Missed revenue{canDrill ? ' →' : ''}
               </span>
               <span style={{ color: '#F59E0B', fontWeight: 700 }}>{usd(data.lostRevenue.total)}</span>
             </div>
           )}
         </div>
       )}
+
+      {/* §2.1 — per-session revenue breakdown modal */}
+      {breakdownOpen && data && (
+        <RevenueBreakdownModal
+          rows={breakdown}
+          totals={{ collected: data.totalRevenue, missed: data.lostRevenue.total }}
+          lost={data.lostRevenue}
+          periodLabel={periodLabel}
+          onClose={() => setBreakdownOpen(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── §2.1 Revenue breakdown modal ──
+// Answers "where does this number come from": one row per priced session,
+// actual vs missed vs expected, fill, with the money leaks sorted first.
+function RevenueBreakdownModal({
+  rows,
+  totals,
+  lost,
+  periodLabel,
+  onClose,
+}: {
+  rows: BreakdownRow[]
+  totals: { collected: number; missed: number }
+  lost: { emptySlots: number; cancelled: number; noShows: number; total: number }
+  periodLabel: string
+  onClose: () => void
+}) {
+  const expected = rows.reduce((s, r) => s + r.expected, 0)
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(2,6,23,0.86)' }} onClick={onClose}>
+      <div
+        className="w-full max-w-3xl max-h-[88vh] flex flex-col rounded-2xl overflow-hidden"
+        style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', boxShadow: '0 25px 50px rgba(0,0,0,0.35)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--card-border)' }}>
+          <div>
+            <h2 className="text-sm" style={{ fontWeight: 700, color: 'var(--heading)' }}>Session revenue breakdown</h2>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--t4)' }}>{periodLabel} · priced sessions only · sorted by missed revenue</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg transition-colors hover:bg-white/10" aria-label="Close">
+            <X className="w-4 h-4" style={{ color: 'var(--t3)' }} />
+          </button>
+        </div>
+
+        {/* Totals strip */}
+        <div className="grid grid-cols-3 gap-3 px-6 py-3" style={{ borderBottom: '1px solid var(--card-border)' }}>
+          {[
+            { label: 'Collected', value: usd(totals.collected), color: '#10B981' },
+            { label: 'Missed', value: usd(totals.missed), color: '#F59E0B' },
+            { label: 'Expected at full capacity', value: usd(expected), color: 'var(--t1)' },
+          ].map(t => (
+            <div key={t.label}>
+              <div className="text-[10px] uppercase tracking-wider" style={{ color: 'var(--t4)', fontWeight: 700 }}>{t.label}</div>
+              <div className="text-base mt-0.5" style={{ color: t.color, fontWeight: 700 }}>{t.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Session rows */}
+        <div className="flex-1 overflow-y-auto px-6 py-3">
+          {rows.length === 0 ? (
+            <p className="text-sm py-8 text-center" style={{ color: 'var(--t4)' }}>
+              No priced sessions in this period.
+            </p>
+          ) : (
+            <div className="space-y-1">
+              {rows.map(r => (
+                <div key={r.id} className="flex items-center gap-3 py-2 text-xs" style={{ borderBottom: '1px solid var(--divider)' }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate" style={{ color: 'var(--t1)', fontWeight: 600 }}>{r.title}</div>
+                    <div className="text-[10px] mt-0.5" style={{ color: 'var(--t4)' }}>
+                      {fmtDay(r.date)}{r.startTime ? ` · ${r.startTime}` : ''} · {FORMAT_LABELS[r.format] ?? r.format} · {usd(r.price)}/slot
+                    </div>
+                  </div>
+                  <div className="shrink-0 w-20 text-right">
+                    <div style={{ color: 'var(--t2)', fontWeight: 600 }}>{r.registered}/{r.capacity}</div>
+                    <div className="text-[10px]" style={{ color: 'var(--t4)' }}>{r.occupancyPct}% full</div>
+                  </div>
+                  <div className="shrink-0 w-20 text-right" style={{ color: '#10B981', fontWeight: 600 }}>{usd(r.revenue)}</div>
+                  <div className="shrink-0 w-20 text-right" style={{ color: r.missed > 0 ? '#F59E0B' : 'var(--t4)', fontWeight: 600 }}>
+                    {r.missed > 0 ? `−${usd(r.missed)}` : '—'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Honest formula footer */}
+        <div className="px-6 py-3 text-[11px]" style={{ borderTop: '1px solid var(--card-border)', color: 'var(--t4)' }}>
+          Revenue = price per slot × confirmed registrations. Missed = empty seats {usd(lost.emptySlots)} + cancellations {usd(lost.cancelled)} + no-shows {usd(lost.noShows)}.
+          Unpriced sessions (e.g. membership-covered open play) aren&apos;t listed — they contribute $0 to every number here.
+          To act on an underfilled session, open it in Schedule and use the suggested-players invite.
+        </div>
+      </div>
     </div>
   )
 }
