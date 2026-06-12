@@ -1,4 +1,5 @@
-import { streamText, convertToModelMessages } from 'ai';
+import { streamText, convertToModelMessages, stepCountIs } from 'ai';
+import { createAdvisorMemberTools } from '@/lib/ai/advisor-member-tools';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -778,10 +779,13 @@ When answering about sessions with open spots today or tonight:
     const primaryModel = process.env.AI_PRIMARY_MODEL || 'gpt-4o';
     const fallbackModelName = process.env.AI_FALLBACK_MODEL || 'claude-3-5-haiku-20241022';
 
-    // Tools disabled for now — AI SDK v6 streamText doesn't support maxSteps,
-    // so tool results can't be fed back to LLM for text generation.
-    // RAG context provides all club data the LLM needs to answer questions.
-    // TODO: Re-enable when AI SDK adds maxSteps support to streamText.
+    // On-demand member tools (Layer 2): the model can fetch the REAL next
+    // page / sort / filter of a tier's members instead of fabricating when
+    // the prefetched roster sample is exhausted. stepCountIs(N) enables the
+    // multi-step loop (tool call → result → final text). Single jsonSchema
+    // tool to keep blast radius small and dodge the repo's Zod-serialization
+    // issue on Vercel (see lib/ai/advisor-member-tools.ts).
+    const advisorTools = createAdvisorMemberTools(clubId);
 
     let result;
     try {
@@ -789,20 +793,24 @@ When answering about sessions with open spots today or tonight:
         model: getModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
+        tools: advisorTools,
+        stopWhen: stepCountIs(5),
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, primaryModel),
       });
-      console.log(`[AI Chat] Stream started with model=${primaryModel}`);
+      console.log(`[AI Chat] Stream started with model=${primaryModel} (tools on)`);
     } catch (error) {
       console.warn('[AI Chat] Primary model failed, trying fallback:', error instanceof Error ? error.message : error);
       result = streamText({
         model: getFallbackModel('standard'),
         system: systemPrompt,
         messages: modelMessages,
+        tools: advisorTools,
+        stopWhen: stepCountIs(5),
         maxOutputTokens: 2500,
         onFinish: async (event) => persistMessages(event, fallbackModelName, true),
       });
-      console.log(`[AI Chat] Stream started with fallback model=${fallbackModelName}`);
+      console.log(`[AI Chat] Stream started with fallback model=${fallbackModelName} (tools on)`);
     }
 
     // 11. Return streaming response
