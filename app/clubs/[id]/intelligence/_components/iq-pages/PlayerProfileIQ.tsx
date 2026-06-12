@@ -1,5 +1,5 @@
 'use client'
-import React from "react"
+import React, { useState } from "react"
 import { motion } from "motion/react"
 import {
   ArrowLeft, Calendar, Clock, MapPin, Trophy,
@@ -117,6 +117,9 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
   const searchParams = useSearchParams()
   const isDemo = searchParams.get('demo') === 'true'
   const { data, isLoading } = trpc.intelligence.getPlayerProfile.useQuery({ userId, clubId }, { enabled: !isDemo })
+  // §8.3: week selected on the Activity Timeline — drilldown panel below
+  // the chart. Hook sits before the early returns (rules of hooks).
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null)
 
   if (isLoading) {
     return (
@@ -140,6 +143,9 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
 
   if (!data) return null
   const { player, activity, patterns, risk, recentSessions } = data
+  // Optional on older cached payloads — guard with ?? [].
+  const timelineSessions: Array<{ date: string; title: string | null; format: string; court: string; startTime: string | null; endTime: string | null; status: string }> =
+    (data as any).timelineSessions ?? []
   const lastPlayedDays = daysSince(player.lastPlayed)
   const memberSinceDate = formatDate(player.memberSince)
   const riskCfg = RISK_COLORS[risk.level]
@@ -169,10 +175,24 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
       // ("Apr 27 – May 3") get a wider label, recharts auto-thins them.
       week: weekRange,
       weekRange,
+      weekStart: w.week,
       count: w.count,
       isRecent: w.week >= fourWeeksAgo,
     }
   })
+
+  // §8.3 drilldown: sessions inside the selected week + delta vs the
+  // previous week, filtered client-side from the 90-day session list.
+  const weekDrill = (() => {
+    if (!selectedWeek) return null
+    const idx = chartData.findIndex(c => c.weekStart === selectedWeek)
+    if (idx === -1) return null
+    const start = selectedWeek
+    const end = new Date(new Date(selectedWeek + 'T12:00:00').getTime() + 7 * 86400000).toISOString().slice(0, 10)
+    const sessions = timelineSessions.filter(s => s.date >= start && s.date < end)
+    const prevCount = idx > 0 ? chartData[idx - 1].count : null
+    return { range: chartData[idx].weekRange, sessions, count: chartData[idx].count, prevCount }
+  })()
 
   const TrendIcon = activity.trend === "increasing" ? TrendingUp : activity.trend === "declining" ? TrendingDown : Minus
   const trendColor = activity.trend === "increasing" ? "#10B981" : activity.trend === "declining" ? "#EF4444" : "#06B6D4"
@@ -234,9 +254,22 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
               <XAxis dataKey="week" stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 10 }} />
               <YAxis stroke="var(--chart-axis)" tick={{ fill: "var(--chart-tick)", fontSize: 11 }} allowDecimals={false} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="count" name="Sessions" radius={[6, 6, 0, 0]}>
+              {/* §8.3: bar click selects the week and opens the drilldown below */}
+              <Bar
+                dataKey="count"
+                name="Sessions"
+                radius={[6, 6, 0, 0]}
+                cursor="pointer"
+                onClick={(d: any) => {
+                  const ws = d?.payload?.weekStart ?? d?.weekStart
+                  if (ws) setSelectedWeek(prev => prev === ws ? null : ws)
+                }}
+              >
                 {chartData.map((entry, idx) => (
-                  <Cell key={idx} fill={entry.isRecent ? "#8B5CF6" : "#8B5CF640"} />
+                  <Cell
+                    key={idx}
+                    fill={entry.weekStart === selectedWeek ? "#06B6D4" : entry.isRecent ? "#8B5CF6" : "#8B5CF640"}
+                  />
                 ))}
               </Bar>
             </BarChart>
@@ -244,7 +277,49 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
         ) : (
           <div className="flex items-center justify-center h-32 text-xs" style={{ color: "var(--t4)" }}>No activity data in the last 90 days</div>
         )}
-        <p className="text-[10px] mt-2" style={{ color: "var(--t4)" }}>Last 12 weeks &middot; Highlighted bars = last 4 weeks</p>
+        <p className="text-[10px] mt-2" style={{ color: "var(--t4)" }}>Last 12 weeks &middot; Highlighted bars = last 4 weeks &middot; Click a week for details</p>
+
+        {/* §8.3: per-week drilldown */}
+        {weekDrill && (
+          <div className="mt-4 rounded-xl p-4" style={{ background: "var(--subtle)", border: "1px solid var(--card-border)" }}>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div className="text-xs" style={{ fontWeight: 700, color: "var(--heading)" }}>
+                Week of {weekDrill.range} · {weekDrill.count} session{weekDrill.count === 1 ? "" : "s"}
+                {weekDrill.prevCount != null && (
+                  <span className="ml-2" style={{ color: weekDrill.count >= weekDrill.prevCount ? "#10B981" : "#EF4444", fontWeight: 600 }}>
+                    {weekDrill.count >= weekDrill.prevCount ? "+" : ""}{weekDrill.count - weekDrill.prevCount} vs prior week
+                  </span>
+                )}
+              </div>
+              <button onClick={() => setSelectedWeek(null)} className="text-[10px]" style={{ color: "var(--t4)" }}>close ×</button>
+            </div>
+            {weekDrill.sessions.length === 0 ? (
+              <p className="text-xs py-2" style={{ color: "var(--t4)" }}>
+                No session details available for this week.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {weekDrill.sessions.map((s, i) => (
+                  <div key={i} className="flex items-center gap-3 py-1.5 text-xs" style={{ borderBottom: i < weekDrill.sessions.length - 1 ? "1px solid var(--divider)" : "none" }}>
+                    <span className="shrink-0 w-14" style={{ color: "var(--t4)" }}>
+                      {new Date(s.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </span>
+                    <span className="flex-1 min-w-0 truncate" style={{ color: "var(--t2)", fontWeight: 600 }}>
+                      {s.title || s.format.replace(/_/g, " ")}
+                    </span>
+                    <span className="shrink-0" style={{ color: "var(--t4)" }}>{s.court}</span>
+                    <span className="shrink-0 w-24 text-right" style={{ color: "var(--t4)" }}>
+                      {s.startTime}{s.endTime ? `–${s.endTime}` : ""}
+                    </span>
+                    {s.status === "CANCELLED" && (
+                      <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.12)", color: "#EF4444", fontWeight: 600 }}>cancelled</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </Card>
 
       {/* Section 3: Play Patterns */}

@@ -9073,6 +9073,7 @@ export const intelligenceRouter = createTRPCRouter({
         courtRows,
         recentRows,
         gapRows,
+        timelineRows,
       ] = await Promise.all([
         // 1. Player info
         //   • lastPlayed: MAX(ps.date) of CONFIRMED bookings that have
@@ -9188,6 +9189,27 @@ export const intelligenceRouter = createTRPCRouter({
             AND ps.date <= CURRENT_DATE
           ORDER BY ps.date DESC
         `, userId, clubId),
+
+        // 9. Full session list behind the 12-week Activity Timeline —
+        // powers the per-week drilldown (operator feedback v2.0 §8.3).
+        // CANCELLED rows included (the drilldown reports cancellations);
+        // same played-only date gate as the chart query above.
+        db.$queryRawUnsafe<any[]>(`
+          SELECT ps.date::text, ps.title,
+            ps.format::text as format,
+            COALESCE(cc.name, 'N/A') as court,
+            ps."startTime",
+            ps."endTime",
+            b.status::text as status
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          LEFT JOIN club_courts cc ON cc.id = ps."courtId"
+          WHERE b."userId"::text = $1 AND ps."clubId"::text = $2            AND b.status::text IN ('CONFIRMED', 'CANCELLED')
+            AND ps.date >= NOW() - INTERVAL '90 days'
+            AND ps.date <= CURRENT_DATE
+          ORDER BY ps.date DESC, ps."startTime" DESC
+          LIMIT 400
+        `, userId, clubId),
       ])
 
       const player = playerRows[0] || { id: userId, name: 'Unknown', email: '', image: null, memberSince: null, lastPlayed: null, totalSessions: 0, healthScore: null }
@@ -9237,6 +9259,10 @@ export const intelligenceRouter = createTRPCRouter({
         recentSessions: recentRows.map((r: any) => ({
           date: r.date, format: r.format, court: r.court,
           startTime: r.startTime, endTime: r.endTime, skillLevel: r.skillLevel,
+        })),
+        timelineSessions: timelineRows.map((r: any) => ({
+          date: r.date, title: r.title, format: r.format, court: r.court,
+          startTime: r.startTime, endTime: r.endTime, status: r.status,
         })),
       }
     }),
