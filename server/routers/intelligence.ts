@@ -5608,6 +5608,7 @@ export const intelligenceRouter = createTRPCRouter({
           noShowAgg,
           lastConfirmedAgg,
           preferences,
+          lifetimeRevenueAgg,
         ] = await Promise.all([
           // A — last 90 days with full data for per-window scoring
           ctx.prisma.playSessionBooking.findMany({
@@ -5674,6 +5675,18 @@ export const intelligenceRouter = createTRPCRouter({
           ctx.prisma.userPlayPreference.findMany({
             where: { clubId: input.clubId, userId: { in: userIds } },
           }),
+
+          // B5 — lifetime CONFIRMED revenue per user (Σ session pricePerSlot).
+          // Raw SQL because typed groupBy can't SUM a joined field. Identifier
+          // style copied from getZombieChurnRate (quoted camelCase, plain text
+          // params — NO ::uuid casts; prod clubId columns are TEXT, see above).
+          ctx.prisma.$queryRaw<Array<{ uid: string; revenue: number }>>`
+            SELECT psb."userId" AS uid, COALESCE(SUM(ps."pricePerSlot"), 0)::float AS revenue
+            FROM play_session_bookings psb
+            JOIN play_sessions ps ON ps.id = psb."sessionId"
+            WHERE ps."clubId" = ${input.clubId} AND psb.status = 'CONFIRMED'
+            GROUP BY psb."userId"
+          `,
         ])
 
         log.info(
@@ -5686,6 +5699,7 @@ export const intelligenceRouter = createTRPCRouter({
         const cancelledMap = new Map(cancelledAgg.map(a => [a.userId, a._count._all]))
         const noShowMap = new Map(noShowAgg.map(a => [a.userId, a._count._all]))
         const lastConfirmedMap = new Map(lastConfirmedAgg.map(a => [a.userId, a._max.bookedAt]))
+        const lifetimeRevenueMap = new Map(lifetimeRevenueAgg.map(r => [r.uid, Number(r.revenue) || 0]))
         const recentByUser = new Map<string, typeof recentBookings>()
         for (const b of recentBookings) {
           if (!recentByUser.has(b.userId)) recentByUser.set(b.userId, [])
@@ -5770,6 +5784,9 @@ export const intelligenceRouter = createTRPCRouter({
               f.user.membershipType,
               f.user.membershipStatus,
             ),
+            // True lifetime revenue (B5) — overrides the 90d-window sum the
+            // engine would otherwise approximate from bookingsWithSessions.
+            lifetimeRevenue: lifetimeRevenueMap.get(f.userId),
             bookingsWithSessions: userRecent.map(b => ({
               date: (b as any).playSession?.date ?? b.bookedAt,
               startTime: (b as any).playSession?.startTime ?? '12:00',

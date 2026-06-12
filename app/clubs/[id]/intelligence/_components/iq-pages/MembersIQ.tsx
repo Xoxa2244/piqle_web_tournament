@@ -73,6 +73,16 @@ interface Member {
 }
 
 
+/** CR catalog names carry pricing tails ("Premium — $89/mo") and "(Network)"
+ *  suffixes that turn row chips into noise — same trimming rule as the
+ *  Membership Health Money-first list (shortTierName). Full name in tooltip. */
+function shortMembershipName(name: string): string {
+  let core = name.replace(/\s*\(Network\)\s*$/i, '').trim()
+  core = core.split(/\s+[-—–]\s+(?=\$)/)[0]
+  core = core.split(/:\s*(?=\$)/)[0]
+  return core.trim()
+}
+
 const segmentConfig: Record<Exclude<Segment, "all">, { color: string; bg: string; label: string; tooltip: string }> = {
   healthy: { color: "#10B981", bg: "rgba(16,185,129,0.1)", label: "Healthy", tooltip: "Health score 60+, engaged and on-track" },
   watch: { color: "#06B6D4", bg: "rgba(6,182,212,0.1)", label: "Watch", tooltip: "Health score 35-59, worth a nudge" },
@@ -1259,7 +1269,7 @@ function mapRealMembers(data: any): Member[] {
     totalSessions: m.totalBookings || 0,
     memberSince: m.joinedDaysAgo ? `${Math.round(m.joinedDaysAgo / 30)}mo ago` : "N/A",
     lastPlayed: m.daysSinceLastBooking != null ? (m.daysSinceLastBooking === 0 ? "Today" : m.daysSinceLastBooking === 1 ? "Yesterday" : `${m.daysSinceLastBooking} days ago`) : "N/A",
-    revenue: 0, // not available in health data
+    revenue: Math.round(m.totalRevenue || 0), // lifetime booking revenue (B5 aggregate via health engine)
     trend: m.trend === "improving" ? "up" as const : m.trend === "declining" ? "down" as const : "stable" as const,
     favoriteTime: "",
     favoriteFormat: "",
@@ -2724,8 +2734,14 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                   </div>
                   <div className="text-[10px] flex flex-wrap gap-1.5" style={{ color: "var(--t4)" }}>
                     <span>{member.sport}</span>
-                    {formatNormalizedMembershipType(member.normalizedMembershipType) && (
-                      <span>{formatNormalizedMembershipType(member.normalizedMembershipType)}</span>
+                    {(member.membershipType || formatNormalizedMembershipType(member.normalizedMembershipType)) && (
+                      <span
+                        title={member.membershipType ?? undefined}
+                        className="px-1.5 py-px rounded"
+                        style={{ background: 'rgba(139,92,246,0.12)', color: '#A78BFA', fontWeight: 600 }}
+                      >
+                        {member.membershipType ? shortMembershipName(member.membershipType) : formatNormalizedMembershipType(member.normalizedMembershipType)}
+                      </span>
                     )}
                     {formatNormalizedMembershipStatus(member.normalizedMembershipStatus) && member.normalizedMembershipStatus !== 'active' && (
                       <span>{formatNormalizedMembershipStatus(member.normalizedMembershipStatus)}</span>
@@ -2904,7 +2920,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           const vip = allMembers.filter(m => m.normalizedMembershipType === 'unlimited').length;
           const avgHealth = allMembers.length > 0 ? Math.round(allMembers.reduce((s, m) => s + m.healthScore, 0) / allMembers.length) : 0;
           const atRisk = allMembers.filter(m => m.segment === 'at-risk' || m.segment === 'critical').length;
-          const ltvTotalCents = allMembers.reduce((s, m) => s + (m.totalRevenue || 0), 0);
+          // totalRevenue from the health engine is in DOLLARS (Σ pricePerSlot).
+          const ltvTotalUsd = allMembers.reduce((s, m) => s + (m.totalRevenue || 0), 0);
 
           const fmtDelta = (delta: number | null | undefined, label = 'vs last') => {
             if (delta == null) return { text: '—', color: 'var(--t4)' };
@@ -2923,9 +2940,9 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
             return { text: `${text} vs last`, color };
           };
 
-          const ltvDisplay = ltvTotalCents >= 100_000
-            ? `$${(ltvTotalCents / 100_000).toFixed(1)}K`
-            : `$${Math.round(ltvTotalCents / 100)}`;
+          const ltvDisplay = ltvTotalUsd >= 1000
+            ? `$${(ltvTotalUsd / 1000).toFixed(1)}K`
+            : `$${Math.round(ltvTotalUsd)}`;
 
           // Each KPI carries a tooltip with its precise definition. We
           // surface "Active Subscribers" (subscription_status='Active'
