@@ -404,7 +404,7 @@ ${(courtOcc.quietestSlots as any[]).slice(0, 5).map((s: any) => `- ${s.slot}: ${
 Healthy: ${s.healthy} | Watch: ${s.watch} | At-Risk: ${s.atRisk} | Critical: ${s.critical} | Churned: ${s.churned}
 Average health score: ${s.avgHealthScore}
 
-Most active members (by total bookings):
+Most active members CLUB-WIDE by total bookings (across ALL tiers — do NOT attribute these names to any specific membership tier; for per-tier members use the "Members by Tier" section):
 ${mostActive.map((m: any) => `- ${m.name}: ${m.totalBookings} bookings, score ${m.healthScore}, ${m.riskLevel}, trend: ${m.trend}`).join('\n')}
 
 Most at-risk members (lowest health scores):
