@@ -680,7 +680,9 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
 
                 {error && (
                   <div className="rounded-xl px-3 py-2" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                    <p className="text-xs" style={{ color: "#F87171" }}>{error.message || 'Failed to get a response.'}</p>
+                    {/* §7.1: no raw error text in chat — log it, show a clean fallback */}
+                    {(() => { console.error('[chat-widget]', error); return null })()}
+                    <p className="text-xs" style={{ color: "#F87171" }}>Something went wrong — please try again.</p>
                   </div>
                 )}
 
