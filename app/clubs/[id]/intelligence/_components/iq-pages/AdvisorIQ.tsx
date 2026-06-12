@@ -658,7 +658,14 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
     status,
     error,
     setMessages,
-  } = useChat({ transport });
+  } = useChat({
+    transport,
+    // Throttle chunk-driven re-renders (official AI SDK fix for React #185
+    // "Maximum update depth exceeded"): without it every SSE chunk re-renders,
+    // and a dense network burst + our [messages] sync effects blow React's
+    // update-depth limit — the flaky "Sorry, I encountered an error" in chat.
+    experimental_throttle: 50,
+  });
 
   // Combines useChat streaming status with the out-of-band advisor-action
   // POST so every place that cares about "AI is working" (send button
