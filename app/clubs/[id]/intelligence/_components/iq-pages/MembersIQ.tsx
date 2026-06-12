@@ -69,6 +69,8 @@ interface Member {
   zipCode: string | null;
   /** Confirmed bookings in the last 30 days (real window count, unlike sessionsThisMonth which carries lifetime totals). */
   bookingsLast30: number;
+  /** Raw days since last confirmed booking — sortable twin of the display string lastPlayed (additional edits §3). */
+  daysSinceLastPlayed: number | null;
 }
 
 
@@ -1289,6 +1291,7 @@ function mapRealMembers(data: any): Member[] {
     city: m.member?.city ?? null,
     zipCode: m.member?.zipCode ?? null,
     bookingsLast30: m.bookingsLast30 ?? 0,
+    daysSinceLastPlayed: m.daysSinceLastBooking ?? null,
   }));
 }
 
@@ -1394,7 +1397,11 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
     [membershipFacetsQuery.data],
   )
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<"name" | "health" | "revenue" | "sessions">("health");
+  // Additional edits §3: filter-then-prioritize — operational sort keys
+  // beyond the original four (e.g. "filter inactive, sort by revenue").
+  const [sortBy, setSortBy] = useState<
+    "name" | "health" | "revenue" | "sessions" | "last visit" | "trend" | "frequency" | "tier" | "segment" | "skill"
+  >("health");
   // P2-T2: viewMode defaults to "list" (compact rows, scales to 500+ members),
   // persisted per user via localStorage. Grid mode kept as alternative for
   // working with 2-3 members at a time. "Cards" mode planned but not yet
@@ -1707,6 +1714,38 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
       if (sortBy === "health") return b.healthScore - a.healthScore;
       if (sortBy === "revenue") return b.revenue - a.revenue;
       if (sortBy === "sessions") return b.sessionsThisMonth - a.sessionsThisMonth;
+      // §3 operational keys. Risk-first ordering on trend/segment — the
+      // members who need action lead the list; nulls always sink.
+      if (sortBy === "last visit") {
+        const av = a.daysSinceLastPlayed, bv = b.daysSinceLastPlayed;
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return av - bv; // most recent first
+      }
+      if (sortBy === "trend") {
+        const rank: Record<Member["engagementTrend"], number> = { stopped: 0, declining: 1, stable: 2, improving: 3 };
+        return rank[a.engagementTrend] - rank[b.engagementTrend];
+      }
+      if (sortBy === "frequency") return b.avgSessionsPerWeek - a.avgSessionsPerWeek;
+      if (sortBy === "tier") {
+        if (!a.membershipType && !b.membershipType) return 0;
+        if (!a.membershipType) return 1;
+        if (!b.membershipType) return -1;
+        return a.membershipType.localeCompare(b.membershipType);
+      }
+      if (sortBy === "segment") {
+        const rank: Record<Member["segment"], number> = { critical: 0, "at-risk": 1, watch: 2, healthy: 3 };
+        return rank[a.segment] - rank[b.segment];
+      }
+      if (sortBy === "skill") {
+        // CR skill strings start with the rating band ("3.5-3.99 (Competitive)") —
+        // reverse-lexical ≈ highest skill first; unrated members sink.
+        if (!a.skillLevel && !b.skillLevel) return 0;
+        if (!a.skillLevel) return 1;
+        if (!b.skillLevel) return -1;
+        return b.skillLevel.localeCompare(a.skillLevel);
+      }
       return 0;
     });
   }, [allMembers, view, searchQuery, sortBy,
@@ -2416,7 +2455,8 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
               )}
             </div>
 
-            {/* Sort */}
+            {/* Sort — §3: ten operational keys outgrew the pill row; the four
+                core keys stay as pills, the rest live in the dropdown. */}
             <div className="flex items-center gap-1 text-[11px]" style={{ color: "var(--t3)" }}>
               <span>Sort:</span>
               {(["health", "revenue", "sessions", "name"] as const).map((s) => (
@@ -2433,6 +2473,25 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                   {s}
                 </button>
               ))}
+              <select
+                value={(["last visit", "trend", "frequency", "tier", "segment", "skill"] as const).includes(sortBy as any) ? sortBy : ""}
+                onChange={(e) => { if (e.target.value) setSortBy(e.target.value as typeof sortBy) }}
+                className="px-2 py-1 rounded-lg text-[11px] outline-none cursor-pointer"
+                style={{
+                  background: (["last visit", "trend", "frequency", "tier", "segment", "skill"] as const).includes(sortBy as any) ? "var(--pill-active)" : "var(--subtle)",
+                  color: (["last visit", "trend", "frequency", "tier", "segment", "skill"] as const).includes(sortBy as any) ? (isDark ? "#C4B5FD" : "#7C3AED") : "var(--t4)",
+                  border: "1px solid var(--card-border)",
+                }}
+                aria-label="More sort keys"
+              >
+                <option value="">more…</option>
+                <option value="last visit">Last visit</option>
+                <option value="trend">Trend (declining first)</option>
+                <option value="frequency">Visit frequency</option>
+                <option value="tier">Membership tier</option>
+                <option value="segment">Churn risk</option>
+                <option value="skill">Skill level</option>
+              </select>
             </div>
 
             {/* Page size */}
