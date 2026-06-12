@@ -418,45 +418,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                   : `Ranked by compatibility score • ${activeSlot.time}, ${activeSlot.date}`}
               </p>
             </div>
-            <button
-              onClick={() => {
-                // Real invite sending via sendInvites mutation
-                if (sendInvites && activeSlot.matches.length > 0 && selectedSessionId) {
-                  sendInvites.mutate({
-                    sessionId: selectedSessionId,
-                    clubId,
-                    candidates: activeSlot.matches
-                      .filter((p: any) => !sentInvites[p.id])
-                      .map((p: any) => ({
-                        memberId: p.id,
-                        channel: 'email' as const,
-                        customMessage: `You're invited to ${activeSlot.format} at ${activeSlot.court} on ${activeSlot.date} at ${activeSlot.time}. ${activeSlot.spotsNeeded} spots left!`,
-                      })),
-                  }, {
-                    onSuccess: () => {
-                      const newInvites = { ...sentInvites };
-                      activeSlot.matches.forEach((p: any) => { if (!newInvites[p.id]) newInvites[p.id] = "email"; });
-                      setSentInvites(newInvites);
-                      setShowSuccess(true);
-                      setTimeout(() => setShowSuccess(false), 3000);
-                    },
-                  });
-                } else {
-                  // Fallback: just update UI (no mutation available)
-                  const newInvites = { ...sentInvites };
-                  activeSlot.matches.forEach((p: any) => { if (!newInvites[p.id]) newInvites[p.id] = "email"; });
-                  setSentInvites(newInvites);
-                  setShowSuccess(true);
-                  setTimeout(() => setShowSuccess(false), 3000);
-                }
-              }}
-              disabled={activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length === 0}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs text-white transition-all"
-              style={{ background: activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length > 0 ? "linear-gradient(135deg, #8B5CF6, #06B6D4)" : "var(--subtle)", fontWeight: 600, boxShadow: "0 4px 15px rgba(139,92,246,0.3)", opacity: activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length > 0 ? 1 : 0.5 }}
-            >
-              <Send className="w-3.5 h-3.5" />
-              {activeSlot.matches.filter((p: any) => !sentInvites[p.id]).length > 0 ? 'Invite All via Email' : 'All Invited ✓'}
-            </button>
+            {/* Quick-send Email/SMS removed 2026-06-12 per Solomon (выпилим на будущее) — restore from git history when the outreach UX returns */}
           </div>
 
           <div className="space-y-2">
@@ -532,46 +494,7 @@ export function SlotFillerIQ({ dashboardData, recommendations, isLoading: extern
                     {/* Match Score */}
                     <MatchScoreBadge score={player.matchScore} />
 
-                    {/* Invite Buttons or Sent Badge */}
-                    {isSent ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px]" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
-                        <Check className="w-3 h-3" />
-                        Sent via {sentInvites[player.id]}
-                      </span>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            if (sendInvites && selectedSessionId) {
-                              sendInvites.mutate({
-                                sessionId: selectedSessionId, clubId,
-                                candidates: [{ memberId: player.id, channel: 'email' as const, customMessage: `You're invited to ${activeSlot.format} at ${activeSlot.court} on ${activeSlot.date} at ${activeSlot.time}.` }],
-                              }, { onSuccess: () => setSentInvites((prev) => ({ ...prev, [player.id]: "email" })) });
-                            } else {
-                              setSentInvites((prev) => ({ ...prev, [player.id]: "email" }));
-                            }
-                          }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] transition-all"
-                          style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600, border: "1px solid rgba(139,92,246,0.2)" }}
-                        >
-                          <Mail className="w-3 h-3" />
-                          Email
-                        </button>
-                        <button
-                          className="dummy-unused"
-                          style={{ display: 'none' }}
-                        >SMS</button>
-                        <SmsComingSoon />
-                        <span
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px]"
-                          style={{ color: "var(--t4)", fontWeight: 500 }}
-                        >
-                          <Bell className="w-3 h-3" />
-                          Push
-                          <span className="text-[9px] ml-0.5" style={{ opacity: 0.6 }}>soon</span>
-                        </span>
-                      </div>
-                    )}
+                    {/* Quick-send Email/SMS removed 2026-06-12 per Solomon (выпилим на будущее) — restore from git history when the outreach UX returns */}
                   </div>
                 </motion.div>
               );
