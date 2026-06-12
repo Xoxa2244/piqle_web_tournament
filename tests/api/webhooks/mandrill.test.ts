@@ -165,23 +165,21 @@ describe('Mandrill Webhook > Граничные случаи', () => {
       { event: 'open', msg: { _id: EXTERNAL_ID }, ts: EVENT_TS },
     ]))
 
-    // openedAt should remain the original value (log.openedAt ?? eventTime)
-    expect(mockUpdate).toHaveBeenCalledWith({
-      where: { id: LOG_ID },
-      data: {
-        openedAt: firstOpenedAt, // preserved
-        status: 'opened', // status stays 'opened' since log.status !== 'sent'
-      },
-    })
+    // P1.3: openedAt уже установлен → повторный open полностью пропускается
+    // (никакой записи в БД), чтобы Campaign.openedCount не задваивался на
+    // дублях вебхуков Mandrill. Первый openedAt сохраняется автоматически.
+    expect(mockUpdate).not.toHaveBeenCalled()
   })
 
-  it('прогрессия статуса: sent → opened (не opened → sent)', async () => {
-    // When status is already 'opened', it should NOT go back to 'sent'
+  it('прогрессия статуса: open не откатывает статус clicked', async () => {
+    // Mandrill может прислать click раньше open (клик без пикселя открытия):
+    // тогда status уже 'clicked', а openedAt ещё null. Поздний open должен
+    // записать openedAt, но НЕ понижать статус до 'opened'/'sent'.
     mockFindFirst.mockResolvedValue({
       id: LOG_ID,
-      status: 'opened',
-      openedAt: new Date(),
-      clickedAt: null,
+      status: 'clicked',
+      openedAt: null,
+      clickedAt: new Date('2026-03-10T12:00:00Z'),
     })
 
     await POST(makeRequest([
@@ -189,7 +187,8 @@ describe('Mandrill Webhook > Граничные случаи', () => {
     ]))
 
     const updateData = mockUpdate.mock.calls[0][0].data
+    expect(updateData.openedAt).toEqual(new Date(EVENT_TS * 1000))
     // status should NOT be changed to something lower
-    expect(updateData.status).toBe('opened') // stays 'opened', not reverted
+    expect(updateData.status).toBe('clicked') // stays 'clicked', not reverted
   })
 })

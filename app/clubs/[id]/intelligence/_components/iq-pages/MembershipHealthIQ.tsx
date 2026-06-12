@@ -497,7 +497,7 @@ function TierDrawer({
                 {t.isFreeTier ? usd(t.upsellPotentialMRRUsd) : usd(t.mrrAtRiskUsd)}
               </div>
               <div className="mt-1">
-                <Honesty title={t.isFreeTier ? 'Free-tier power users × cheapest paid tier price' : "Inactive members × this club's measured never-return rate × price"}>
+                <Honesty title={t.isFreeTier ? 'Free-tier power users × cheapest paid tier price' : "Members silent 30+ days × this club's measured never-return rate × price. Always anchored to 30-day silence — the churn rate is measured on it — regardless of the selected period."}>
                   {t.isFreeTier ? 'upsell potential' : 'at risk · measured'}
                 </Honesty>
               </div>

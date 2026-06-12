@@ -229,6 +229,7 @@ export async function getTierEconomics(
       FROM users u
       JOIN club_followers cf ON cf.user_id = u.id
       LEFT JOIN recent r ON r.uid = u.id
+      LEFT JOIN recent30 r30 ON r30.uid = u.id
       WHERE cf.club_id = ${clubId}
       GROUP BY u.membership_type
     `,
@@ -396,6 +397,7 @@ type HealthDistributionRow = {
   suspended_count: number | bigint
   expired_count: number | bigint
   zombies: number | bigint
+  zombies_30d: number | bigint
   light_users: number | bigint
   regular_users: number | bigint
   power_users: number | bigint
@@ -513,6 +515,21 @@ export async function getTierHealth(
           AND psb."bookedAt" >= ${win.start}
           AND psb."bookedAt" < ${win.end}
         GROUP BY psb."userId"
+      ),
+      recent30 AS (
+        -- Fixed 30d window for the RISK MONEY, independent of the display
+        -- window: the measured churn rate is calibrated on 30-day silence,
+        -- so "at-risk $" must count 30d-silent members. At 7d a weekly
+        -- player who simply hasn't booked yet would otherwise inflate the
+        -- number ~2x; at YTD it would deflate to ~zero.
+        SELECT psb."userId" AS uid, COUNT(*)::int AS b30
+        FROM play_session_bookings psb
+        JOIN play_sessions ps ON ps.id = psb."sessionId"
+        WHERE ps."clubId" = ${clubId}
+          AND psb.status = 'CONFIRMED'
+          AND psb."bookedAt" >= NOW() - INTERVAL '30 days'
+          AND psb."bookedAt" < NOW()
+        GROUP BY psb."userId"
       )
       SELECT
         u.membership_type,
@@ -520,6 +537,7 @@ export async function getTierHealth(
         COUNT(*) FILTER (WHERE u.membership_status = 'Suspended') AS suspended_count,
         COUNT(*) FILTER (WHERE u.membership_status = 'Expired') AS expired_count,
         COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) = 0) AS zombies,
+        COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r30.b30, 0) = 0) AS zombies_30d,
         COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) > 0 AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} < 4) AS light_users,
         COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} >= 4 AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} < 8) AS regular_users,
         COUNT(*) FILTER (WHERE u.membership_status = 'Active' AND COALESCE(r.b30, 0) * 30.0 / ${win.periodDays} >= 8) AS power_users,
@@ -527,6 +545,7 @@ export async function getTierHealth(
       FROM users u
       JOIN club_followers cf ON cf.user_id = u.id
       LEFT JOIN recent r ON r.uid = u.id
+      LEFT JOIN recent30 r30 ON r30.uid = u.id
       WHERE cf.club_id = ${clubId}
         AND u.membership_type IS NOT NULL
       GROUP BY u.membership_type
@@ -570,6 +589,7 @@ export async function getTierHealth(
     const suspended = Number(u.suspended_count)
     const expired = Number(u.expired_count)
     const zombies = Number(u.zombies)
+    const zombies30d = Number(u.zombies_30d ?? u.zombies)
     const lightUsers = Number(u.light_users)
     const regularUsers = Number(u.regular_users)
     const powerUsers = Number(u.power_users)
@@ -588,9 +608,11 @@ export async function getTierHealth(
     // Not every zombie churns — this club's history shows ~churnProb of
     // silent members never return. So at-risk = zombies × churnProb × price,
     // grounded in real data rather than assuming all zombies walk.
+    // 30d-anchored zombies (NOT the display window): churnProb was measured
+    // on 30-day silence, so the $ stays meaningful at 7d/MTD/YTD too.
     const mrrAtRiskUsd = isFreeTier
       ? 0
-      : Math.round(zombies * churnStats.churnProb * monthlyPrice)
+      : Math.round(zombies30d * churnStats.churnProb * monthlyPrice)
     // ── Upsell potential: power users on free tiers → cheapest paid tier ──
     const upsellPotentialMRRUsd = isFreeTier
       ? Math.round(powerUsers * cheapestPaidPrice)
@@ -612,11 +634,15 @@ export async function getTierHealth(
       )
       verdict = powerUsers >= 5 ? 'healthy' : healthScore >= 50 ? 'watch' : 'at_risk'
     } else {
-      // Paid tier — zombie share is the primary signal. A 50% zombie rate
-      // means every other paying subscriber is mentally checked out.
-      const zombieScore = Math.max(0, 100 - 1.5 * zombieSharePct)
-      const powerBonus = Math.min(20, powerUserSharePct * 0.5)
-      const suspendedPenalty = 2 * suspendedRatePct
+      // Paid tier — zombie share is the primary signal. Rescaled 2026-06-12:
+      // the old 100−1.5×z floored every IPC tier at 0 (64–78% silent), and
+      // the uncapped 2×suspended penalty zeroed even a 52%-silent tier with
+      // 40% suspended. New curve: linear 100→0 across 0–85% silent, power
+      // bonus capped at 10, suspended penalty capped at 20 — the score now
+      // DIFFERENTIATES sick tiers instead of flooring them all.
+      const zombieScore = Math.max(0, (100 * (85 - zombieSharePct)) / 85)
+      const powerBonus = Math.min(10, powerUserSharePct * 0.5)
+      const suspendedPenalty = Math.min(20, suspendedRatePct)
       healthScore = Math.max(0, Math.min(100, Math.round(zombieScore + powerBonus - suspendedPenalty)))
       if (zombieSharePct >= 65) verdict = 'critical'
       else if (zombieSharePct >= 45) verdict = 'at_risk'
