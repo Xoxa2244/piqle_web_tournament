@@ -121,16 +121,24 @@ export function createAdvisorMemberTools(clubId: string): ToolSet {
           if (!matched || matched.length === 0) {
             return { error: `No active members found for a tier matching "${tierInput}". Check the exact tier name in the Membership Breakdown.` }
           }
-          if (matched.length > 1) {
+          // Exact-match-wins: a non-Network tier name is a substring of its
+          // "(Network)" sibling, so ILIKE returns both. If the input equals one
+          // candidate exactly (case-insensitive), use that — otherwise a bare
+          // partial that hits several tiers is genuinely ambiguous.
+          const exactMatch = matched.find(
+            (r) => (r.tier || '').trim().toLowerCase() === tierInput.toLowerCase(),
+          )
+          const resolved = exactMatch ?? (matched.length === 1 ? matched[0] : null)
+          if (!resolved) {
             return {
               ambiguous: true,
-              message: `"${tierInput}" matches ${matched.length} tiers. Re-call getMembersByTier with one exact tier name.`,
+              message: `"${tierInput}" matches ${matched.length} tiers. Re-call getMembersByTier with one exact tier name (copy it verbatim, including any "(Network)" suffix).`,
               matchedTiers: matched.map((r) => ({ tier: r.tier, activeMembers: Number(r.active) })),
             }
           }
 
-          const exactTier = matched[0].tier
-          const activeInTier = Number(matched[0].active)
+          const exactTier = resolved.tier
+          const activeInTier = Number(resolved.active)
 
           // 2) Page of members for that exact tier.
           const rows: MemberRow[] = await prisma.$queryRawUnsafe(
