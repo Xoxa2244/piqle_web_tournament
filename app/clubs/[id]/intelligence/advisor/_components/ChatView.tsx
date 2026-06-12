@@ -10,6 +10,7 @@ import {
   Sparkles, MessageSquare, Database, Paperclip, ChevronRight
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { chatErrorDisplayText } from '@/lib/ai/chat-error-copy'
 import { DataStatusBadge } from './DataStatusBadge'
 import type { ClubDataStatus } from '../_hooks/useAdvisorState'
 import { useSessionsCalendar } from '../../_hooks/use-intelligence'
@@ -481,9 +482,10 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                       <span className="text-xs font-semibold text-destructive">Error</span>
                     </div>
                     <div className="bg-destructive/10 border border-destructive/20 rounded-2xl rounded-tl-md px-5 py-4">
-                      {/* §7.1: no raw error text in chat — log it, show a clean fallback */}
+                      {/* §7.1: no raw error text in chat — log it, show a clean fallback
+                          (user-facing plan-limit messages pass through) */}
                       {(() => { console.error('[advisor-chat-view]', error); return null })()}
-                      <p className="text-sm text-destructive">Something went wrong — please try sending your message again.</p>
+                      <p className="text-sm text-destructive">{chatErrorDisplayText(error)}</p>
                     </div>
                   </div>
                 )}

@@ -13,6 +13,7 @@ import {
   } from "lucide-react";
 import { useTheme } from "../IQThemeProvider";
 import { trpc } from "@/lib/trpc";
+import { chatErrorDisplayText } from "@/lib/ai/chat-error-copy";
 import { AdvisorActionCard } from "./AdvisorActionCard";
 import { PendingQueueCards } from "./PendingQueueCards";
 import { extractAdvisorAction, getAdvisorActionFromMetadata, stripAdvisorAction } from "@/lib/ai/advisor-actions";
@@ -1372,7 +1373,7 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
               </div>
               <div className="rounded-2xl px-5 py-4 text-sm" style={{ background: "var(--subtle)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--t1)" }}>
                 {(() => { console.error('[advisor-chat]', error); return null })()}
-                Sorry, something went wrong on my side. Your message wasn&apos;t lost — please try sending it again.
+                {chatErrorDisplayText(error)}
               </div>
             </div>
           )}

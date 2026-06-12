@@ -8,6 +8,7 @@ import {
   Sparkles, MessageSquare, ChevronRight, Minus, Plus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { chatErrorDisplayText } from '@/lib/ai/chat-error-copy'
 import { usePageContextData } from '../_hooks/usePageContext'
 import { ChatRichText } from './shared/ChatRichText'
 // Mock responses kept as fallback for unauthenticated demo sessions
@@ -680,9 +681,10 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
 
                 {error && (
                   <div className="rounded-xl px-3 py-2" style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)" }}>
-                    {/* §7.1: no raw error text in chat — log it, show a clean fallback */}
+                    {/* §7.1: no raw error text in chat — log it, show a clean fallback
+                        (user-facing plan-limit messages pass through) */}
                     {(() => { console.error('[chat-widget]', error); return null })()}
-                    <p className="text-xs" style={{ color: "#F87171" }}>Something went wrong — please try again.</p>
+                    <p className="text-xs" style={{ color: "#F87171" }}>{chatErrorDisplayText(error)}</p>
                   </div>
                 )}
 
