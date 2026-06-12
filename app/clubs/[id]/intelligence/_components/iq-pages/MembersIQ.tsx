@@ -40,7 +40,6 @@ interface Member {
   avatar: string;
   email: string;
   phone: string;
-  rating: number;
   sport: string;
   segment: Exclude<Segment, "all">;
   healthScore: number;
@@ -1261,7 +1260,6 @@ function mapRealMembers(data: any): Member[] {
     avatar: (m.member?.name || "??").split(" ").map((n: string) => n[0]).join("").slice(0, 2).toUpperCase(),
     email: m.member?.email || "",
     phone: "",
-    rating: m.member?.duprRatingDoubles || 0,
     sport: "Pickleball",
     segment: riskToSegment(m.riskLevel),
     healthScore: m.healthScore,
@@ -2583,7 +2581,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
 
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   {[
-                    { label: "Rating", value: member.rating ? `\u2B50 ${member.rating}` : "N/A" },
+                    { label: "Last Active", value: member.lastPlayed },
                     { label: getPeriodLabel(period), value: `${getSessionsForPeriod(member, period)} sessions` },
                     { label: "Avg/Week", value: `${member.avgSessionsPerWeek} sessions` },
                   ].map((stat) => (
@@ -2619,7 +2617,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
           <div
             className="grid items-center px-5 py-3 text-[10px] uppercase tracking-wider"
             style={{
-              gridTemplateColumns: "32px 40px 1fr 100px 52px 64px 72px 72px 80px 120px",
+              gridTemplateColumns: "32px 40px 1fr 100px 64px 72px 72px 80px 120px",
               gap: "0 12px",
               color: "var(--t4)",
               fontWeight: 600,
@@ -2653,7 +2651,6 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
             <span />
             <span>Member</span>
             <span className="hidden md:block">Segment</span>
-            <span className="text-center hidden md:block">Rating</span>
             <span className="text-center hidden md:block">Sessions</span>
             <span className="text-right hidden sm:block">Revenue</span>
             <span className="text-center hidden lg:block">Health</span>
@@ -2671,7 +2668,7 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                 transition={{ delay: i * 0.02 }}
                 className="grid items-center px-5 py-3 cursor-pointer transition-colors"
                 style={{
-                  gridTemplateColumns: "32px 40px 1fr 100px 52px 64px 72px 72px 80px 120px",
+                  gridTemplateColumns: "32px 40px 1fr 100px 64px 72px 72px 80px 120px",
                   gap: "0 12px",
                   borderBottom: "1px solid var(--divider)",
                   background: isSelected ? "rgba(139,92,246,0.06)" : undefined,
@@ -2722,7 +2719,6 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
                   <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: activityColors[member.activityLevel].bg, color: activityColors[member.activityLevel].text, fontWeight: 600 }}>{activityLabels[member.activityLevel]}</span>
                   <span className="px-1.5 py-0.5 rounded text-[9px]" style={{ background: trendColors[member.engagementTrend].bg, color: trendColors[member.engagementTrend].text, fontWeight: 600 }}>{member.engagementTrend === 'improving' ? '\u2191' : member.engagementTrend === 'declining' ? '\u2193' : member.engagementTrend === 'stopped' ? '\u23F8' : '\u2192'}</span>
                 </div>
-                <div className="text-center text-xs hidden md:block" style={{ color: "var(--t1)", fontWeight: 600 }}>{member.rating}</div>
                 <div className="text-center text-xs hidden md:block" style={{ color: "var(--t1)", fontWeight: 600 }}>{getSessionsForPeriod(member, period)}</div>
                 <div className="text-right text-xs hidden sm:block" style={{ color: "#10B981", fontWeight: 700 }}>${member.revenue.toLocaleString()}</div>
                 <div className="hidden lg:block"><HealthBar score={member.healthScore} /></div>
