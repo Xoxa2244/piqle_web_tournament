@@ -18,6 +18,7 @@ import { AdvisorActionCard } from "./AdvisorActionCard";
 import { PendingQueueCards } from "./PendingQueueCards";
 import { extractAdvisorAction, getAdvisorActionFromMetadata, stripAdvisorAction } from "@/lib/ai/advisor-actions";
 import { extractPendingQueue, stripPendingQueueTag } from "@/lib/ai/advisor-pending-queue";
+import { extractAudienceOffers, stripAudienceOfferTags, type AudienceOffer } from "@/lib/ai/advisor-audience-offer";
 import { getAdvisorActionRuntimeState } from "@/lib/ai/advisor-action-state";
 import { getAdvisorLatestOutcome } from "@/lib/ai/advisor-outcomes";
 import {
@@ -1194,8 +1195,11 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
               // cards. Tag is stripped from the visible body below so the
               // chat bubble only shows the human-readable headline.
               const pendingQueue = msg.role === 'assistant' ? extractPendingQueue(text) : null;
+              // Audience-offer tag (model-emitted): strip from the visible
+              // body, render as a one-click Create-Audience button below.
+              const audienceOffers = msg.role === 'assistant' ? extractAudienceOffers(text) : [];
               const textWithoutAction = msg.role === 'assistant'
-                ? stripPendingQueueTag(stripAdvisorAction(text))
+                ? stripAudienceOfferTags(stripPendingQueueTag(stripAdvisorAction(text)))
                 : text;
               // (debug per-message console.log removed — it fired on every
               // render of every message in production)
@@ -1262,6 +1266,10 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
                         items={pendingQueue.items}
                         totalCount={pendingQueue.totalCount}
                       />
+                    )}
+
+                    {msg.role === "assistant" && audienceOffers.length > 0 && clubId && (
+                      <AudienceOfferButtons clubId={clubId} offers={audienceOffers} messageId={String(msg.id)} />
                     )}
 
                     {msg.role === "assistant" && pendingClarification && isLastAssistant && !isBusy && (
@@ -1415,6 +1423,60 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
           </form>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Audience-offer buttons (doc #2: insight → one-click targeting) ──
+// The model's <audience-offer> tag names a deterministic QUERY (tier+filter
+// or family+mode) — clicking re-runs it server-side and freezes the result
+// as an audience. Member ids/names from model text are never trusted.
+function AudienceOfferButtons({ clubId, offers, messageId }: { clubId: string; offers: AudienceOffer[]; messageId: string }) {
+  const [created, setCreated] = useState<Record<number, boolean>>({});
+  const [pendingIdx, setPendingIdx] = useState<number | null>(null);
+  const [errorIdx, setErrorIdx] = useState<Record<number, string>>({});
+  const tierMutation = trpc.intelligence.createCohortFromTierQuery.useMutation();
+  const familyMutation = trpc.intelligence.createCohortFromProgramContext.useMutation();
+
+  const run = (offer: AudienceOffer, idx: number) => {
+    setPendingIdx(idx);
+    setErrorIdx(prev => ({ ...prev, [idx]: '' }));
+    const opts = {
+      onSuccess: () => setCreated(prev => ({ ...prev, [idx]: true })),
+      onError: (e: { message?: string }) => setErrorIdx(prev => ({ ...prev, [idx]: e.message || 'Failed' })),
+      onSettled: () => setPendingIdx(null),
+    };
+    if (offer.kind === 'tier') {
+      tierMutation.mutate({ clubId, tier: offer.tier, filter: offer.filter, name: offer.label }, opts);
+    } else {
+      familyMutation.mutate({ clubId, family: offer.family, mode: offer.mode, periodDays: offer.periodDays, name: offer.label }, opts);
+    }
+  };
+
+  return (
+    <div className="mt-2 space-y-1.5">
+      {offers.map((offer, idx) => created[idx] ? (
+        <a
+          key={`${messageId}-${idx}`}
+          href={`/clubs/${clubId}/intelligence/cohorts`}
+          className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg"
+          style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', fontWeight: 600 }}
+        >
+          ✓ Audience created — open Audiences
+        </a>
+      ) : (
+        <div key={`${messageId}-${idx}`} className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => run(offer, idx)}
+            disabled={pendingIdx !== null}
+            className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.25), rgba(6,182,212,0.2))', border: '1px solid rgba(139,92,246,0.35)', color: '#C4B5FD', fontWeight: 600 }}
+          >
+            {pendingIdx === idx ? 'Creating…' : `+ Create audience: ${offer.label}`}
+          </button>
+          {errorIdx[idx] && <span className="text-[11px]" style={{ color: '#F59E0B' }}>{errorIdx[idx]}</span>}
+        </div>
+      ))}
     </div>
   );
 }

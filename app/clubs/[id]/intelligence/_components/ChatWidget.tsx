@@ -35,6 +35,9 @@ function extractSuggestions(text: string): { cleanText: string; suggestions: str
 function stripSuggestedTags(text: string): string {
   return text
     .replace(/<\/?suggested>/gi, '')
+    // §audience-offer: model-emitted Create-Audience tag — button renders only
+    // in AdvisorIQ; here we just keep it out of the visible text.
+    .replace(/<audience-offer>[\s\S]*?<\/audience-offer>/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trimEnd()
 }

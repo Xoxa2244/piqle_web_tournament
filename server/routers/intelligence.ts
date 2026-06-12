@@ -11276,6 +11276,99 @@ Spirit: ${guidance.spirit}`
       })
     }),
 
+  /**
+   * Frozen audience from a tier+filter query — the Advisor's "Create
+   * Audience" button (audience-offer tag). Deterministically re-runs the
+   * SAME query family as the chat's getMembersByTier tool (exact-match-
+   * wins tier resolution, identical filter semantics) so the audience is
+   * built from the database, never from member ids/names in model text.
+   */
+  createCohortFromTierQuery: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      tier: z.string().min(1).max(200),
+      filter: z.enum(['all', 'attended_30d', 'never_attended', 'lapsed']).default('lapsed'),
+      name: z.string().max(100).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      // Resolve tier exactly (a non-Network name is a substring of its
+      // "(Network)" sibling — exact match wins, same as the chat tool).
+      const matched: Array<{ tier: string }> = await ctx.prisma.$queryRawUnsafe(
+        `
+        SELECT u.membership_type AS tier, COUNT(*) AS active
+        FROM club_followers cf JOIN users u ON u.id = cf.user_id
+        WHERE cf.club_id = $1
+          AND u.membership_type ILIKE $2
+          AND lower(coalesce(u.membership_status, '')) IN ('active','trial','trialing')
+        GROUP BY u.membership_type
+        ORDER BY active DESC
+        `,
+        input.clubId,
+        `%${input.tier.trim()}%`,
+      )
+      const exact = matched.find(r => (r.tier || '').trim().toLowerCase() === input.tier.trim().toLowerCase())
+      const resolved = exact ?? (matched.length === 1 ? matched[0] : null)
+      if (!resolved) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: matched.length === 0
+            ? `No active members in a tier matching "${input.tier}"`
+            : `"${input.tier}" matches ${matched.length} tiers — pass the exact tier name`,
+        })
+      }
+
+      const FILTERS: Record<string, string> = {
+        all: 'TRUE',
+        attended_30d: 'm.played_30d > 0',
+        never_attended: 'm.last_played IS NULL',
+        lapsed: "m.last_played IS NOT NULL AND m.last_played < now() - interval '30 days'",
+      }
+      const rows: Array<{ id: string }> = await ctx.prisma.$queryRawUnsafe(
+        `
+        WITH m AS (
+          SELECT u.id,
+            COUNT(b.*) FILTER (WHERE b.status::text='CONFIRMED' AND ps."date" <= now() AND ps."date" >= now() - interval '30 days') AS played_30d,
+            MAX(ps."date") FILTER (WHERE b.status::text='CONFIRMED' AND ps."date" <= now()) AS last_played
+          FROM club_followers cf
+          JOIN users u ON u.id = cf.user_id
+          LEFT JOIN play_session_bookings b ON b."userId" = u.id
+          LEFT JOIN play_sessions ps ON ps.id = b."sessionId" AND ps."clubId" = cf.club_id
+          WHERE cf.club_id = $1
+            AND u.membership_type = $2
+            AND lower(coalesce(u.membership_status, '')) IN ('active','trial','trialing')
+          GROUP BY u.id
+        )
+        SELECT m.id FROM m WHERE ${FILTERS[input.filter] ?? 'TRUE'} LIMIT 5000
+        `,
+        input.clubId,
+        resolved.tier,
+      )
+      const userIds = rows.map(r => r.id)
+      if (userIds.length === 0) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'No members match this tier + filter right now' })
+      }
+
+      const filterLabel: Record<string, string> = {
+        all: 'all active', attended_30d: 'active in last 30d',
+        never_attended: 'never attended', lapsed: 'lapsed 30d+',
+      }
+      const name = input.name || `${resolved.tier} — ${filterLabel[input.filter]}`
+
+      return ctx.prisma.clubCohort.create({
+        data: {
+          clubId: input.clubId,
+          name: name.slice(0, 100),
+          description: `Created from AI Advisor (tier "${resolved.tier}", filter ${input.filter})`,
+          filters: [{ field: 'userId', op: 'in', value: userIds }] as any,
+          memberCount: userIds.length,
+          isDynamic: false,
+          createdBy: ctx.session.user.id,
+        },
+      })
+    }),
+
   createCohort: protectedProcedure
     .input(z.object({
       clubId: z.string().uuid(),
