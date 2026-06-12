@@ -451,9 +451,21 @@ function SessionAudienceDetail({ clubId, sessionId, color }: { clubId: string; s
               style={{ background: a.status === 'CONFIRMED' ? '#10B981' : '#EF4444' }}
               title={a.status === 'CONFIRMED' ? 'Confirmed' : 'Cancelled'}
             />
-            <span className="truncate flex-1 min-w-0" style={{ color: 'var(--t2)' }}>
-              {a.name || a.email || 'Unknown'}
-            </span>
+            {/* Name → member profile (operator feedback v2.0 §5.1) */}
+            {a.userId ? (
+              <Link
+                href={`/clubs/${clubId}/intelligence/members?member=${a.userId}`}
+                className="truncate flex-1 min-w-0 hover:underline"
+                style={{ color: 'var(--t2)' }}
+                title="Open member profile"
+              >
+                {a.name || a.email || 'Unknown'}
+              </Link>
+            ) : (
+              <span className="truncate flex-1 min-w-0" style={{ color: 'var(--t2)' }}>
+                {a.name || a.email || 'Unknown'}
+              </span>
+            )}
             <span className="shrink-0 truncate max-w-[160px] text-[11px]" style={{ color: 'var(--t4)' }} title={a.membershipType ?? undefined}>
               {a.membershipType || '—'}
             </span>

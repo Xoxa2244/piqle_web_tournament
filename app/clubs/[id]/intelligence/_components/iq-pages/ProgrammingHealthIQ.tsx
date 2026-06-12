@@ -24,9 +24,10 @@
  */
 
 import { useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   FileBarChart, ChevronRight, ChevronDown, TrendingUp, TrendingDown, Minus,
-  Lightbulb, AlertCircle, AlertTriangle,
+  Lightbulb, AlertCircle, AlertTriangle, MessageCircle, CalendarDays,
 } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -393,6 +394,30 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                         )}
                       </div>
                       <p className="text-sm mt-1" style={{ color: 'var(--t3)' }}>{ins.detail}</p>
+                      {/* §5.2: every suggestion leads somewhere. Campaigns is
+                          still gated on sol2-lean, so the actions are the
+                          Advisor seam (prefilled with this finding) and, for
+                          fill goals, the Schedule. */}
+                      <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+                        <Link
+                          href={`/clubs/${clubId}/intelligence/advisor?prompt=${encodeURIComponent(
+                            `${ins.title}. ${ins.detail} Help me decide what to do about this and draft any member messages needed.`,
+                          )}`}
+                          className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg transition-opacity hover:opacity-80"
+                          style={{ background: 'rgba(139,92,246,0.12)', color: '#A78BFA', fontWeight: 600 }}
+                        >
+                          <MessageCircle className="w-3 h-3" /> Ask the Advisor
+                        </Link>
+                        {ins.treatmentGoal === 'fill' && (
+                          <Link
+                            href={`/clubs/${clubId}/intelligence/sessions`}
+                            className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg transition-opacity hover:opacity-80"
+                            style={{ background: 'rgba(6,182,212,0.12)', color: '#06B6D4', fontWeight: 600 }}
+                          >
+                            <CalendarDays className="w-3 h-3" /> Open Schedule
+                          </Link>
+                        )}
+                      </div>
                     </div>
                     <div className="shrink-0 flex items-center gap-2">
                       <span

@@ -2711,8 +2711,16 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
       {/* Members list */}
       <div className="rounded-2xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
         <div className="space-y-1">
+          {/* Row → member profile (operator feedback v2.0 §9.2). Plain
+              navigation: browser back returns to this audience intact. */}
           {members.map((m: any) => (
-            <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl transition-colors" style={{ background: 'var(--subtle)' }}>
+            <Link
+              key={m.id}
+              href={`/clubs/${clubId}/intelligence/members?member=${m.id}`}
+              className="flex items-center gap-3 p-3 rounded-xl transition-opacity hover:opacity-80 cursor-pointer"
+              style={{ background: 'var(--subtle)' }}
+              title="Open member profile"
+            >
               <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs text-white flex-shrink-0"
                 style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}>
                 {(m.name || m.email || '?').charAt(0).toUpperCase()}
@@ -2735,7 +2743,7 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
                 </div>
               </div>
               {m.duprRating > 0 && <DuprBadge rating={Number(m.duprRating)} />}
-            </div>
+            </Link>
           ))}
 
           {members.length === 0 && (
@@ -2759,6 +2767,9 @@ const STRATEGY_STYLES: Record<string, { gradient: string; icon: string; label: s
 function CohortCampaignSuggestion({ clubId, cohortId, memberCount }: { clubId: string; cohortId: string; memberCount: number }) {
   const [campaigns, setCampaigns] = useState<any[] | null>(null)
   const [expanded, setExpanded] = useState<number | null>(null)
+  // §9.1: the send-action is gated behind Campaigns (SOON). Copy-to-
+  // clipboard keeps the generated message usable in the meantime.
+  const [copiedIdx, setCopiedIdx] = useState<number | null>(null)
   const generateMutation = trpc.intelligence.generateCohortCampaign.useMutation({
     onSuccess: (data) => {
       setCampaigns(data.campaigns || [])
@@ -2873,14 +2884,34 @@ function CohortCampaignSuggestion({ clubId, cohortId, memberCount }: { clubId: s
                         {c.reasoning && (
                           <p className="text-[11px] italic" style={{ color: 'var(--t4)' }}>{c.reasoning}</p>
                         )}
-                        <motion.button
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
-                          style={{ background: style.gradient, fontWeight: 600 }}
-                        >
-                          <Send className="w-3.5 h-3.5" /> Use This Strategy
-                        </motion.button>
+                        {/* §9.1: was a dead "Use This Strategy" button with no
+                            handler. Honest version: copy works today, sending
+                            is labeled Coming Soon until Campaigns ships. */}
+                        <div className="flex items-center gap-2">
+                          <motion.button
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => {
+                              navigator.clipboard?.writeText(`${c.subjectLine}\n\n${c.body}`).then(() => {
+                                setCopiedIdx(i)
+                                setTimeout(() => setCopiedIdx(prev => prev === i ? null : prev), 2000)
+                              }).catch(() => undefined)
+                            }}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm text-white"
+                            style={{ background: style.gradient, fontWeight: 600 }}
+                          >
+                            {copiedIdx === i ? <CheckIcon className="w-3.5 h-3.5" /> : <Download className="w-3.5 h-3.5" />}
+                            {copiedIdx === i ? 'Copied!' : 'Copy message'}
+                          </motion.button>
+                          <button
+                            disabled
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm cursor-not-allowed"
+                            style={{ background: 'var(--subtle)', color: 'var(--t4)', fontWeight: 600, border: '1px dashed var(--card-border)' }}
+                            title="Sending strategies as campaigns ships with the Campaigns module"
+                          >
+                            <Send className="w-3.5 h-3.5" /> Send via Campaigns · Coming Soon
+                          </button>
+                        </div>
                       </div>
                     </motion.div>
                   )}

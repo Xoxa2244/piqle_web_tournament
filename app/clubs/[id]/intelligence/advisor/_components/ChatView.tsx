@@ -481,7 +481,9 @@ export function ChatView({ clubId, dataStatus, onUploadData }: ChatViewProps) {
                       <span className="text-xs font-semibold text-destructive">Error</span>
                     </div>
                     <div className="bg-destructive/10 border border-destructive/20 rounded-2xl rounded-tl-md px-5 py-4">
-                      <p className="text-sm text-destructive">{error.message || 'Failed to get a response. Please try again.'}</p>
+                      {/* §7.1: no raw error text in chat — log it, show a clean fallback */}
+                      {(() => { console.error('[advisor-chat-view]', error); return null })()}
+                      <p className="text-sm text-destructive">Something went wrong — please try sending your message again.</p>
                     </div>
                   </div>
                 )}

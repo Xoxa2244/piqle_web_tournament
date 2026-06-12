@@ -6608,7 +6608,12 @@ export const intelligenceRouter = createTRPCRouter({
       // inflating the headline, biasing the trend vs the bounded previous
       // window, and pricing upcoming empty seats as already-lost revenue.
       // Narrow select — full booking rows were ~5x the needed width.
+      // id/title/startTime feed the per-session breakdown (operator
+      // feedback v2.0 §2.1) — three scalar columns, no row multiplication.
       const sessionSelect = {
+        id: true,
+        title: true,
+        startTime: true,
         format: true,
         date: true,
         pricePerSlot: true,
@@ -6674,6 +6679,41 @@ export const intelligenceRouter = createTRPCRouter({
         return sum + ns * (s.pricePerSlot ?? 0)
       }, 0)
 
+      // Per-session breakdown for the Session Revenue drill-down (§2.1):
+      // priced sessions only (unpriced ones contribute $0 to every number
+      // on the card by design). Missed = empty seats + cancels + no-shows
+      // at the slot price; expected = price × capacity. Sorted by missed
+      // desc so the money leaks lead, capped at 100 rows for the drawer.
+      const sessionBreakdown = sessions
+        .filter(s => (s.pricePerSlot ?? 0) > 0)
+        .map(s => {
+          const price = s.pricePerSlot ?? 0
+          const registered = s.registeredCount ?? 0
+          const cancelledSeats = s.bookings.filter((b: any) => b.status === 'CANCELLED').length
+          const noShowSeats = s.bookings.filter((b: any) => b.status === 'NO_SHOW').length
+          const emptySeats = Math.max(0, s.maxPlayers - registered - cancelledSeats)
+          const revenue = price * registered
+          const missed = price * (emptySeats + cancelledSeats + noShowSeats)
+          return {
+            id: s.id,
+            title: s.title,
+            format: s.format,
+            date: s.date.toISOString().slice(0, 10),
+            startTime: s.startTime,
+            capacity: s.maxPlayers,
+            registered,
+            cancelled: cancelledSeats,
+            noShows: noShowSeats,
+            price,
+            revenue: Math.round(revenue),
+            missed: Math.round(missed),
+            expected: Math.round(price * s.maxPlayers),
+            occupancyPct: s.maxPlayers > 0 ? Math.round((registered / s.maxPlayers) * 100) : 0,
+          }
+        })
+        .sort((a, b) => b.missed - a.missed || b.revenue - a.revenue)
+        .slice(0, 100)
+
       // Period comparison
       const prevRevenue = prevSessions.reduce((sum, s) => sum + (s.pricePerSlot ?? 0) * (s.registeredCount ?? 0), 0)
       const prevActiveMembers = new Set(prevSessions.flatMap(s => s.bookings.filter((b: any) => b.status === 'CONFIRMED').map((b: any) => b.userId))).size
@@ -6690,6 +6730,7 @@ export const intelligenceRouter = createTRPCRouter({
           noShows: Math.round(noShows),
           total: Math.round(lostFromEmpty + cancelledBookings + noShows),
         },
+        sessionBreakdown,
         activeMembers,
         prevActiveMembers,
         totalSessions: sessions.length,
@@ -9032,6 +9073,7 @@ export const intelligenceRouter = createTRPCRouter({
         courtRows,
         recentRows,
         gapRows,
+        timelineRows,
       ] = await Promise.all([
         // 1. Player info
         //   • lastPlayed: MAX(ps.date) of CONFIRMED bookings that have
@@ -9147,6 +9189,27 @@ export const intelligenceRouter = createTRPCRouter({
             AND ps.date <= CURRENT_DATE
           ORDER BY ps.date DESC
         `, userId, clubId),
+
+        // 9. Full session list behind the 12-week Activity Timeline —
+        // powers the per-week drilldown (operator feedback v2.0 §8.3).
+        // CANCELLED rows included (the drilldown reports cancellations);
+        // same played-only date gate as the chart query above.
+        db.$queryRawUnsafe<any[]>(`
+          SELECT ps.date::text, ps.title,
+            ps.format::text as format,
+            COALESCE(cc.name, 'N/A') as court,
+            ps."startTime",
+            ps."endTime",
+            b.status::text as status
+          FROM play_session_bookings b
+          JOIN play_sessions ps ON ps.id = b."sessionId"
+          LEFT JOIN club_courts cc ON cc.id = ps."courtId"
+          WHERE b."userId"::text = $1 AND ps."clubId"::text = $2            AND b.status::text IN ('CONFIRMED', 'CANCELLED')
+            AND ps.date >= NOW() - INTERVAL '90 days'
+            AND ps.date <= CURRENT_DATE
+          ORDER BY ps.date DESC, ps."startTime" DESC
+          LIMIT 400
+        `, userId, clubId),
       ])
 
       const player = playerRows[0] || { id: userId, name: 'Unknown', email: '', image: null, memberSince: null, lastPlayed: null, totalSessions: 0, healthScore: null }
@@ -9196,6 +9259,10 @@ export const intelligenceRouter = createTRPCRouter({
         recentSessions: recentRows.map((r: any) => ({
           date: r.date, format: r.format, court: r.court,
           startTime: r.startTime, endTime: r.endTime, skillLevel: r.skillLevel,
+        })),
+        timelineSessions: timelineRows.map((r: any) => ({
+          date: r.date, title: r.title, format: r.format, court: r.court,
+          startTime: r.startTime, endTime: r.endTime, status: r.status,
         })),
       }
     }),

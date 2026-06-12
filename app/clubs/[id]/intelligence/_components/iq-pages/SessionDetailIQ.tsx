@@ -64,6 +64,17 @@ interface SessionDetailIQProps {
 export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProps) {
   const { isDark } = useTheme()
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
+  // Per-player invite selection on the Suggested Players list (operator
+  // feedback v2.0 §4.1). Checked players pre-select the Fill Open Slots
+  // wizard's recipient step — nothing sends until the wizard's Launch step.
+  const [selectedRecIds, setSelectedRecIds] = useState<Set<string>>(new Set())
+  const toggleRecSelection = (id: string) => {
+    setSelectedRecIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
 
   const sk = classifySkill(session.format, session.skillLevel)
   const colors = SKILL_COLORS[sk.tier]
@@ -255,8 +266,21 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
                   const name = rec.member?.name ?? 'Unknown'
                   const likelihood: string = rec.estimatedLikelihood ?? 'low'
                   const likelihoodColor = likelihood === 'high' ? '#10B981' : likelihood === 'medium' ? '#F59E0B' : '#94A3B8'
+                  const isChecked = selectedRecIds.has(id)
                   return (
-                    <div key={id} className="flex items-start gap-3 py-2 px-2 rounded-xl transition-colors">
+                    <div
+                      key={id}
+                      className="flex items-start gap-3 py-2 px-2 rounded-xl transition-colors"
+                      style={isChecked ? { background: 'rgba(139,92,246,0.10)', border: '1px solid rgba(139,92,246,0.35)' } : { border: '1px solid transparent' }}
+                    >
+                      {/* §4.1: pick players one by one for a targeted invite */}
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${name} for invite`}
+                        checked={isChecked}
+                        onChange={() => id && toggleRecSelection(id)}
+                        className="w-4 h-4 mt-2 cursor-pointer shrink-0 accent-[#8B5CF6]"
+                      />
                       <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0" style={{ background: 'rgba(139,92,246,0.15)', color: '#8B5CF6' }}>
                         {initials(name)}
                       </div>
@@ -283,9 +307,15 @@ export function SessionDetailIQ({ session, clubId, onBack }: SessionDetailIQProp
         </div>
       </div>
 
-      {/* Fill This Session — Event Marketing Pipeline */}
+      {/* Fill This Session — Event Marketing Pipeline. Checked Suggested
+          Players pre-select the wizard's recipient step (§4.1). */}
       {spotsLeft > 0 && (
-        <FillSessionButton clubId={clubId} sessionId={session.id} spotsLeft={spotsLeft} />
+        <FillSessionButton
+          clubId={clubId}
+          sessionId={session.id}
+          spotsLeft={spotsLeft}
+          preselectedIds={Array.from(selectedRecIds)}
+        />
       )}
 
       {/* Section 4: Session Insights */}
@@ -404,7 +434,7 @@ function CreateCohortButton({ clubId, sessionId, playerCount }: { clubId: string
 }
 
 // ── Fill This Session — Event Marketing Pipeline ──
-function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; sessionId: string; spotsLeft: number }) {
+function FillSessionButton({ clubId, sessionId, spotsLeft, preselectedIds = [] }: { clubId: string; sessionId: string; spotsLeft: number; preselectedIds?: string[] }) {
   const STEP_LABELS = ['Audience', 'Message', 'Launch']
   const { isDark } = useTheme()
   const utils = trpc.useUtils()
@@ -424,7 +454,11 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
     onSuccess: (data) => {
       setSubject(data.message.subject)
       setBody(data.message.body)
-      setSelectedIds(new Set(data.audience.map(a => a.id)))
+      // §4.1: players checked on the Suggested Players list pre-select the
+      // recipient step; with no explicit picks, default to everyone matched.
+      const audienceIds = data.audience.map(a => a.id)
+      const picked = preselectedIds.filter(id => audienceIds.includes(id))
+      setSelectedIds(new Set(picked.length > 0 ? picked : audienceIds))
       setStep(0)
     },
   })
@@ -477,6 +511,9 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
   }
 
   const audience = generateMutation.data?.audience || []
+  // §4.1 honesty note: hand-picked players can drop out of the generated
+  // audience (no email, contact-frequency caps, opt-outs) — say so.
+  const droppedPreselected = preselectedIds.filter(id => !audience.some((a: any) => a.id === id)).length
   const selectedAudience = audience.filter((a: any) => selectedIds.has(a.id))
   const sessionInfo = generateMutation.data?.session
   const currentStep = launchResult ? 2 : step
@@ -493,8 +530,14 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
         className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-sm text-white"
         style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700, boxShadow: '0 4px 20px rgba(139,92,246,0.3)' }}
       >
-        <Send className="w-4 h-4" /> Fill Open Slots ({spotsLeft})
+        <Send className="w-4 h-4" />
+        {preselectedIds.length > 0 ? `Invite Selected (${preselectedIds.length})` : `Fill Open Slots (${spotsLeft})`}
       </motion.button>
+      <p className="text-[11px] text-center mt-1.5" style={{ color: 'var(--t4)' }}>
+        {preselectedIds.length > 0
+          ? 'Opens a review step — you confirm recipients and the message before anything is sent.'
+          : 'Tip: tick players in the Suggested list to invite specific people. Nothing sends without your review.'}
+      </p>
 
       {/* Modal */}
       {open && (
@@ -584,6 +627,11 @@ function FillSessionButton({ clubId, sessionId, spotsLeft }: { clubId: string; s
                           <div className="text-xs mt-1" style={{ color: 'var(--t3)' }}>
                             {selectedIds.size} selected out of {audience.length} matched players
                           </div>
+                          {droppedPreselected > 0 && (
+                            <div className="text-[11px] mt-1" style={{ color: '#F59E0B' }}>
+                              {droppedPreselected} of your picked player{droppedPreselected === 1 ? ' is' : 's are'} not eligible for email (missing address, opted out, or over the contact cap) and {droppedPreselected === 1 ? 'was' : 'were'} left out.
+                            </div>
+                          )}
                         </div>
                         {audience.length > 0 && (
                           <button

@@ -1362,16 +1362,17 @@ export function AdvisorIQ({ clubId }: { clubId: string }) {
             </div>
           )}
 
-          {/* Error display */}
+          {/* Error display — clean fallback only (operator feedback v2.0
+              §7.1): raw error text (e.g. "Minified React error #185")
+              must never render in chat. Details go to the console. */}
           {error && (
             <div className="flex gap-3">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #8B5CF6, #06B6D4)" }}>
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
               <div className="rounded-2xl px-5 py-4 text-sm" style={{ background: "var(--subtle)", border: "1px solid rgba(239,68,68,0.3)", color: "var(--t1)" }}>
-                Sorry, I encountered an error. Please try again.
-                <br />
-                <span style={{ color: "var(--t4)", fontSize: "12px" }}>{error.message}</span>
+                {(() => { console.error('[advisor-chat]', error); return null })()}
+                Sorry, something went wrong on my side. Your message wasn&apos;t lost — please try sending it again.
               </div>
             </div>
           )}
