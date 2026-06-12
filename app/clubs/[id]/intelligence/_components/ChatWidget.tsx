@@ -235,7 +235,14 @@ export function ChatWidget({ clubId }: ChatWidgetProps) {
     status: realStatus,
     error: realError,
     setMessages: realSetMessages,
-  } = useChat({ transport })
+  } = useChat({
+    transport,
+    // Throttle chunk-driven re-renders (official AI SDK fix for React #185
+    // "Maximum update depth exceeded"): without it every SSE chunk re-renders,
+    // and a dense network burst + our [messages] sync effects blow React's
+    // update-depth limit — the flaky "Sorry, I encountered an error" in chat.
+    experimental_throttle: 50,
+  })
 
   // If real API returns auth error on first message, switch to mock
   useEffect(() => {
