@@ -2711,8 +2711,16 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
       {/* Members list */}
       <div className="rounded-2xl p-4" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
         <div className="space-y-1">
+          {/* Row → member profile (operator feedback v2.0 §9.2). Plain
+              navigation: browser back returns to this audience intact. */}
           {members.map((m: any) => (
-            <div key={m.id} className="flex items-center gap-3 p-3 rounded-xl transition-colors" style={{ background: 'var(--subtle)' }}>
+            <Link
+              key={m.id}
+              href={`/clubs/${clubId}/intelligence/members?member=${m.id}`}
+              className="flex items-center gap-3 p-3 rounded-xl transition-opacity hover:opacity-80 cursor-pointer"
+              style={{ background: 'var(--subtle)' }}
+              title="Open member profile"
+            >
               <div className="w-9 h-9 rounded-xl flex items-center justify-center text-xs text-white flex-shrink-0"
                 style={{ background: 'linear-gradient(135deg, #8B5CF6, #06B6D4)', fontWeight: 700 }}>
                 {(m.name || m.email || '?').charAt(0).toUpperCase()}
@@ -2735,7 +2743,7 @@ function CohortDetail({ clubId, cohortId, onClose }: { clubId: string; cohortId:
                 </div>
               </div>
               {m.duprRating > 0 && <DuprBadge rating={Number(m.duprRating)} />}
-            </div>
+            </Link>
           ))}
 
           {members.length === 0 && (

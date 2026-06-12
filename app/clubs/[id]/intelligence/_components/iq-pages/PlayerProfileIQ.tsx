@@ -11,7 +11,7 @@ import {
 } from "recharts"
 import { useTheme } from "../IQThemeProvider"
 import { trpc } from "@/lib/trpc"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 interface PlayerProfileIQProps {
   userId: string
@@ -362,7 +362,14 @@ export function PlayerProfileIQ({ userId, clubId, onBack }: PlayerProfileIQProps
 // ── Frequent Partners Card ──
 function FrequentPartnersCard({ userId, clubId }: { userId: string; clubId: string }) {
   const searchParams2 = useSearchParams()
+  const router = useRouter()
   const isDemo2 = searchParams2.get('demo') === 'true'
+  // Partner click → that member's profile (operator feedback v2.0 §8.2).
+  // Members reads ?member= and opens the drawer; push keeps the current
+  // member in history so back returns to them.
+  const openPartner = (partnerId: string) => {
+    router.push(`/clubs/${clubId}/intelligence/members?member=${partnerId}`)
+  }
   const { data: partners, isLoading } = trpc.intelligence.getFrequentPartners.useQuery(
     { userId, clubId },
     { enabled: !!userId && !isDemo2 },
@@ -382,7 +389,15 @@ function FrequentPartnersCard({ userId, clubId }: { userId: string; clubId: stri
       </div>
       <div className="space-y-2">
         {partners.map((p) => (
-          <div key={p.id} className="flex items-center gap-3 p-2.5 rounded-xl" style={{ background: 'var(--subtle)' }}>
+          <div
+            key={p.id}
+            role="button"
+            tabIndex={0}
+            className="flex items-center gap-3 p-2.5 rounded-xl cursor-pointer transition-opacity hover:opacity-80"
+            style={{ background: 'var(--subtle)' }}
+            onClick={() => openPartner(p.id)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openPartner(p.id) }}
+          >
             <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
               style={{ background: 'rgba(139,92,246,0.15)', color: '#8B5CF6' }}>
               {(p.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
