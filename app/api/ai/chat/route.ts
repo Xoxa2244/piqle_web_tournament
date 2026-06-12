@@ -1,5 +1,6 @@
 import { streamText, convertToModelMessages, stepCountIs } from 'ai';
 import { createAdvisorMemberTools } from '@/lib/ai/advisor-member-tools';
+import { createAdvisorProgramTools } from '@/lib/ai/advisor-program-tools';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
@@ -498,13 +499,13 @@ NOTE: estimatedMRR = activeMembers × listed monthly price. It's the contracted 
         const benign = hTiers.filter((t) => t.verdict === 'healthy' || t.verdict === 'tiny')
         if (hRoll) {
           parts.push(`## Tier Health (verdict per tier + treatment recommendations)
-Total MRR at risk (zombies × monthly price across paid tiers): $${hRoll.clubMRRAtRiskUsd.toLocaleString('en-US')}/month
+Total MRR at risk (inactive members × monthly price across paid tiers): $${hRoll.clubMRRAtRiskUsd.toLocaleString('en-US')}/month
 Total upsell potential (power-user free-tier holders → $${hRoll.cheapestPaidMonthlyPrice}/mo cheapest paid): $${hRoll.clubUpsellPotentialMRRUsd.toLocaleString('en-US')}/month
 Tier verdicts: ${hRoll.countByVerdict.critical || 0} critical · ${hRoll.countByVerdict.at_risk || 0} at_risk · ${hRoll.countByVerdict.watch || 0} watch · ${hRoll.countByVerdict.healthy || 0} healthy · ${hRoll.countByVerdict.tiny || 0} tiny
 
 ${actionable.length > 0 ? `Actionable tiers (sorted by severity):\n${actionable.map((t) => `
 - ${t.name} → ${t.verdict.toUpperCase()} (score ${t.healthScore}/100)
-  Signals: ${t.active} active · ${t.zombieSharePct}% zombie · ${t.powerUserSharePct}% power · ${t.suspendedRatePct}% suspended${t.mrrAtRiskUsd > 0 ? ` · $${t.mrrAtRiskUsd.toLocaleString('en-US')} MRR at risk` : ''}${t.upsellPotentialMRRUsd > 0 ? ` · $${t.upsellPotentialMRRUsd.toLocaleString('en-US')} upsell potential` : ''}
+  Signals: ${t.active} active · ${t.zombieSharePct}% inactive · ${t.powerUserSharePct}% power · ${t.suspendedRatePct}% suspended${t.mrrAtRiskUsd > 0 ? ` · $${t.mrrAtRiskUsd.toLocaleString('en-US')} MRR at risk` : ''}${t.upsellPotentialMRRUsd > 0 ? ` · $${t.upsellPotentialMRRUsd.toLocaleString('en-US')} upsell potential` : ''}
   Diagnostics:
 ${t.diagnostics.map((d) => `    • ${d}`).join('\n')}${t.treatments.length > 0 ? `\n  Treatments:\n${t.treatments.map((tx) => `    → [${tx.campaignHint}] ${tx.action}`).join('\n')}` : ''}`).join('\n')}` : 'No actionable tier issues right now — all paid tiers are healthy.'}
 ${benign.length > 0 ? `\nHealthy / tiny (no action needed): ${benign.map((t) => `${t.name} (${t.verdict})`).join(' · ')}` : ''}
@@ -729,10 +730,11 @@ When answering about sessions with open spots today or tonight:
     // On-demand member tools (Layer 2): the model can fetch the REAL next
     // page / sort / filter of a tier's members instead of fabricating when
     // the prefetched roster sample is exhausted. stepCountIs(N) enables the
-    // multi-step loop (tool call → result → final text). Single jsonSchema
-    // tool to keep blast radius small and dodge the repo's Zod-serialization
-    // issue on Vercel (see lib/ai/advisor-member-tools.ts).
-    const advisorTools = createAdvisorMemberTools(clubId);
+    // multi-step loop (tool call → result → final text). jsonSchema
+    // tools dodge the repo's Zod-serialization issue on Vercel (see
+    // lib/ai/advisor-member-tools.ts). Program tools close the
+    // conversion/clinic/league blind zone (lib/ai/advisor-program-tools.ts).
+    const advisorTools = { ...createAdvisorMemberTools(clubId), ...createAdvisorProgramTools(clubId) };
 
     let result;
     try {
