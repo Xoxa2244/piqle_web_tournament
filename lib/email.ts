@@ -131,17 +131,21 @@ export function buildOutreachTemplateValues({
 /**
  * Resolves the effective From: address for a send.
  *
- * Precedence:
+ * Precedence (additional edits §5 — members must see THEIR CLUB, not IQSport):
  *   1. If opts.metadata.clubId is present AND the club has a verified
  *      + enabled custom sending domain → use campaigns@mail.theirclub.com.
- *   2. Otherwise → fall back to the platform default (noreply@iqsport.ai).
+ *   2. If the club exists but has NO custom domain → platform address with
+ *      the CLUB NAME as the display name ("IPC South" <noreply@iqsport.ai>)
+ *      + Reply-To the club's booking email when set, so member replies
+ *      reach the club instead of dying in noreply.
+ *   3. No clubId / club not found → platform default (IQSport).
  *
  * Silent-fail by design: a DB lookup error here must not block the send.
  * The fallback is already a valid From address.
  */
 async function resolveFromAddress(
   opts: SafeSendMailOptions,
-): Promise<{ email: string; name: string }> {
+): Promise<{ email: string; name: string; replyTo?: string }> {
   const defaultFrom = {
     email: fromEmail || 'noreply@iqsport.ai',
     name: fromName || 'IQSport',
@@ -154,6 +158,7 @@ async function resolveFromAddress(
       where: { id: clubId },
       select: {
         name: true,
+        bookingRequestEmail: true,
         sendingDomain: true,
         sendingDomainEnabled: true,
         sendingDomainVerifiedAt: true,
@@ -164,11 +169,38 @@ async function resolveFromAddress(
     if (!club) return defaultFrom
     const custom = buildClubFromAddress(club)
     if (custom) return { email: custom.fromEmail, name: custom.fromName }
+    const clubName = (club.name || '').trim()
+    const replyTo = (club.bookingRequestEmail || '').trim()
+    if (clubName) {
+      return {
+        email: defaultFrom.email,
+        name: clubName,
+        ...(replyTo ? { replyTo } : {}),
+      }
+    }
   } catch (err) {
     // Don't fail the send over a From-resolution glitch — just log.
     log.warn?.(`[Email] From-address resolve failed for club ${clubId}: ${(err as Error).message?.slice(0, 120)}`)
   }
   return defaultFrom
+}
+
+/**
+ * Club visual brand for outreach templates (additional edits §5b).
+ * Silent-fail like resolveFromAddress — branding must never block a send.
+ */
+async function resolveClubBrand(clubId: string | undefined): Promise<{ logoUrl: string | null; name: string | null } | undefined> {
+  if (!clubId) return undefined
+  try {
+    const club = await prisma.club.findUnique({
+      where: { id: clubId },
+      select: { name: true, logoUrl: true },
+    })
+    if (!club) return undefined
+    return { logoUrl: club.logoUrl || null, name: club.name || null }
+  } catch {
+    return undefined
+  }
 }
 
 /** Wraps email sending with blocked email guard + Mandrill fallback */
@@ -208,6 +240,8 @@ async function safeSendMail(opts: SafeSendMailOptions) {
             subject: opts.subject,
             html: opts.html,
             text: opts.text,
+            // §5a: replies from members go to the club, not to noreply@
+            ...(effectiveFrom.replyTo ? { headers: { 'Reply-To': effectiveFrom.replyTo } } : {}),
             // Enable tracking — required for open/click webhook events
             track_opens: true,
             track_clicks: true,
@@ -259,6 +293,8 @@ async function safeSendMail(opts: SafeSendMailOptions) {
     const info = await transporter.sendMail({
       to: opts.to,
       from: smtpFrom,
+      // §5a: same Reply-To contract as the Mandrill path
+      ...(effectiveFrom.replyTo ? { replyTo: effectiveFrom.replyTo } : {}),
       subject: opts.subject,
       html: opts.html,
       text: opts.text,
@@ -766,13 +802,17 @@ export async function sendOutreachEmail({
     ? `${renderedBodyHtmlOverride}${suppressDefaultCta ? '' : buildEmailButton(effectiveCtaLabel, effectiveCtaUrl)}`
     : defaultBodyHtml
 
+  // §5b: member-facing outreach is branded as the club — logo when the
+  // club has one, club-first header otherwise (resolved via metadata.clubId).
+  const clubBrand = await resolveClubBrand(metadata?.clubId)
   const html = buildIqSportEmail({
     title: renderedSubject,
     heading: renderedSubject,
-    eyebrow: 'Campaign Outreach',
+    eyebrow: clubName,
     subheading: `Sent by ${clubName}`,
     baseUrl: bookingUrl,
     bodyHtml: finalBodyHtml,
+    brand: clubBrand ?? { logoUrl: null, name: clubName },
     footerHtml: `
       <p style="margin:0;font-size:12px;color:#94A3B8;">
         Sent by ${clubName} via <a href="${getAppBaseUrl(bookingUrl)}" style="color:#A78BFA;text-decoration:none;">IQSport.ai</a>

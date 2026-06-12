@@ -190,12 +190,15 @@ interface OutreachSessionCard {
 function buildOutreachHtml({
   body,
   clubName,
+  clubLogoUrl,
   bookingUrl,
   sessionCard,
   unsubscribeUrl,
 }: {
   body: string
   clubName: string
+  /** §5b: club logo replaces the IQSport logo in the header when set */
+  clubLogoUrl?: string | null
   bookingUrl: string
   sessionCard?: OutreachSessionCard
   unsubscribeUrl?: string
@@ -228,6 +231,7 @@ function buildOutreachHtml({
     heading: clubName,
     eyebrow: 'Campaign Outreach',
     subheading: 'A personalized message from your club',
+    brand: { logoUrl: clubLogoUrl ?? null, name: clubName },
     baseUrl: bookingUrl,
     bodyHtml: `
       ${renderTextParagraphs(body)}
@@ -248,7 +252,7 @@ function buildOutreachHtml({
 async function executeSequenceStep(
   prisma: any,
   decision: SequenceDecision,
-  club: { id: string; name: string; slug?: string },
+  club: { id: string; name: string; slug?: string; logoUrl?: string | null },
   settings: ClubAutomationSettings,
   automationSettings: unknown,
   appUrl: string,
@@ -458,6 +462,7 @@ async function executeSequenceStep(
         const emailHtml = buildOutreachHtml({
           body: message.emailBody,
           clubName: club.name,
+          clubLogoUrl: club.logoUrl ?? null,
           bookingUrl: memberBookingUrl,
           sessionCard: matched ? {
             title: matched.session.title,
@@ -531,6 +536,7 @@ async function executeSequenceStep(
           const emailHtml = buildOutreachHtml({
             body: message.emailBody || message.smsBody,
             clubName: club.name,
+            clubLogoUrl: club.logoUrl ?? null,
             bookingUrl: memberBookingUrl,
             unsubscribeUrl: unsubUrl,
           })
@@ -577,7 +583,7 @@ export async function runHealthCampaign(
   // Load club
   const club = await prisma.club.findUniqueOrThrow({
     where: { id: clubId },
-    select: { id: true, name: true, automationSettings: true },
+    select: { id: true, name: true, logoUrl: true, automationSettings: true },
   })
 
   const rawSettings = typeof club.automationSettings === 'object' && club.automationSettings !== null
@@ -1096,6 +1102,7 @@ export async function runHealthCampaign(
             const emailHtml = buildOutreachHtml({
               body: variant.emailBody,
               clubName: club.name,
+              clubLogoUrl: club.logoUrl ?? null,
               bookingUrl: memberBookingUrl,
               sessionCard: matched ? {
                 title: matched.session.title,
