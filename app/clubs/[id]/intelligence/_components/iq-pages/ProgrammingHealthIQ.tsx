@@ -417,6 +417,10 @@ export function ProgrammingHealthIQ({ clubId }: Props) {
                             <CalendarDays className="w-3 h-3" /> Open Schedule
                           </Link>
                         )}
+                        {/* §1b: re-engage findings can mint the win-back audience on the spot */}
+                        {ins.treatmentGoal === 'reengage' && (
+                          <WinbackAudienceChip clubId={clubId} family={ins.family} periodDays={periodDays} />
+                        )}
                       </div>
                     </div>
                     <div className="shrink-0 flex items-center gap-2">
@@ -688,5 +692,39 @@ function CompareFamiliesCard({
         </LineChart>
       </ResponsiveContainer>
     </div>
+  )
+}
+
+/** §1b (additional edits): one-click win-back audience for a re-engage
+ *  finding — members who played this family in the prior window but not
+ *  in the current one. Frozen cohort via createCohortFromProgramContext. */
+function WinbackAudienceChip({ clubId, family, periodDays }: { clubId: string; family: ProgramFamily; periodDays: number }) {
+  const [created, setCreated] = useState(false)
+  const mutation = trpc.intelligence.createCohortFromProgramContext.useMutation({
+    onSuccess: () => setCreated(true),
+  })
+
+  if (created) {
+    return (
+      <Link
+        href={`/clubs/${clubId}/intelligence/cohorts`}
+        className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg"
+        style={{ background: 'rgba(16,185,129,0.12)', color: '#10B981', fontWeight: 600 }}
+      >
+        ✓ Audience created — open Audiences
+      </Link>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => mutation.mutate({ clubId, family, periodDays, mode: 'lapsed' })}
+      disabled={mutation.isPending}
+      className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
+      style={{ background: 'rgba(245,158,11,0.12)', color: '#F59E0B', fontWeight: 600 }}
+      title={`Members who played ${periodDays}–${periodDays * 2} days ago but not since`}
+    >
+      {mutation.isPending ? 'Creating…' : '+ Create win-back audience'}
+    </button>
   )
 }

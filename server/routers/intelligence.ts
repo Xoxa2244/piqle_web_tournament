@@ -10,7 +10,7 @@ import {
 } from '@/lib/ai/program-family-aggregator'
 import { buildProgramFamilySeries, buildAllFamiliesSeries } from '@/lib/ai/program-family-series'
 import { buildProgrammingInsights } from '@/lib/ai/program-family-insights'
-import { classifyProgramFamily } from '@/lib/ai/program-family-classifier'
+import { classifyProgramFamily, PROGRAM_FAMILY_META } from '@/lib/ai/program-family-classifier'
 import { programGroupKey } from '@/lib/ai/program-title-normalizer'
 import { isIntroSession } from '@/lib/ai/intro-program-detection'
 import { checkFeatureAccess } from '@/lib/subscription'
@@ -11133,6 +11133,99 @@ Spirit: ${guidance.spirit}`
         data: {
           clubId: input.clubId,
           name,
+          filters: [{ field: 'userId', op: 'in', value: userIds }] as any,
+          memberCount: userIds.length,
+          isDynamic: false,
+          createdBy: ctx.session.user.id,
+        },
+      })
+    }),
+
+  /**
+   * Frozen audience from a Programming Health context (additional edits §1b):
+   * everyone who attended a program family (optionally one program) in the
+   * window — or, mode='lapsed', attended in the PRIOR window but not since
+   * ("played drills 30–60d ago, hasn't been back"). Frozen by design: the
+   * operator's intent is "these specific people as of now". Family/program
+   * matching mirrors getProgramSessions (classifyProgramFamily +
+   * programGroupKey, both TS-side).
+   */
+  createCohortFromProgramContext: protectedProcedure
+    .input(z.object({
+      clubId: z.string().uuid(),
+      family: z.enum([
+        'OPEN_PLAY', 'COURT_BOOKING', 'CLINIC', 'PRIVATE_LESSON',
+        'LEAGUE', 'EVENTS', 'YOUTH', 'EQUIPMENT',
+      ]),
+      programKey: z.string().optional(),
+      periodDays: z.number().int().min(1).max(365).default(30),
+      mode: z.enum(['attendees', 'lapsed']),
+      name: z.string().max(100).optional(),
+    }))
+    .mutation(async ({ ctx, input }) => {
+      await requireClubAdmin(ctx.prisma, input.clubId, ctx.session.user.id)
+
+      const now = new Date()
+      const windowStart = new Date(now.getTime() - input.periodDays * 86_400_000)
+      const priorStart = new Date(now.getTime() - 2 * input.periodDays * 86_400_000)
+      const club = await ctx.prisma.club.findUnique({
+        where: { id: input.clubId },
+        select: { name: true },
+      })
+
+      const sessions = await ctx.prisma.playSession.findMany({
+        where: {
+          clubId: input.clubId,
+          date: { gte: input.mode === 'lapsed' ? priorStart : windowStart, lte: now },
+        },
+        select: { id: true, title: true, format: true, category: true, date: true },
+      })
+      const inFamily = sessions
+        .filter(s => classifyProgramFamily({ title: s.title, format: s.format as string, category: s.category }) === input.family)
+        .filter(s => !input.programKey || (programGroupKey(s.title, club?.name ?? null) || '(untitled)') === input.programKey)
+      const currentIds = inFamily.filter(s => s.date >= windowStart).map(s => s.id)
+      const priorIds = inFamily.filter(s => s.date < windowStart).map(s => s.id)
+
+      const fetchUserIds = async (sessionIds: string[]): Promise<string[]> => {
+        if (sessionIds.length === 0) return []
+        const rows = await ctx.prisma.playSessionBooking.findMany({
+          where: { sessionId: { in: sessionIds }, status: 'CONFIRMED' },
+          select: { userId: true },
+          distinct: ['userId'],
+        })
+        return rows.map(r => r.userId)
+      }
+
+      let userIds: string[]
+      if (input.mode === 'attendees') {
+        userIds = await fetchUserIds(currentIds)
+      } else {
+        const prior = await fetchUserIds(priorIds)
+        const current = new Set(await fetchUserIds(currentIds))
+        userIds = prior.filter(id => !current.has(id))
+      }
+      // jsonb filter sanity cap — far above any real club's single-family reach
+      userIds = userIds.slice(0, 5000)
+      if (userIds.length === 0) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: input.mode === 'attendees'
+            ? 'No confirmed attendees in this window'
+            : 'No lapsed members — everyone from the prior window came back',
+        })
+      }
+
+      const familyLabel = PROGRAM_FAMILY_META[input.family]?.label ?? input.family
+      const label = input.programKey || familyLabel
+      const name = input.name || (input.mode === 'attendees'
+        ? `${label} attendees — last ${input.periodDays}d`
+        : `${label} lapsed — played ${input.periodDays}–${input.periodDays * 2}d ago, not since`)
+
+      return ctx.prisma.clubCohort.create({
+        data: {
+          clubId: input.clubId,
+          name: name.slice(0, 100),
+          description: `Created from Programming Health (${familyLabel}, ${input.mode}, ${input.periodDays}d window)`,
           filters: [{ field: 'userId', op: 'in', value: userIds }] as any,
           memberCount: userIds.length,
           isDynamic: false,

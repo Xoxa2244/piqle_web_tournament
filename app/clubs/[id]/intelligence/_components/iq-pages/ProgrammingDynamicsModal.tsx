@@ -349,6 +349,9 @@ function SessionsTab({
           Open in Schedule <ArrowUpRight className="w-3.5 h-3.5" />
         </Link>
       </div>
+
+      {/* Additional edits §1b: family-level audiences straight from the drill */}
+      <FamilyAudienceButtons clubId={clubId} family={target.family} programKey={target.programKey ?? undefined} periodDays={periodDays} />
       {sessions.map((s) => {
         const isOpen = openSessionId === s.sessionId
         return (
@@ -493,6 +496,65 @@ function SessionAudienceDetail({ clubId, sessionId, color }: { clubId: string; s
       {/* Additional edits §1: insight → targeting without leaving the modal */}
       {data.attendees.some((a: any) => a.status === 'CONFIRMED') && (
         <SessionAudienceButton clubId={clubId} sessionId={sessionId} />
+      )}
+    </div>
+  )
+}
+
+/** Family/program-level audience buttons (additional edits §1b):
+ *  attendees of the window, or lapsed = played in the prior window but
+ *  not since. Both create FROZEN cohorts via createCohortFromProgramContext. */
+function FamilyAudienceButtons({ clubId, family, programKey, periodDays }: {
+  clubId: string
+  family: ProgramFamily
+  programKey?: string
+  periodDays: number
+}) {
+  const [created, setCreated] = useState<string | null>(null)
+  const [pendingMode, setPendingMode] = useState<'attendees' | 'lapsed' | null>(null)
+  const mutation = trpc.intelligence.createCohortFromProgramContext.useMutation()
+  const run = (mode: 'attendees' | 'lapsed') => {
+    setPendingMode(mode)
+    mutation.mutate(
+      { clubId, family, programKey, periodDays, mode },
+      { onSuccess: () => setCreated(mode), onSettled: () => setPendingMode(null) },
+    )
+  }
+
+  if (created) {
+    return (
+      <div className="flex items-center gap-2 text-xs py-1" style={{ color: '#10B981' }}>
+        ✓ {created === 'attendees' ? 'Attendees' : 'Lapsed'} audience created —{' '}
+        <Link href={`/clubs/${clubId}/intelligence/cohorts`} className="underline" style={{ color: '#10B981' }}>
+          open Audiences
+        </Link>
+      </div>
+    )
+  }
+
+  const baseStyle = { background: 'rgba(139,92,246,0.12)', color: '#A78BFA', fontWeight: 600 } as const
+  return (
+    <div className="flex items-center gap-2 flex-wrap py-1">
+      <button
+        onClick={() => run('attendees')}
+        disabled={mutation.isPending}
+        className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
+        style={baseStyle}
+        title={`Everyone who attended in the last ${periodDays} days`}
+      >
+        {pendingMode === 'attendees' ? 'Creating…' : `+ Audience: attendees (${periodDays}d)`}
+      </button>
+      <button
+        onClick={() => run('lapsed')}
+        disabled={mutation.isPending}
+        className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
+        style={{ background: 'rgba(245,158,11,0.12)', color: '#F59E0B', fontWeight: 600 }}
+        title={`Played ${periodDays}–${periodDays * 2} days ago but not since — win-back targets`}
+      >
+        {pendingMode === 'lapsed' ? 'Creating…' : '+ Audience: lapsed'}
+      </button>
+      {mutation.error && (
+        <span className="text-[11px]" style={{ color: '#F59E0B' }}>{mutation.error.message}</span>
       )}
     </div>
   )
