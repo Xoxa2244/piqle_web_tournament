@@ -272,51 +272,7 @@ export function MembersReactivationSection({
                           </div>
                         )}
 
-                        {/* Outreach Buttons */}
-                        <div className="flex items-center gap-2">
-                          {sentOutreach[member.id] ? (
-                            <span className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1" style={{ background: "rgba(16,185,129,0.15)", color: "#10B981", fontWeight: 600 }}>
-                              ✓ Sent via {sentOutreach[member.id]}
-                            </span>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setDraftMessage(buildReactivationDraft({
-                                    memberName: member.name,
-                                    clubName,
-                                    daysSinceLastActivity: member.daysSincePlay,
-                                  }));
-                                  setPendingModal({ memberId: member.id, channel: "email" });
-                                }}
-                                className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors"
-                                style={{ background: "rgba(139,92,246,0.15)", color: "#A78BFA", fontWeight: 600 }}
-                              >
-                                  <Mail className="w-3 h-3" /> Email
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setDraftMessage(buildReactivationDraft({
-                                      memberName: member.name,
-                                      clubName,
-                                      daysSinceLastActivity: member.daysSincePlay,
-                                    }));
-                                    setPendingModal({ memberId: member.id, channel: "sms" });
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors"
-                                  style={{ background: "rgba(249,115,22,0.14)", color: "#FB923C", fontWeight: 600 }}
-                                >
-                                  <Smartphone className="w-3 h-3" /> SMS
-                                </button>
-                            </>
-                          )}
-                        </div>
+                        {/* Quick-send Email/SMS removed 2026-06-12 per Solomon (выпилим на будущее) — restore from git history when the outreach UX returns */}
                         {sendStatus[member.id]?.reason && sendStatus[member.id]?.state !== "sent" && (
                           <div className="text-[10px]" style={{ color: sendStatus[member.id]?.state === "skipped" ? "#F59E0B" : "#F87171" }}>
                             {sendStatus[member.id]?.reason}
