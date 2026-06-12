@@ -18,6 +18,7 @@ import {
 import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy';
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy';
 import { buildAdvisorOutcomeInsightsBlock, buildAdvisorRecentSendSnapshotBlock } from '@/lib/ai/advisor-outcome-insights';
+import { buildAdvisorTierRosterBlock } from '@/lib/ai/advisor-tier-roster';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
@@ -302,11 +303,11 @@ export async function POST(req: Request) {
     try {
       const cacheKey = `advisor_prefetch_${clubId}`
       const cached = advisorDataCache.get(cacheKey)
-      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, overnightSends: string, ratedPlayers: any, tierEconomics: any, tierHealth: any
+      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, overnightSends: string, ratedPlayers: any, tierEconomics: any, tierHealth: any, tierRoster: string
 
       if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
         // Use cached data (< 5 min old)
-        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics, tierHealth } = cached.data)
+        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics, tierHealth, tierRoster } = cached.data)
         outcomeInsightsBlock = outcomeInsights || ''
         overnightSendBlock = overnightSends || ''
         console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
@@ -322,7 +323,7 @@ export async function POST(req: Request) {
           ((club?.automationSettings as any)?.intelligence?.timezone as string | undefined) ||
           'America/New_York'
 
-        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics, tierHealth] = await Promise.all([
+        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics, tierHealth, tierRoster] = await Promise.all([
           exec(tools.getClubMetrics, {}),
           exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
           exec(tools.getCourtOccupancy, { days: 30 }),
@@ -345,10 +346,15 @@ export async function POST(req: Request) {
           // ('what's wrong with VIP', 'which tier should we fix first')
           // without re-querying the bucket distribution.
           exec(tools.getTierHealth, {}),
+          // Per-tier member roster — the actual members in each real CR tier
+          // with attendance recency, so the Advisor can answer "which [TIER]
+          // members haven't visited / are most active" with real NAMES, not
+          // just the aggregate counts above. Returns '' on failure.
+          buildAdvisorTierRosterBlock({ prisma, clubId }).catch(() => ''),
         ])
         outcomeInsightsBlock = outcomeInsights || ''
         overnightSendBlock = overnightSends || ''
-        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, overnightSends: overnightSendBlock, ratedPlayers, tierEconomics, tierHealth } })
+        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, overnightSends: overnightSendBlock, ratedPlayers, tierEconomics, tierHealth, tierRoster } })
         console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
       }
 
@@ -596,6 +602,12 @@ ${Object.entries(buckets).filter(([, c]) => c > 0).map(([b, c]) => `- ${b}: ${c}
 
 NOTE: CourtReserve sync does NOT pull DUPR ratings (that's why the count is often 0). UTR (tennis), Playtomic (padel), and other sport-specific systems are also not yet integrated — say so plainly when asked instead of guessing.`)
         }
+      }
+
+      // Per-tier member roster (real names per tier) — appended last so the
+      // aggregate tier blocks above frame it. Powers "which [TIER] members …".
+      if (tierRoster) {
+        parts.push(tierRoster)
       }
 
       liveDataBlock = parts.join('\n\n')
