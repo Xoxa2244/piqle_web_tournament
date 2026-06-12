@@ -321,7 +321,7 @@ type DashboardIQProps = {
 
 type PeriodData = {
   kpis: KpiItem[];
-  health: { level: string; risk?: string; count: number; pct: number; color: string }[];
+  health: { level: string; risk?: string; query?: string; count: number; pct: number; color: string }[];
   healthMetrics: { improved: number; improvedPct: number; declined: number; declinedPct: number; avgScore: number; avgScorePrev: number; churnedThisPeriod: number; churnChange: number };
   comparison: { metric: string; current: number; previous: number; format: "currency" | "number" | "percent" }[];
 };
@@ -396,11 +396,22 @@ function mapRealDataToPeriod(
       ].filter(Boolean) as KpiItem[];
     })(),
     health: hs ? [
-      // `risk` = the Members page ?risk= deep-link slug (operator feedback v2.0 §1.1)
+      // `risk` = the Members page ?risk= deep-link slug (operator feedback v2.0 §1.1).
+      // When the buckets come from the activity heuristic (no snapshots yet),
+      // its "critical" = 45+ days quiet = the win-back population — the
+      // ?risk=critical list would be empty (engine scale differs), so route
+      // that band to the Win-back view instead (Critical-seam fix).
       { level: "Healthy", risk: "healthy", count: hs.healthy, pct: Math.round(hs.healthy / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#10B981" },
       { level: "Watch", risk: "watch", count: hs.watch, pct: Math.round(hs.watch / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F59E0B" },
       { level: "At Risk", risk: "at-risk", count: hs.atRisk, pct: Math.round(hs.atRisk / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F97316" },
-      { level: "Critical", risk: "critical", count: hs.critical, pct: Math.round(hs.critical / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#EF4444" },
+      {
+        level: "Critical",
+        risk: (hs as any).summarySource === 'activity' ? undefined : "critical",
+        query: (hs as any).summarySource === 'activity' ? "view=reactivation" : undefined,
+        count: hs.critical,
+        pct: Math.round(hs.critical / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0,
+        color: "#EF4444",
+      },
     ] : emptyHealth,
     healthMetrics: hs ? { improved: 0, improvedPct: 0, declined: 0, declinedPct: 0, avgScore: hs.avgHealthScore, avgScorePrev: 0, churnedThisPeriod: 0, churnChange: 0 } : emptyHealthMetrics,
     comparison: emptyComparison,
@@ -1389,24 +1400,30 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
           {/* Health distribution bars */}
           <div className="space-y-3">
             {/* Each band deep-links to Members with the matching risk filter
-                (operator feedback v2.0 §1.1 — dashboard must be actionable). */}
-            {data.health.map((h) => (
+                (operator feedback v2.0 §1.1 — dashboard must be actionable).
+                `query` overrides the target for heuristic buckets whose scale
+                doesn't exist in the list (activity-critical → Win-back). */}
+            {data.health.map((h) => {
+              const targetQuery = h.risk ? `risk=${h.risk}` : h.query
+              return (
               <div
                 key={h.level}
-                role={h.risk ? "button" : undefined}
-                tabIndex={h.risk ? 0 : undefined}
-                className={h.risk ? "cursor-pointer rounded-lg -mx-2 px-2 py-1 transition-colors group" : undefined}
-                onClick={h.risk ? () => router.push(`/clubs/${clubId}/intelligence/members?risk=${h.risk}`) : undefined}
-                onKeyDown={h.risk ? (e) => { if (e.key === 'Enter' || e.key === ' ') router.push(`/clubs/${clubId}/intelligence/members?risk=${h.risk}`) } : undefined}
-                onMouseEnter={(e) => { if (h.risk) e.currentTarget.style.background = "var(--hover)" }}
+                role={targetQuery ? "button" : undefined}
+                tabIndex={targetQuery ? 0 : undefined}
+                className={targetQuery ? "cursor-pointer rounded-lg -mx-2 px-2 py-1 transition-colors group" : undefined}
+                onClick={targetQuery ? () => router.push(`/clubs/${clubId}/intelligence/members?${targetQuery}`) : undefined}
+                onKeyDown={targetQuery ? (e) => { if (e.key === 'Enter' || e.key === ' ') router.push(`/clubs/${clubId}/intelligence/members?${targetQuery}`) } : undefined}
+                onMouseEnter={(e) => { if (targetQuery) e.currentTarget.style.background = "var(--hover)" }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent" }}
               >
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: h.color }} />
                     <span className="text-xs" style={{ color: "var(--t2)", fontWeight: 500 }}>{h.level}</span>
-                    {h.risk && (
-                      <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--t4)" }}>view in Members →</span>
+                    {targetQuery && (
+                      <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--t4)" }}>
+                        {h.query === 'view=reactivation' ? 'open Win-back →' : 'view in Members →'}
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
@@ -1424,7 +1441,7 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
                   />
                 </div>
               </div>
-            ))}
+            )})}
           </div>
           {/* Lifecycle counts as pure metrics.
               Per DASHBOARD_AND_ACTION_CENTER_SPEC.md v1.2 §3.4: Customer Health

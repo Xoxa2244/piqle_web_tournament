@@ -5452,6 +5452,12 @@ export const intelligenceRouter = createTRPCRouter({
               avgHealthScore,
               revenueAtRisk: 0,
               trendVsPrevWeek: 0,
+              // Tells the dashboard which scale these buckets are on:
+              // 'snapshots' = engine scale (matches the Members list),
+              // 'activity'  = days-quiet heuristic (45+d = critical) used
+              // until daily snapshots exist — its "critical" is really the
+              // win-back population, so deep-links must point there.
+              summarySource: useSnap ? ('snapshots' as const) : ('activity' as const),
             },
           }
         } catch (err) {
@@ -5867,6 +5873,42 @@ export const intelligenceRouter = createTRPCRouter({
         // Add dormant count (followers with 0 bookings — filtered upfront for performance)
         result.summary.dormant = dormantCount
         result.summary.total = allFollowers.length
+
+        // Self-healing snapshots (Critical-band seam fix, 2026-06-12).
+        // The dashboard's summaryOnly fast-path reads bucket counts from
+        // member_health_snapshots; with no snapshots it falls back to an
+        // activity heuristic ("45+ days quiet" = critical) that does NOT
+        // match this engine's scale — IPC South showed Critical 928 on the
+        // dashboard while this list had 0. The dedicated snapshot cron
+        // (/api/cron/health-snapshot) doesn't run on this deployment
+        // (Vercel crons fire only on the production-branch deployment).
+        // So: the first time this live path runs on a given day, persist
+        // today's engine output as snapshots. Idempotent per (club, day);
+        // one createMany, ~100ms, and the dashboard switches to engine-
+        // scale buckets that match this list.
+        try {
+          const todayStart = new Date()
+          todayStart.setUTCHours(0, 0, 0, 0)
+          const todayCount = await ctx.prisma.memberHealthSnapshot.count({
+            where: { clubId: input.clubId, date: { gte: todayStart } },
+          })
+          if (todayCount === 0 && result.members.length > 0) {
+            const created = await ctx.prisma.memberHealthSnapshot.createMany({
+              data: result.members.map((m: any) => ({
+                clubId: input.clubId,
+                userId: m.memberId,
+                healthScore: m.healthScore,
+                riskLevel: m.riskLevel,
+                lifecycleStage: m.lifecycleStage,
+                features: {},
+              })),
+            })
+            log.info(`[Intelligence] getMemberHealth wrote ${created.count} daily snapshots for ${input.clubId}`)
+          }
+        } catch (err) {
+          // Snapshots are a best-effort side write — never fail the read.
+          log.warn('[Intelligence] getMemberHealth snapshot write failed:', (err as Error).message?.slice(0, 120))
+        }
 
         return result
       } catch (err) {
