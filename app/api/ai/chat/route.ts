@@ -10,7 +10,7 @@ import { retrieveContext, buildRAGContext } from '@/lib/ai/rag/retriever';
 import { detectLanguage, getLanguageInstruction, type SupportedLanguage } from '@/lib/ai/llm/language';
 import { generateConversationSummary } from '@/lib/ai/llm/summarizer';
 import { parse as parseCookie } from 'cookie';
-import { createChatTools } from '@/lib/ai/chat-tools';
+import { getAdvisorPrefetchData } from '@/lib/ai/advisor-prefetch';
 import {
   buildAdvisorStatePrompt,
   clearAdvisorPendingClarification,
@@ -18,14 +18,9 @@ import {
 } from '@/lib/ai/advisor-conversation-state';
 import { resolveAdvisorAutonomyPolicy } from '@/lib/ai/advisor-autonomy-policy';
 import { resolveAdvisorContactPolicy } from '@/lib/ai/advisor-contact-policy';
-import { buildAdvisorOutcomeInsightsBlock, buildAdvisorRecentSendSnapshotBlock } from '@/lib/ai/advisor-outcome-insights';
-import { buildAdvisorTierRosterBlock } from '@/lib/ai/advisor-tier-roster';
 
 // Allow up to 60s for RAG + LLM streaming (default 10s is too tight)
 export const maxDuration = 60;
-
-// ── In-memory cache for advisor pre-fetch (5 min TTL per club) ──
-const advisorDataCache = new Map<string, { ts: number; data: any }>()
 
 function formatAdvisorSessionLine(session: {
   title: string
@@ -302,62 +297,14 @@ export async function POST(req: Request) {
     let outcomeInsightsBlock = ''
     let overnightSendBlock = ''
     try {
-      const cacheKey = `advisor_prefetch_${clubId}`
-      const cached = advisorDataCache.get(cacheKey)
-      let metrics: any, memberHealth: any, courtOcc: any, reactivation: any, membershipData: any, upcomingSessions: any, todayOpenSessions: any, tonightOpenSessions: any, outcomeInsights: string, overnightSends: string, ratedPlayers: any, tierEconomics: any, tierHealth: any, tierRoster: string
-
-      if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
-        // Use cached data (< 5 min old)
-        ;({ metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics, tierHealth, tierRoster } = cached.data)
-        outcomeInsightsBlock = outcomeInsights || ''
-        overnightSendBlock = overnightSends || ''
-        console.log(`[AI Chat] Using cached prefetch data (${Math.round((Date.now() - cached.ts) / 1000)}s old)`)
-      } else {
-        // Fresh fetch
-        const tools = createChatTools(clubId)
-        const exec = (t: any, args: any) => t.execute(args, { toolCallId: 'prefetch', messages: [] }).catch(() => null)
-        const club = await prisma.club.findUnique({
-          where: { id: clubId },
-          select: { automationSettings: true },
-        }).catch(() => null)
-        const clubTimeZone =
-          ((club?.automationSettings as any)?.intelligence?.timezone as string | undefined) ||
-          'America/New_York'
-
-        ;[metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics, tierHealth, tierRoster] = await Promise.all([
-          exec(tools.getClubMetrics, {}),
-          exec(tools.getMemberHealth, { filter: 'all', limit: 50 }),
-          exec(tools.getCourtOccupancy, { days: 30 }),
-          exec(tools.getReactivationCandidates, { limit: 10 }),
-          exec(tools.getMembershipBreakdown, {}),
-          exec(tools.getUpcomingSessions, { limit: 30, onlyOpenSpots: true }),
-          exec(tools.getUpcomingSessions, { limit: 50, onlyOpenSpots: true, dayScope: 'today' }),
-          exec(tools.getUpcomingSessions, { limit: 50, onlyOpenSpots: true, dayScope: 'tonight' }),
-          buildAdvisorOutcomeInsightsBlock({ prisma, clubId, days: 30 }).catch(() => ''),
-          buildAdvisorRecentSendSnapshotBlock({ prisma, clubId, timeZone: clubTimeZone }).catch(() => ''),
-          exec(tools.getRatedPlayers, { limit: 30 }),
-          // Tier economics — bakes MRR + per-tier revenue/active/booking
-          // numbers into the system prompt so the Advisor can answer
-          // "what's our MRR / which tier is most valuable" without an
-          // extra tool round-trip. getTierCatalog (descriptions, benefits,
-          // policies) stays on-demand to keep this prefetch payload small.
-          exec(tools.getTierEconomics, {}),
-          // Tier health — verdict per tier + MRR-at-risk + treatments.
-          // Prefetched so the Advisor can flag bleeding tiers proactively
-          // ('what's wrong with VIP', 'which tier should we fix first')
-          // without re-querying the bucket distribution.
-          exec(tools.getTierHealth, {}),
-          // Per-tier member roster — the actual members in each real CR tier
-          // with attendance recency, so the Advisor can answer "which [TIER]
-          // members haven't visited / are most active" with real NAMES, not
-          // just the aggregate counts above. Returns '' on failure.
-          buildAdvisorTierRosterBlock({ prisma, clubId }).catch(() => ''),
-        ])
-        outcomeInsightsBlock = outcomeInsights || ''
-        overnightSendBlock = overnightSends || ''
-        advisorDataCache.set(cacheKey, { ts: Date.now(), data: { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights: outcomeInsightsBlock, overnightSends: overnightSendBlock, ratedPlayers, tierEconomics, tierHealth, tierRoster } })
-        console.log(`[AI Chat] Fresh prefetch completed, cached for 5 min`)
-      }
+      // 3-layer prefetch cache (in-memory → shared Redis → compute). Redis is
+      // kept warm cross-instance by /api/cron/advisor-prefetch-warm so cold
+      // lambdas read warm shared data instead of paying the ~10s compute.
+      const { data: prefetch, source: prefetchSource } = await getAdvisorPrefetchData(clubId)
+      const { metrics, memberHealth, courtOcc, reactivation, membershipData, upcomingSessions, todayOpenSessions, tonightOpenSessions, outcomeInsights, overnightSends, ratedPlayers, tierEconomics, tierHealth, tierRoster } = prefetch
+      outcomeInsightsBlock = outcomeInsights || ''
+      overnightSendBlock = overnightSends || ''
+      console.log(`[AI Chat] Prefetch source=${prefetchSource}`)
 
       const parts: string[] = []
 
