@@ -1299,10 +1299,19 @@ export function MembersIQ({ memberHealthData, memberGrowthData, smartFirstSessio
   const searchParamsForUrl = useSearchParams();
   const guestTrialSuggestionDateKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
-  const [view, setView] = useState<"all" | "at-risk" | "reactivation">("all");
+  // `?view=` / `?risk=` pre-apply a tab / risk-band filter — the Dashboard
+  // Customer Health Overview categories deep-link here (operator feedback
+  // v2.0 §1.1), same pattern as the `?tier=` link below.
+  const [view, setView] = useState<"all" | "at-risk" | "reactivation">(() => {
+    const v = searchParamsForUrl?.get('view')
+    return v === 'at-risk' || v === 'reactivation' ? v : "all"
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [filterActivity, setFilterActivity] = useState<string>("all");
-  const [filterRisk, setFilterRisk] = useState<string>("all");
+  const [filterRisk, setFilterRisk] = useState<string>(() => {
+    const r = searchParamsForUrl?.get('risk')
+    return r && ['healthy', 'watch', 'at-risk', 'critical'].includes(r) ? r : "all"
+  });
   const [filterTrend, setFilterTrend] = useState<string>("all");
   const [filterValue, setFilterValue] = useState<string>("all");
   // `?tier=<exact CR membership_type>` pre-applies the tier filter — the

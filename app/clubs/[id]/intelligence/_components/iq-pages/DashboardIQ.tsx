@@ -321,7 +321,7 @@ type DashboardIQProps = {
 
 type PeriodData = {
   kpis: KpiItem[];
-  health: { level: string; count: number; pct: number; color: string }[];
+  health: { level: string; risk?: string; count: number; pct: number; color: string }[];
   healthMetrics: { improved: number; improvedPct: number; declined: number; declinedPct: number; avgScore: number; avgScorePrev: number; churnedThisPeriod: number; churnChange: number };
   comparison: { metric: string; current: number; previous: number; format: "currency" | "number" | "percent" }[];
 };
@@ -396,10 +396,11 @@ function mapRealDataToPeriod(
       ].filter(Boolean) as KpiItem[];
     })(),
     health: hs ? [
-      { level: "Healthy", count: hs.healthy, pct: Math.round(hs.healthy / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#10B981" },
-      { level: "Watch", count: hs.watch, pct: Math.round(hs.watch / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F59E0B" },
-      { level: "At Risk", count: hs.atRisk, pct: Math.round(hs.atRisk / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F97316" },
-      { level: "Critical", count: hs.critical, pct: Math.round(hs.critical / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#EF4444" },
+      // `risk` = the Members page ?risk= deep-link slug (operator feedback v2.0 §1.1)
+      { level: "Healthy", risk: "healthy", count: hs.healthy, pct: Math.round(hs.healthy / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#10B981" },
+      { level: "Watch", risk: "watch", count: hs.watch, pct: Math.round(hs.watch / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F59E0B" },
+      { level: "At Risk", risk: "at-risk", count: hs.atRisk, pct: Math.round(hs.atRisk / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#F97316" },
+      { level: "Critical", risk: "critical", count: hs.critical, pct: Math.round(hs.critical / (hs.healthy + hs.watch + hs.atRisk + hs.critical) * 100) || 0, color: "#EF4444" },
     ] : emptyHealth,
     healthMetrics: hs ? { improved: 0, improvedPct: 0, declined: 0, declinedPct: 0, avgScore: hs.avgHealthScore, avgScorePrev: 0, churnedThisPeriod: 0, churnChange: 0 } : emptyHealthMetrics,
     comparison: emptyComparison,
@@ -1387,12 +1388,26 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
 
           {/* Health distribution bars */}
           <div className="space-y-3">
+            {/* Each band deep-links to Members with the matching risk filter
+                (operator feedback v2.0 §1.1 — dashboard must be actionable). */}
             {data.health.map((h) => (
-              <div key={h.level}>
+              <div
+                key={h.level}
+                role={h.risk ? "button" : undefined}
+                tabIndex={h.risk ? 0 : undefined}
+                className={h.risk ? "cursor-pointer rounded-lg -mx-2 px-2 py-1 transition-colors group" : undefined}
+                onClick={h.risk ? () => router.push(`/clubs/${clubId}/intelligence/members?risk=${h.risk}`) : undefined}
+                onKeyDown={h.risk ? (e) => { if (e.key === 'Enter' || e.key === ' ') router.push(`/clubs/${clubId}/intelligence/members?risk=${h.risk}`) } : undefined}
+                onMouseEnter={(e) => { if (h.risk) e.currentTarget.style.background = "var(--hover)" }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent" }}
+              >
                 <div className="flex items-center justify-between mb-1.5">
                   <div className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: h.color }} />
                     <span className="text-xs" style={{ color: "var(--t2)", fontWeight: 500 }}>{h.level}</span>
+                    {h.risk && (
+                      <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "var(--t4)" }}>view in Members →</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs" style={{ color: "var(--t1)", fontWeight: 600 }}>{h.count}</span>
@@ -1425,10 +1440,18 @@ export function DashboardIQ({ dashboardData, healthData, heatmapData, memberGrow
             return (
               <div className="mt-3 space-y-2">
                 {churnedCount > 0 && (
-                  <div className="flex items-center px-3 py-2 rounded-lg" style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-opacity hover:opacity-80"
+                    style={{ background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.15)" }}
+                    onClick={() => router.push(`/clubs/${clubId}/intelligence/members?view=reactivation`)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') router.push(`/clubs/${clubId}/intelligence/members?view=reactivation`) }}
+                  >
                     <span className="text-[11px]" style={{ color: "var(--t3)" }}>
                       <span style={{ color: "#F97316", fontWeight: 700 }}>{churnedCount}</span> churned (45+ days inactive)
                     </span>
+                    <span className="text-[10px]" style={{ color: "#F97316" }}>open Win-back →</span>
                   </div>
                 )}
                 {dormantCount > 0 && (
