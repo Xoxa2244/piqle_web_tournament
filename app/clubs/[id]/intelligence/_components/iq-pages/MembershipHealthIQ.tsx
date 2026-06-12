@@ -823,10 +823,17 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`
 
-function StatTile({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+function StatTile({ label, value, sub, color, hint }: { label: string; value: string; sub?: string; color?: string; hint?: string }) {
   return (
     <Card>
-      <div className="text-xs uppercase tracking-wider mb-1" style={{ color: "var(--t4)" }}>{label}</div>
+      {/* §6.1: every headline $ explains itself — dotted label + tooltip */}
+      <div
+        className={`text-xs uppercase tracking-wider mb-1${hint ? ' cursor-help' : ''}`}
+        style={{ color: "var(--t4)", ...(hint ? { borderBottom: '1px dotted var(--t4)', display: 'inline-block', paddingBottom: 1 } : {}) }}
+        title={hint}
+      >
+        {label}
+      </div>
       <div style={{ fontSize: "26px", fontWeight: 800, color: color || "var(--heading)" }}>{value}</div>
       {sub && <div className="text-xs mt-1" style={{ color: "var(--t4)" }}>{sub}</div>}
     </Card>
@@ -932,7 +939,12 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
       {/* Rollup strip */}
       {rollup && tiers.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatTile label="Est. MRR" value={usd(rollup.totalMRR)} sub={`${rollup.totalActiveSubscribers.toLocaleString()} active`} />
+          <StatTile
+            label="Est. MRR"
+            value={usd(rollup.totalMRR)}
+            sub={`${rollup.totalActiveSubscribers.toLocaleString()} active`}
+            hint="Active subscribers × contracted monthly catalog price — an estimate, not actual transactions. Independent of the selected period: it reflects who holds a membership today."
+          />
           <StatTile
             label="MRR at risk"
             value={usd(rollup.clubMRRAtRiskUsd)}
@@ -940,12 +952,20 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
               ? `${100 - rollup.churnStats.returnRatePct}% of inactive members churn (measured)`
               : "inactive members weighted by est. churn"}
             color={rollup.clubMRRAtRiskUsd > 0 ? "#EF4444" : undefined}
+            hint="Members silent 30+ days × this club's measured never-return rate × tier price. Always anchored to 30-day silence regardless of the selected period — the churn rate is measured on that window, so this $ deliberately doesn't move when you switch periods."
           />
-          <StatTile label="Upsell potential" value={usd(rollup.clubUpsellPotentialMRRUsd)} sub="free power users" color={rollup.clubUpsellPotentialMRRUsd > 0 ? "#10B981" : undefined} />
+          <StatTile
+            label="Upsell potential"
+            value={usd(rollup.clubUpsellPotentialMRRUsd)}
+            sub="free power users"
+            color={rollup.clubUpsellPotentialMRRUsd > 0 ? "#10B981" : undefined}
+            hint="Power users (8+ bookings/month) on free tiers × the cheapest paid tier price — what converting them would add to MRR."
+          />
           <StatTile
             label="Tier verdicts"
             value={`${(rollup.countByVerdict?.critical || 0) + (rollup.countByVerdict?.at_risk || 0)} need action`}
             sub={`${rollup.countByVerdict?.healthy || 0} healthy · ${rollup.countByVerdict?.watch || 0} watch`}
+            hint="Per-tier health verdict combining engagement, silence share and revenue at risk — 'need action' counts tiers rated At Risk or Critical."
           />
         </div>
       )}
@@ -999,6 +1019,23 @@ export function MembershipHealthIQ({ clubId }: { clubId: string }) {
             </p>
           )}
         </Card>
+      )}
+
+      {/* §6.2: one tier ticked used to give zero feedback — the compare
+          icon read as a dead "repeat" button. Spell out the next step. */}
+      {compareSet.length === 1 && (
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl text-xs"
+          style={{ background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.25)' }}
+        >
+          <span style={{ color: 'var(--t2)' }}>
+            <GitCompareArrows className="w-3.5 h-3.5 inline mr-1.5" style={{ color: '#8B5CF6', verticalAlign: '-2px' }} />
+            <strong style={{ color: 'var(--heading)' }}>{compareSet[0]}</strong> selected — pick one more tier (the <GitCompareArrows className="w-3 h-3 inline" style={{ verticalAlign: '-2px' }} /> icon on a row) to compare side-by-side.
+          </span>
+          <button onClick={() => setCompareSet([])} className="shrink-0" style={{ color: 'var(--t4)' }}>
+            Cancel
+          </button>
+        </div>
       )}
 
       {/* Tier compare (WS7) — appears once 2+ tiers are ticked below */}
