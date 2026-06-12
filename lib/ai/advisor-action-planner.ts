@@ -148,6 +148,13 @@ function looksAnalytical(lower: string): boolean {
   if (/\b(what if|how many|how much)\b/.test(lower)) return true
   if (/^(would|could|should)\s+(i|we|you)\b/.test(trimmed)) return true
   if (/\b(compare|comparison|projection|forecast|trend|over the (?:last|past|next)|what happens if|what'?s the picture)\b/.test(lower)) return true
+  // Advisory asks ("help me decide what to change", "review my schedule for
+  // the week") want reasoning + prioritization from the chat LLM, not a
+  // Decision Card. The Schedule→Advise "Discuss in Advisor" seam prefills
+  // exactly this shape; before this clause it fell through to
+  // ops_show_pending / fill_session and answered "the agent is idle".
+  if (/\bhelp (?:me|us) (?:decide|choose|figure|plan|think|prioriti[sz]e|understand)\b/.test(lower)) return true
+  if (/\breview\s+(?:my|our|the)\s+(?:schedule|calendar|week|programming|sessions?|line[- ]?up)\b/.test(lower)) return true
   return false
 }
 
@@ -195,8 +202,11 @@ function heuristicPlan(message: string): AdvisorIntentPlan {
   // ── Ops intents (read-only queries + kill switch) ──
   // Checked before campaign-draft fallbacks so "stop all sending" doesn't
   // get mis-classified as a draft request.
+  // NB: no bare `review` anchor — "Review my schedule…" (the Advise seam
+  // prompt) is a strategy ask, not a queue query. "review the queue/yes
+  // approvals" still matches via the other anchors.
   const wantsShowPending =
-    /\b(pending|awaiting|waiting|approval|approvals?|queue|review)\b/.test(lower) &&
+    /\b(pending|awaiting|waiting|approvals?|queue)\b/.test(lower) &&
     /\b(show|what|list|display|see|view|any)\b/.test(lower)
   const wantsShowActivity =
     /\b(activity|what did|what'?s.* done|recent actions?|history|today|today'?s)\b/.test(lower) &&
