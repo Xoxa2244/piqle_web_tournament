@@ -21,6 +21,12 @@ import { createTestCaller } from './helpers/trpc-test-caller'
 
 const CLUB_ID = '00000000-0000-4000-8000-000000000001'
 
+// The engine gates on daysBetween(now, lastConfirmedBookingAt) > windowDays
+// with now = new Date() (the router doesn't inject a clock). Fixture dates
+// must be relative to the real current time or candidates silently age out
+// of the window and the test starts failing months later.
+const daysAgo = (n: number) => new Date(Date.now() - n * 24 * 60 * 60 * 1000)
+
 function sqlRow(opts: {
   userId: string
   name: string
@@ -35,14 +41,14 @@ function sqlRow(opts: {
 }) {
   return {
     userId: opts.userId,
-    followedAt: new Date('2025-06-01'),
-    userCreatedAt: new Date('2025-06-01'),
+    followedAt: daysAgo(370),
+    userCreatedAt: daysAgo(370),
     name: opts.name,
     email: opts.email,
     membershipType: opts.membershipType ?? 'Full',
     membershipStatus: opts.membershipStatus ?? 'Active',
-    firstConfirmedBookingAt: new Date('2025-08-01'),
-    lastConfirmedBookingAt: opts.lastConfirmedBookingAt ?? new Date('2026-04-10'),
+    firstConfirmedBookingAt: daysAgo(310),
+    lastConfirmedBookingAt: opts.lastConfirmedBookingAt ?? daysAgo(10),
     confirmedBookings: opts.confirmedBookings,
     recentConfirmedBookings: opts.recentConfirmedBookings ?? Math.floor(opts.confirmedBookings / 2),
     activeCoPlayers: opts.activeCoPlayers,
