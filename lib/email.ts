@@ -185,6 +185,24 @@ async function resolveFromAddress(
   return defaultFrom
 }
 
+/**
+ * Club visual brand for outreach templates (additional edits §5b).
+ * Silent-fail like resolveFromAddress — branding must never block a send.
+ */
+async function resolveClubBrand(clubId: string | undefined): Promise<{ logoUrl: string | null; name: string | null } | undefined> {
+  if (!clubId) return undefined
+  try {
+    const club = await prisma.club.findUnique({
+      where: { id: clubId },
+      select: { name: true, logoUrl: true },
+    })
+    if (!club) return undefined
+    return { logoUrl: club.logoUrl || null, name: club.name || null }
+  } catch {
+    return undefined
+  }
+}
+
 /** Wraps email sending with blocked email guard + Mandrill fallback */
 async function safeSendMail(opts: SafeSendMailOptions) {
   const to = opts.to
@@ -784,13 +802,17 @@ export async function sendOutreachEmail({
     ? `${renderedBodyHtmlOverride}${suppressDefaultCta ? '' : buildEmailButton(effectiveCtaLabel, effectiveCtaUrl)}`
     : defaultBodyHtml
 
+  // §5b: member-facing outreach is branded as the club — logo when the
+  // club has one, club-first header otherwise (resolved via metadata.clubId).
+  const clubBrand = await resolveClubBrand(metadata?.clubId)
   const html = buildIqSportEmail({
     title: renderedSubject,
     heading: renderedSubject,
-    eyebrow: 'Campaign Outreach',
+    eyebrow: clubName,
     subheading: `Sent by ${clubName}`,
     baseUrl: bookingUrl,
     bodyHtml: finalBodyHtml,
+    brand: clubBrand ?? { logoUrl: null, name: clubName },
     footerHtml: `
       <p style="margin:0;font-size:12px;color:#94A3B8;">
         Sent by ${clubName} via <a href="${getAppBaseUrl(bookingUrl)}" style="color:#A78BFA;text-decoration:none;">IQSport.ai</a>

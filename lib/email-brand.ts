@@ -88,10 +88,23 @@ export function buildIqSportEmail(opts: {
   eyebrow?: string
   subheading?: string
   footerHtml?: string
+  /**
+   * Club branding (additional edits §5b) — member-facing outreach must read
+   * as THE CLUB, not IQSport. With a logoUrl the header shows the club's
+   * logo; with a brand but no logo the header image is dropped entirely
+   * (the heading right below carries the club identity). Platform emails
+   * (no brand) keep the IQSport logo.
+   */
+  brand?: { logoUrl?: string | null; name?: string | null }
 }) {
   const baseUrl = getEmailBaseUrl(opts.baseUrl)
   const logoUrl = `${baseUrl}/iqsport-email-logo.png?v=20260424`
   const eyebrow = opts.eyebrow || 'IQSPORT'
+  const headerHtml = opts.brand
+    ? (opts.brand.logoUrl
+        ? `<img src="${opts.brand.logoUrl}" alt="${(opts.brand.name || 'Club').replace(/"/g, '&quot;')}" style="display:block;max-height:72px;max-width:280px;width:auto;height:auto;border:0;outline:none;text-decoration:none;margin:0 auto;" />`
+        : '')
+    : `<img src="${logoUrl}" alt="IQSport Intelligence" width="248" style="display:block;width:248px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;margin:0 auto;" />`
   const footerHtml = opts.footerHtml || `
     <p style="margin:0;font-size:12px;line-height:1.6;color:#94A3B8;">
       Sent via <a href="${baseUrl}" style="color:#A78BFA;text-decoration:none;">IQSport.ai</a>
@@ -110,11 +123,11 @@ export function buildIqSportEmail(opts: {
     <tr>
       <td align="center" bgcolor="#0B1020" style="background:#0B1020;padding:32px 16px 40px;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:640px;margin:0 auto;">
-          <tr>
+          ${headerHtml ? `<tr>
             <td align="center" style="padding-bottom:20px;">
-              <img src="${logoUrl}" alt="IQSport Intelligence" width="248" style="display:block;width:248px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;margin:0 auto;" />
+              ${headerHtml}
             </td>
-          </tr>
+          </tr>` : ''}
           <tr>
             <td bgcolor="#101728" style="background:#101728;border:1px solid #1F2A44;border-radius:24px;overflow:hidden;">
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
