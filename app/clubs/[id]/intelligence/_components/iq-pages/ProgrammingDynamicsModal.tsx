@@ -489,7 +489,43 @@ function SessionAudienceDetail({ clubId, sessionId, color }: { clubId: string; s
           </div>
         ))}
       </div>
+
+      {/* Additional edits §1: insight → targeting without leaving the modal */}
+      {data.attendees.some((a: any) => a.status === 'CONFIRMED') && (
+        <SessionAudienceButton clubId={clubId} sessionId={sessionId} />
+      )}
     </div>
+  )
+}
+
+/** Create a frozen audience from this session's confirmed attendees —
+ *  reuses the Schedule drill's createCohortFromSession (additional edits §1). */
+function SessionAudienceButton({ clubId, sessionId }: { clubId: string; sessionId: string }) {
+  const [created, setCreated] = useState(false)
+  const mutation = trpc.intelligence.createCohortFromSession.useMutation({
+    onSuccess: () => setCreated(true),
+  })
+
+  if (created) {
+    return (
+      <div className="flex items-center gap-2 text-xs" style={{ color: '#10B981' }}>
+        ✓ Audience created —{' '}
+        <Link href={`/clubs/${clubId}/intelligence/cohorts`} className="underline" style={{ color: '#10B981' }}>
+          open Audiences
+        </Link>
+      </div>
+    )
+  }
+
+  return (
+    <button
+      onClick={() => mutation.mutate({ clubId, sessionId })}
+      disabled={mutation.isPending}
+      className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-50"
+      style={{ background: 'rgba(139,92,246,0.12)', color: '#A78BFA', fontWeight: 600 }}
+    >
+      {mutation.isPending ? 'Creating…' : '+ Create audience from attendees'}
+    </button>
   )
 }
 
