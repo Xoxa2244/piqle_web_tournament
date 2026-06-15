@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from 'motion/react'
 import { trpc } from '@/lib/trpc'
 import { useTheme } from '../IQThemeProvider'
 import { CourtReserveConnector, StatCard } from './shared/CourtReserveConnector'
-import { CourtReserveHowItWorksButton } from './shared/CourtReserveSyncExplainer'
 import {
   Plug, AlertCircle, Loader2, CheckCircle2, Unplug, Zap,
   Upload, FileSpreadsheet,
@@ -878,19 +877,16 @@ export function IntegrationsIQ({ clubId }: { clubId: string }) {
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} style={{ marginBottom: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 8, flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Plug size={20} color="#fff" />
-            </div>
-            <div>
-              <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Integrations</h1>
-              <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>
-                Connect your club management software to unlock AI insights
-              </p>
-            </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 12, background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Plug size={20} color="#fff" />
           </div>
-          <CourtReserveHowItWorksButton align="right" />
+          <div>
+            <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>Integrations</h1>
+            <p style={{ fontSize: 14, color: 'var(--text-secondary)', margin: 0 }}>
+              Connect your club management software to unlock AI insights
+            </p>
+          </div>
         </div>
       </motion.div>
 

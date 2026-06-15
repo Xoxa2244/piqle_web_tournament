@@ -5,6 +5,7 @@ import { motion } from 'motion/react'
 import { trpc } from '@/lib/trpc'
 import { AILoadingAnimation } from '../AILoadingAnimation'
 import { useTheme } from '../../IQThemeProvider'
+import { CourtReserveHowItWorksButton } from './CourtReserveSyncExplainer'
 import {
   Plug, CheckCircle2, AlertCircle, Loader2, RefreshCw,
   WifiOff, Zap, Database, Users, LayoutGrid, Clock,
@@ -144,6 +145,166 @@ export function StatCard({ icon: Icon, label, data, color, isDark }: {
         {data.created && data.updated ? ' · ' : ''}
         {data.updated ? `${data.updated} updated` : ''}
         {data.matched ? ` · ${data.matched} matched` : ''}
+      </div>
+    </div>
+  )
+}
+
+const SYNC_PHASE_LABELS = [
+  'Recent + upcoming',
+  '2-5 months ago',
+  '5-8 months ago',
+  '8-12 months ago',
+]
+
+type SyncStepState = 'done' | 'current' | 'pending'
+
+function formatResumeDelay(minutes: number) {
+  if (minutes <= 1) return 'less than 1 min'
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+}
+
+function getCompletedWindowCounts(progress: any) {
+  const completedWindows = Array.isArray(progress?.completedWindows) ? progress.completedWindows : []
+  return {
+    reservations: completedWindows.filter((value: string) => value.startsWith('res:')).length,
+    events: completedWindows.filter((value: string) => value.startsWith('evt:')).length,
+  }
+}
+
+function PausedSyncProgress({ progress, pauseMinutes, isDark }: {
+  progress: any
+  pauseMinutes: number
+  isDark: boolean
+}) {
+  const rawPhaseIdx = typeof progress?.syncPhaseIdx === 'number' ? progress.syncPhaseIdx : null
+  const completedWindowCounts = getCompletedWindowCounts(progress)
+  const hasWindowProgress = completedWindowCounts.reservations + completedWindowCounts.events > 0
+
+  const baseSteps: Array<{ key: string; label: string; detail: string; state: SyncStepState }> = [
+    {
+      key: 'courts',
+      label: 'Courts',
+      detail: progress?.courtsDone ? 'Court list imported.' : 'Waiting to import court list.',
+      state: progress?.courtsDone ? 'done' : progress?.phase === 'courts' ? 'current' : 'pending',
+    },
+    {
+      key: 'members',
+      label: 'Members',
+      detail: progress?.membersSynced != null && progress?.membersTotal != null
+        ? `${Number(progress.membersSynced).toLocaleString()} / ${Number(progress.membersTotal).toLocaleString()} members imported.`
+        : progress?.membersDone ? 'Member roster imported.' : 'Waiting to import member roster.',
+      state: progress?.membersDone ? 'done' : progress?.phase === 'members' ? 'current' : 'pending',
+    },
+  ]
+
+  const phaseSteps = SYNC_PHASE_LABELS.map((label, idx) => {
+    const state: SyncStepState = progress?.sessionsDone
+      ? 'done'
+      : rawPhaseIdx == null
+        ? 'pending'
+        : idx < rawPhaseIdx
+          ? 'done'
+          : idx === rawPhaseIdx
+            ? 'current'
+            : 'pending'
+
+    const detail = state === 'done'
+      ? 'Reservations, events, bookings, and waitlist pulled.'
+      : state === 'current' && hasWindowProgress
+        ? `${completedWindowCounts.reservations} reservation window${completedWindowCounts.reservations === 1 ? '' : 's'} and ${completedWindowCounts.events} event window${completedWindowCounts.events === 1 ? '' : 's'} pulled so far.`
+        : state === 'current'
+          ? progress?.phase === 'events'
+            ? 'Reservations are done for this range; events are next.'
+            : 'This range is next when the API unlocks.'
+          : 'Queued for a later sync window.'
+
+    return {
+      key: `phase-${idx}`,
+      label,
+      detail,
+      state,
+    }
+  })
+
+  const steps = [...baseSteps, ...phaseSteps]
+  const stateStyle: Record<SyncStepState, { label: string; color: string; bg: string }> = {
+    done: { label: 'Done', color: '#10B981', bg: 'rgba(16,185,129,0.12)' },
+    current: { label: 'Paused', color: '#F59E0B', bg: 'rgba(245,158,11,0.12)' },
+    pending: { label: 'Queued', color: isDark ? '#94A3B8' : '#64748B', bg: isDark ? 'rgba(148,163,184,0.10)' : 'rgba(100,116,139,0.08)' },
+  }
+
+  return (
+    <div
+      className="rounded-xl p-4"
+      style={{
+        background: isDark ? 'rgba(59,130,246,0.06)' : 'rgba(59,130,246,0.04)',
+        border: '1px solid rgba(59,130,246,0.16)',
+      }}
+    >
+      <div className="flex items-start gap-3 mb-4">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: 'rgba(59,130,246,0.14)', color: '#60A5FA' }}
+        >
+          <Clock size={16} />
+        </div>
+        <div>
+          <p className="text-sm" style={{ color: 'var(--t2)', fontWeight: 700, margin: 0 }}>
+            Paused — API rate limit
+          </p>
+          <p className="text-xs mt-1" style={{ color: 'var(--t3)', margin: 0 }}>
+            Resuming automatically in ~{formatResumeDelay(pauseMinutes)}
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {steps.map((step) => {
+          const style = stateStyle[step.state]
+          return (
+            <div
+              key={step.key}
+              className="flex items-start gap-3 rounded-xl p-3"
+              style={{
+                background: isDark ? 'rgba(255,255,255,0.035)' : 'rgba(15,23,42,0.025)',
+                border: '1px solid var(--card-border)',
+              }}
+            >
+              <div
+                className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                style={{ background: style.bg, color: style.color }}
+              >
+                {step.state === 'done' ? (
+                  <CheckCircle2 size={13} />
+                ) : step.state === 'current' ? (
+                  <Clock size={12} />
+                ) : (
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: style.color, opacity: 0.65 }} />
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs" style={{ color: 'var(--t2)', fontWeight: 700 }}>
+                    {step.label}
+                  </span>
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full"
+                    style={{ background: style.bg, color: style.color, fontWeight: 700 }}
+                  >
+                    {style.label}
+                  </span>
+                </div>
+                <p className="text-[11px] mt-1" style={{ color: 'var(--t4)', lineHeight: 1.45, marginBottom: 0 }}>
+                  {step.detail}
+                </p>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -295,9 +456,12 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
               </div>
             </div>
 
-            {connStatus && (
-              <StatusPill status={connStatus} />
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {!compact && <CourtReserveHowItWorksButton size="sm" align="right" />}
+              {connStatus && (
+                <StatusPill status={connStatus} />
+              )}
+            </div>
           </div>
 
           {!isConnected ? (
@@ -396,15 +560,7 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
                 return (
                   <div className="mb-4">
                     {isPaused ? (
-                      <div className="text-center py-6">
-                        <div className="text-2xl mb-2">⏸</div>
-                        <p className="text-sm mb-1" style={{ color: 'var(--t2)', fontWeight: 600 }}>
-                          Paused — API rate limit
-                        </p>
-                        <p className="text-xs" style={{ color: 'var(--t3)' }}>
-                          Resuming automatically in ~{pauseMinutes} min
-                        </p>
-                      </div>
+                      <PausedSyncProgress progress={progress} pauseMinutes={pauseMinutes} isDark={isDark} />
                     ) : (
                       <AILoadingAnimation
                         progress={percent}
@@ -412,14 +568,14 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
                         waitForCompletion={false}
                       />
                     )}
-                    {progress?.membersSynced != null && progress?.membersTotal != null && (
+                    {!isPaused && progress?.membersSynced != null && progress?.membersTotal != null && (
                       <div className="mt-3 text-center">
                         <div className="text-xs" style={{ color: 'var(--t3)' }}>
                           Members: <strong>{Number(progress.membersSynced).toLocaleString()}</strong> / {Number(progress.membersTotal).toLocaleString()}
                         </div>
                       </div>
                     )}
-                    {progress?.syncPhaseIdx != null && (
+                    {!isPaused && progress?.syncPhaseIdx != null && (
                       <div className="mt-2 text-center">
                         <div className="text-[11px]" style={{ color: 'var(--t4)' }}>
                           Phase {progress.syncPhaseIdx + 1}/4 — {['Recent + upcoming', '2-5 months ago', '5-8 months ago', '8-12 months ago'][progress.syncPhaseIdx] || 'Syncing'}
