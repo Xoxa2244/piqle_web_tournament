@@ -43,7 +43,7 @@ function buildNavSections(isMembership: boolean, isAdmin: boolean): NavSection[]
   const systemItems: NavItem[] = [
     { icon: CreditCard, label: "Billing", path: "/billing" },
     { icon: Rocket, label: "Launch", path: "/launch", comingSoon: true },
-    { icon: Plug, label: "Integrations", path: "/integrations", comingSoon: true },
+    { icon: Plug, label: "Integrations", path: "/integrations" },
     { icon: Mail, label: "Email Domain", path: "/email-domain", comingSoon: true },
   ]
   // Admin-only: Automation page (Agent Campaign Layer + triggers).

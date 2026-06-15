@@ -34,6 +34,7 @@ const LIVE_SECTIONS = new Set([
   'members',           // Members
   'cohorts',           // Audiences (un-gated 2026-06-10 — operator feedback 2.2; route stays /cohorts)
   'billing',           // Billing
+  'integrations',      // CourtReserve connector setup and health
   'settings',          // club settings (operational; /settings/automation is gated below)
   'onboarding',        // first-run setup wizard
   'import',            // CSV import (reachable from empty states / settings)

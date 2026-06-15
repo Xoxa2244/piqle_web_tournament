@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../IQThemeProvider'
 import { AILoadingAnimation } from './AILoadingAnimation'
+import { CourtReserveHowItWorksButton } from './shared/CourtReserveSyncExplainer'
 import { trpc } from '@/lib/trpc'
 import { loadGoogleMaps } from '@/lib/googleMapsLoader'
 
@@ -668,6 +669,13 @@ export function OnboardingWizardIQ({ clubId: initialClubId, onComplete, isNewClu
       {/* CourtReserve: plan selector → API or Excel */}
       {software === 'courtreserve' && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs" style={{ color: 'var(--t3)', fontWeight: 600 }}>
+              CourtReserve setup
+            </p>
+            <CourtReserveHowItWorksButton size="sm" align="right" />
+          </div>
+
           {/* Plan selector */}
           <div className="flex gap-2">
             <button onClick={() => setCrPlan('advanced')}
