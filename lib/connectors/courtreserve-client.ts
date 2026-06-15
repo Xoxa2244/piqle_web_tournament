@@ -164,11 +164,26 @@ export class CourtReserveClient {
 
     const data = await this.request<any>('/api/v1/member/get', params)
 
-    // CR returns { TotalPages, PageSize, Members[], PageNumber }
+    // CR returns { TotalPages, PageSize, Members[], PageNumber } and may
+    // include a total-count field depending on the account/API version.
     const members = (data?.Members || data?.items || []).map(mapCRMember)
-    const totalPages = data?.TotalPages || 1
-    const pageSize = data?.PageSize || opts.pageSize || MAX_PAGE_SIZE
-    const totalCount = totalPages * pageSize
+    const currentPage = Number(data?.PageNumber || opts.page || 1)
+    const pageSize = Number(data?.PageSize || opts.pageSize || MAX_PAGE_SIZE)
+    const totalPages = Number(data?.TotalPages || 0)
+    const rawTotalCount =
+      data?.TotalCount ??
+      data?.TotalRecords ??
+      data?.RecordCount ??
+      data?.TotalItems ??
+      data?.totalCount ??
+      data?.totalRecords ??
+      data?.total
+    const parsedTotalCount = Number(rawTotalCount)
+    const hasExplicitTotal = Number.isFinite(parsedTotalCount) && parsedTotalCount > 0
+    const fallbackTotalCount = members.length < pageSize
+      ? ((Math.max(currentPage, 1) - 1) * pageSize) + members.length
+      : Math.max(totalPages * pageSize, currentPage * pageSize, members.length)
+    const totalCount = hasExplicitTotal ? parsedTotalCount : fallbackTotalCount
 
     return { items: members, totalCount }
   }

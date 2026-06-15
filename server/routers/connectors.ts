@@ -168,12 +168,41 @@ export const connectorsRouter = createTRPCRouter({
         return { connected: false, provider: 'courtreserve' as const }
       }
 
+      let lastSyncResult = connector.lastSyncResult as any
+      if (connector.status === 'syncing' || lastSyncResult?.phase) {
+        const [membersSynced, sessionsSynced, bookingsSynced] = await Promise.all([
+          ctx.prisma.clubFollower.count({ where: { clubId: input.clubId } }),
+          ctx.prisma.playSession.count({ where: { clubId: input.clubId } }),
+          ctx.prisma.playSessionBooking.count({ where: { playSession: { clubId: input.clubId } } }),
+        ])
+        const previousMembersTotal = Number(lastSyncResult?.membersTotal || 0)
+        const hydratedMembersSynced = Math.max(Number(lastSyncResult?.membersSynced || 0), membersSynced)
+        const hydratedSessionsSynced = Math.max(Number(lastSyncResult?.sessionsSynced || 0), sessionsSynced)
+        const hydratedBookingsSynced = Math.max(Number(lastSyncResult?.bookingsSynced || 0), bookingsSynced)
+        const membersTotal = Math.max(previousMembersTotal, hydratedMembersSynced)
+
+        lastSyncResult = {
+          ...(lastSyncResult || {}),
+          membersSynced: hydratedMembersSynced,
+          membersTotal,
+          sessionsSynced: hydratedSessionsSynced,
+          eventsSynced: Math.max(Number(lastSyncResult?.eventsSynced || 0), hydratedSessionsSynced),
+          bookingsSynced: hydratedBookingsSynced,
+        }
+
+        if (lastSyncResult.phase === 'members') {
+          lastSyncResult.status = membersTotal > hydratedMembersSynced
+            ? `Syncing members... ${hydratedMembersSynced.toLocaleString()} / ${membersTotal.toLocaleString()}`
+            : `Syncing members... ${hydratedMembersSynced.toLocaleString()} imported`
+        }
+      }
+
       return {
         connected: true,
         provider: 'courtreserve' as const,
         status: connector.status,
         lastSyncAt: connector.lastSyncAt?.toISOString() || null,
-        lastSyncResult: connector.lastSyncResult as any,
+        lastSyncResult,
         lastError: connector.lastError,
         autoSync: connector.autoSync,
         createdAt: connector.createdAt.toISOString(),

@@ -183,6 +183,15 @@ function PausedSyncProgress({ progress, pauseMinutes, isDark }: {
   const rawPhaseIdx = typeof progress?.syncPhaseIdx === 'number' ? progress.syncPhaseIdx : null
   const completedWindowCounts = getCompletedWindowCounts(progress)
   const hasWindowProgress = completedWindowCounts.reservations + completedWindowCounts.events > 0
+  const membersSynced = Number(progress?.membersSynced ?? NaN)
+  const membersTotal = Number(progress?.membersTotal ?? NaN)
+  const hasMembersSynced = Number.isFinite(membersSynced)
+  const hasMembersTotal = Number.isFinite(membersTotal) && membersTotal > membersSynced
+  const membersDetail = hasMembersSynced
+    ? hasMembersTotal
+      ? `${membersSynced.toLocaleString()} / ${membersTotal.toLocaleString()} members imported.`
+      : `${membersSynced.toLocaleString()} members imported.`
+    : progress?.membersDone ? 'Member roster imported.' : 'Waiting to import member roster.'
 
   const baseSteps: Array<{ key: string; label: string; detail: string; state: SyncStepState }> = [
     {
@@ -194,9 +203,7 @@ function PausedSyncProgress({ progress, pauseMinutes, isDark }: {
     {
       key: 'members',
       label: 'Members',
-      detail: progress?.membersSynced != null && progress?.membersTotal != null
-        ? `${Number(progress.membersSynced).toLocaleString()} / ${Number(progress.membersTotal).toLocaleString()} members imported.`
-        : progress?.membersDone ? 'Member roster imported.' : 'Waiting to import member roster.',
+      detail: membersDetail,
       state: progress?.membersDone ? 'done' : progress?.phase === 'members' ? 'current' : 'pending',
     },
   ]
@@ -327,7 +334,12 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
   const [isSyncing, setIsSyncing] = useState(false)
   const { data: status, isLoading } = trpc.connectors.getStatus.useQuery(
     { clubId },
-    { staleTime: isSyncing ? 2_000 : 10_000, refetchInterval: isSyncing ? 3_000 : false }
+    {
+      staleTime: isSyncing ? 2_000 : 10_000,
+      refetchInterval: isSyncing ? 3_000 : false,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    }
   )
 
   // Track syncing state from status
@@ -335,6 +347,25 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
     const s = status && 'status' in status ? status.status : null
     setIsSyncing(s === 'syncing')
   }, [status])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const refreshStatus = () => {
+      void utils.connectors.getStatus.invalidate({ clubId })
+    }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshStatus()
+    }
+
+    window.addEventListener('focus', refreshStatus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', refreshStatus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [clubId, utils])
 
   const syncRetryRef = useRef(0)
   const MAX_SYNC_RETRIES = 30
@@ -420,6 +451,12 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
 
   const isConnected = status?.connected
   const connStatus = isConnected && 'status' in status ? status.status : null
+  const connectorError = isConnected && 'lastError' in status ? status.lastError : null
+  const shouldHideStaleAutoResumeError =
+    (connStatus === 'syncing' || isSyncing) &&
+    typeof connectorError === 'string' &&
+    (connectorError.includes('will auto-resume') || connectorError.includes('Rate limited'))
+  const displayError = syncMutation.error?.message || (shouldHideStaleAutoResumeError ? null : connectorError)
 
   return (
     <>
@@ -556,6 +593,12 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
                 const nextRetry = progress?.nextRetryAt ? new Date(progress.nextRetryAt) : null
                 const isPaused = nextRetry && nextRetry > new Date()
                 const pauseMinutes = isPaused ? Math.ceil((nextRetry.getTime() - Date.now()) / 60000) : 0
+                const membersSynced = Number(progress?.membersSynced ?? NaN)
+                const membersTotal = Number(progress?.membersTotal ?? NaN)
+                const hasMembersSynced = Number.isFinite(membersSynced)
+                const hasMembersTotal = Number.isFinite(membersTotal) && membersTotal > membersSynced
+                const sessionsSynced = Number(progress?.eventsSynced ?? progress?.sessionsSynced ?? NaN)
+                const hasSessionsSynced = Number.isFinite(sessionsSynced)
 
                 return (
                   <div className="mb-4">
@@ -568,11 +611,19 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
                         waitForCompletion={false}
                       />
                     )}
-                    {!isPaused && progress?.membersSynced != null && progress?.membersTotal != null && (
-                      <div className="mt-3 text-center">
-                        <div className="text-xs" style={{ color: 'var(--t3)' }}>
-                          Members: <strong>{Number(progress.membersSynced).toLocaleString()}</strong> / {Number(progress.membersTotal).toLocaleString()}
-                        </div>
+                    {!isPaused && (hasMembersSynced || hasSessionsSynced) && (
+                      <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-center">
+                        {hasMembersSynced && (
+                          <div className="text-xs" style={{ color: 'var(--t3)' }}>
+                            Members: <strong>{membersSynced.toLocaleString()}</strong>
+                            {hasMembersTotal ? <> / {membersTotal.toLocaleString()}</> : null}
+                          </div>
+                        )}
+                        {hasSessionsSynced && (
+                          <div className="text-xs" style={{ color: 'var(--t3)' }}>
+                            Events: <strong>{sessionsSynced.toLocaleString()}</strong>
+                          </div>
+                        )}
                       </div>
                     )}
                     {!isPaused && progress?.syncPhaseIdx != null && (
@@ -604,14 +655,14 @@ export function CourtReserveConnector({ clubId, compact }: { clubId: string; com
               )}
 
               {/* Error */}
-              {('lastError' in status && status.lastError || syncMutation.error) && (
+              {displayError && (
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '10px 14px', borderRadius: 10, marginBottom: 16, fontSize: 13,
                   background: 'rgba(239,68,68,0.1)', color: '#EF4444',
                 }}>
                   <AlertCircle size={16} />
-                  {syncMutation.error?.message || ('lastError' in status ? status.lastError : '')}
+                  {displayError}
                 </div>
               )}
 
