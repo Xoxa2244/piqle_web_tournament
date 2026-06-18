@@ -1734,8 +1734,31 @@ model PlaySession {
   bookings                  PlaySessionBooking[]
   waitlist                  PlaySessionWaitlist[]
   opsSessionDraftsPublished OpsSessionDraft[]     @relation("OpsSessionDraftPublished")
+  leagueMatches             LeagueMatch[]
 
   @@map("play_sessions")
+}
+
+/// League match results from the native CourtReserve League module.
+/// One row per match within a game-day (a game-day = one PlaySession, format LEAGUE_PLAY).
+/// Stored for analytics only (no UI yet). Players kept as raw JSON (team assignments).
+model LeagueMatch {
+  id          String      @id @default(uuid())
+  sessionId   String
+  playSession PlaySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  externalId  String // CR match result id
+  side1Id     Int? // CR match1PlayerId (player/team id)
+  side2Id     Int? // CR match2PlayerId
+  side1Score  Int?
+  side2Score  Int?
+  players     Json? // raw [{ organizationMemberId, firstName, lastName, team }]
+  gameDate    DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([sessionId, externalId])
+  @@index([sessionId])
+  @@map("league_matches")
 }
 
 model PlaySessionBooking {

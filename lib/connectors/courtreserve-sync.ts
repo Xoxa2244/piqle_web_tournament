@@ -8,7 +8,7 @@ import { CourtReserveClient } from './courtreserve-client'
 import { decryptCredentials } from './encryption'
 import { normalizePhone } from '@/lib/phone-normalize'
 import { canonicalizeMembershipTier } from './membership-canonicalize'
-import type { CRMember, CRReservation, CRCourt, SyncResult, SyncError } from './courtreserve-types'
+import type { CRMember, CRReservation, CRCourt, CRGameDay, SyncResult, SyncError } from './courtreserve-types'
 
 const PARTNER_PREFIX = 'cr' // ExternalIdMapping partnerId prefix
 
@@ -1370,6 +1370,155 @@ function mapSkillLevelFromEvent(name: string): string {
   return 'ALL_LEVELS'
 }
 
+// ── Leagues (native CourtReserve League module) ──
+// Each game-day → a PlaySession (format LEAGUE_PLAY, mapping key `lg_<reservationId>`),
+// so it surfaces as a League in the existing event/schedule UI. Opted-in players →
+// bookings (matched by organizationMemberId); match results → league_matches (DB-only,
+// no UI). Runs on incrementals + the initial recent phase (phase 0).
+async function syncLeagues(
+  client: CourtReserveClient,
+  clubId: string,
+  partnerId: string,
+  from: Date,
+  to: Date,
+  connectorId: string,
+): Promise<{
+  sessions: { created: number; updated: number; errors: number }
+  bookings: { created: number; updated: number; errors: number }
+  matches: { created: number; errors: number }
+}> {
+  const sessionsResult = { created: 0, updated: 0, errors: 0 }
+  const bookingsResult = { created: 0, updated: 0, errors: 0 }
+  const matchesResult = { created: 0, errors: 0 }
+
+  // organizationMemberId → our userId (members already synced earlier in the run)
+  const memberMappings = await prisma.externalIdMapping.findMany({
+    where: { partnerId, entityType: ExternalEntityType.MEMBER },
+    select: { externalId: true, internalId: true },
+  })
+  const memberIdToUserId = new Map(memberMappings.map(m => [m.externalId, m.internalId]))
+
+  // Existing PLAY_SESSION mappings so league game-days upsert idempotently (`lg_` prefix)
+  const existingMappings = await prisma.externalIdMapping.findMany({
+    where: { partnerId, entityType: ExternalEntityType.PLAY_SESSION },
+    select: { externalId: true, internalId: true },
+  })
+  const gameDayKeyToSessionId = new Map(existingMappings.map(m => [m.externalId, m.internalId]))
+
+  const leagues = await client.getLeagues({ includeSessions: true })
+  console.log(`[CR Sync] ${clubId}: ${leagues.length} league(s) from League module`)
+
+  const fromStr = formatDate(from)
+  const toStr = formatDate(to)
+
+  for (const league of leagues) {
+    for (const session of league.sessions || []) {
+      if (!session.id) continue
+      let gameDays: CRGameDay[] = []
+      try {
+        gameDays = await client.getGameDays({
+          leagueSessionId: session.id,
+          from: fromStr,
+          to: toStr,
+          includePlayers: true,
+          includeMatches: true,
+        })
+      } catch (err: any) {
+        if (err.message?.includes('Rate limited')) throw err
+        console.error(`[CR Sync] ${clubId}: gamedays(session ${session.id}) error:`, err.message?.slice(0, 100))
+        sessionsResult.errors++
+        continue
+      }
+
+      for (const gd of gameDays) {
+        try {
+          if (!gd.reservationId) continue
+          const externalKey = `lg_${gd.reservationId}`
+          const gdDate = gd.gameDate ? new Date(gd.gameDate) : new Date()
+          const startTime = gd.gameDate && gd.gameDate.includes('T') ? parseTime(gd.gameDate) : '00:00'
+          // Game-days carry no end time — default to a 2h block.
+          const [sh, sm] = startTime.split(':').map(Number)
+          const endTime = `${(((sh || 0) + 2) % 24).toString().padStart(2, '0')}:${(sm || 0).toString().padStart(2, '0')}`
+          const players = gd.players || []
+          const optedIn = players.filter(p => p.optedIn)
+          const title = `${league.name}${session.name ? ` — ${session.name}` : ''}`
+
+          const sessionData = {
+            clubId,
+            title,
+            date: gdDate,
+            startTime,
+            endTime,
+            format: 'LEAGUE_PLAY' as any,
+            category: 'League',
+            skillLevel: mapSkillLevelFromEvent(`${league.name} ${session.name || ''}`) as any,
+            maxPlayers: Math.max(optedIn.length, players.length, 4),
+            registeredCount: optedIn.length,
+            status: (gdDate < new Date() ? 'COMPLETED' : 'SCHEDULED') as any,
+          }
+
+          let sessionId = gameDayKeyToSessionId.get(externalKey)
+          if (sessionId) {
+            await prisma.playSession.update({ where: { id: sessionId }, data: sessionData })
+            sessionsResult.updated++
+          } else {
+            const created = await prisma.playSession.create({ data: sessionData })
+            sessionId = created.id
+            await setMapping(partnerId, ExternalEntityType.PLAY_SESSION, externalKey, sessionId)
+            gameDayKeyToSessionId.set(externalKey, sessionId)
+            sessionsResult.created++
+          }
+
+          // Rostered players → bookings (matched by organizationMemberId; status by opt-in)
+          for (const p of players) {
+            const userId = memberIdToUserId.get(p.organizationMemberId)
+            if (!userId || !sessionId) continue
+            await prisma.playSessionBooking.upsert({
+              where: { sessionId_userId: { sessionId, userId } },
+              update: { status: p.optedIn ? 'CONFIRMED' : 'CANCELLED' },
+              create: { sessionId, userId, status: p.optedIn ? 'CONFIRMED' : 'CANCELLED', bookedAt: gdDate },
+            }).catch(() => {})
+            bookingsResult.created++
+          }
+
+          // Match results → league_matches (DB-only)
+          for (const m of gd.matches || []) {
+            if (!sessionId || !m.id) continue
+            try {
+              const matchData = {
+                side1Id: m.side1Id ?? null,
+                side2Id: m.side2Id ?? null,
+                side1Score: m.side1Score ?? null,
+                side2Score: m.side2Score ?? null,
+                players: (m.players ?? []) as any,
+                gameDate: gdDate,
+              }
+              await prisma.leagueMatch.upsert({
+                where: { sessionId_externalId: { sessionId, externalId: m.id } },
+                update: matchData,
+                create: { sessionId, externalId: m.id, ...matchData },
+              })
+              matchesResult.created++
+            } catch {
+              matchesResult.errors++
+            }
+          }
+        } catch (err: any) {
+          console.error(`[CR Sync] ${clubId}: gameday ${gd.reservationId} error:`, err.message?.slice(0, 100))
+          sessionsResult.errors++
+        }
+      }
+    }
+  }
+
+  await prisma.clubConnector.update({
+    where: { id: connectorId },
+    data: { lastSyncResult: { phase: 'leagues', percent: 90, status: `Synced ${leagues.length} leagues`, courtsDone: true, membersDone: true } as any },
+  }).catch(() => {})
+
+  return { sessions: sessionsResult, bookings: bookingsResult, matches: matchesResult }
+}
+
 // ── Main Sync Orchestrator ──
 
 export interface SyncOptions {
@@ -1676,6 +1825,32 @@ export async function runCourtReserveSync(
           if (err.message?.includes('Rate limited')) throw err
           console.error(`[CR Sync] ${clubId}: event window ${window.from} error:`, err.message)
           sessionsResult.errors++
+        }
+      }
+
+      // 5. Sync native CourtReserve Leagues (League module). Forward-looking, so run
+      // ONCE per run — on incremental syncs and on the recent+upcoming phase 0
+      // (historical phases skip it). Own window (last 60d → +90d future), idempotent +
+      // non-fatal: a league failure never breaks the reservations/events sync. Each
+      // game-day → a LEAGUE_PLAY PlaySession, so leagues surface in the schedule/events UI.
+      if (!isInitial || currentPhaseIdx === 0) {
+        const leagueDeadline = maxTimeMs ? startTime + maxTimeMs - 8_000 : undefined
+        if (!leagueDeadline || Date.now() < leagueDeadline) {
+          try {
+            const leagueFrom = new Date(now.getTime() - 60 * 86400000) // last 60d
+            const leagueTo = new Date(now.getTime() + 90 * 86400000)   // +90d future ("future leagues")
+            await updateProgress({ phase: 'leagues', percent: 88, status: 'Syncing leagues...', courtsDone: true, membersDone: true, syncPhaseIdx: currentPhaseIdx, completedWindows })
+            const lr = await syncLeagues(client, clubId, partnerId, leagueFrom, leagueTo, connectorId)
+            sessionsResult.created += lr.sessions.created; sessionsResult.updated += lr.sessions.updated; sessionsResult.errors += lr.sessions.errors
+            bookingsResult.created += lr.bookings.created; bookingsResult.errors += lr.bookings.errors
+            console.log(`[CR Sync] ${clubId}: leagues — ${JSON.stringify(lr)}`)
+          } catch (err: any) {
+            if (err.message?.includes('Rate limited')) throw err // bubble up for nextRetryAt cooldown
+            console.error(`[CR Sync] ${clubId}: leagues error (non-fatal):`, err.message)
+            sessionsResult.errors++
+          }
+        } else {
+          console.log(`[CR Sync] ${clubId}: leagues skipped — deadline reached`)
         }
       }
 

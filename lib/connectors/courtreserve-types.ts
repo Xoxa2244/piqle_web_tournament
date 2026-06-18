@@ -103,6 +103,64 @@ export interface CREventRegistration {
   status?: string
 }
 
+// ── Leagues (native CourtReserve League module) ──
+// API: /api/v1/league/get, /sessions, /gamedays, /matchresults
+// Hierarchy: League → Session → GameDay → Match
+
+export interface CRLeague {
+  id: string
+  name: string
+  description?: string
+  sessions?: CRLeagueSession[]
+}
+
+export interface CRLeagueSession {
+  id: string
+  name?: string
+  leagueId: string
+  gameDays?: CRGameDay[]
+  players?: CRLeaguePlayer[]
+}
+
+export interface CRLeaguePlayer {
+  organizationMemberId: string
+  firstName?: string
+  lastName?: string
+  email?: string
+}
+
+export interface CRGameDay {
+  reservationId: string // game-day reservation id (unique session instance)
+  leagueSessionId: string
+  gameDate: string // ISO date-time (org-local)
+  players?: CRGameDayPlayer[]
+  matches?: CRMatchResult[]
+}
+
+export interface CRGameDayPlayer {
+  organizationMemberId: string
+  firstName?: string
+  lastName?: string
+  optedIn: boolean
+}
+
+export interface CRMatchResult {
+  id: string // CR match result id
+  gameDay: string // parent game-day reservation id
+  side1Id?: number // match1PlayerId (player/team id)
+  side2Id?: number // match2PlayerId
+  side1Score?: number
+  side2Score?: number
+  players?: CRMatchPlayer[]
+}
+
+export interface CRMatchPlayer {
+  organizationMemberId: string
+  firstName?: string
+  lastName?: string
+  team?: number // 1 or 2
+}
+
 // ── Sync types ──
 
 export interface SyncResult {

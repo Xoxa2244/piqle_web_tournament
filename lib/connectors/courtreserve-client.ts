@@ -12,6 +12,10 @@ import type {
   CRAttendance,
   CREvent,
   CREventRegistration,
+  CRLeague,
+  CRLeagueSession,
+  CRGameDay,
+  CRMatchResult,
 } from './courtreserve-types'
 
 const DEFAULT_BASE_URL = 'https://api.courtreserve.com'
@@ -352,6 +356,94 @@ export class CourtReserveClient {
     return all
   }
 
+  // ── Leagues (native CourtReserve League module) ──
+  // Hierarchy League → Session → GameDay → Match. request() already unwraps the
+  // CR { Data } envelope, so a page payload is either an array or { Items, TotalPages }.
+
+  /** Auto-paginate a league GET endpoint and map each item. */
+  private async getLeaguePaged<T>(
+    path: string,
+    params: Record<string, string>,
+    map: (raw: any) => T
+  ): Promise<T[]> {
+    const all: T[] = []
+    let page = 1
+    while (true) {
+      const data = await this.request<any>(path, {
+        ...params,
+        pageSize: String(MAX_PAGE_SIZE),
+        pageNumber: String(page),
+      })
+      const items: any[] =
+        data?.Items || data?.items || data?.Results || data?.results ||
+        (Array.isArray(data) ? data : [])
+      const totalPages = data?.TotalPages || data?.totalPages || 1
+      all.push(...items.map(map))
+      if (page >= totalPages || items.length < MAX_PAGE_SIZE) break
+      page++
+    }
+    return all
+  }
+
+  /** Get leagues (optionally with embedded sessions). */
+  async getLeagues(opts: { includeSessions?: boolean } = {}): Promise<CRLeague[]> {
+    return this.getLeaguePaged('/api/v1/league/get', {
+      includeSessions: String(opts.includeSessions ?? true),
+    }, mapCRLeague)
+  }
+
+  /** Get league sessions (optionally with game days and/or players). */
+  async getLeagueSessions(opts: {
+    leagueId?: string
+    sessionId?: string
+    includeGameDays?: boolean
+    includePlayers?: boolean
+  } = {}): Promise<CRLeagueSession[]> {
+    const params: Record<string, string> = {
+      includeGameDays: String(opts.includeGameDays ?? false),
+      includePlayers: String(opts.includePlayers ?? false),
+    }
+    if (opts.leagueId) params.leagueId = opts.leagueId
+    if (opts.sessionId) params.sessionId = opts.sessionId
+    return this.getLeaguePaged('/api/v1/league/sessions', params, mapCRLeagueSession)
+  }
+
+  /** Get game days (play dates) for a league session, with opted-in players and/or match results. */
+  async getGameDays(opts: {
+    leagueSessionId: string
+    from?: string
+    to?: string
+    includePlayers?: boolean
+    includeMatches?: boolean
+  }): Promise<CRGameDay[]> {
+    const params: Record<string, string> = {
+      leagueSessionId: opts.leagueSessionId,
+      includePlayers: String(opts.includePlayers ?? true),
+      includeMatches: String(opts.includeMatches ?? false),
+    }
+    if (opts.from) params.startDate = opts.from
+    if (opts.to) params.endDate = opts.to
+    return this.getLeaguePaged('/api/v1/league/gamedays', params, mapCRGameDay)
+  }
+
+  /** Get match results for league game days. */
+  async getMatchResults(opts: {
+    leagueSessionId?: string
+    gamedayIds?: string
+    from?: string
+    to?: string
+    includePlayers?: boolean
+  } = {}): Promise<CRMatchResult[]> {
+    const params: Record<string, string> = {
+      includePlayers: String(opts.includePlayers ?? true),
+    }
+    if (opts.leagueSessionId) params.leagueSessionId = opts.leagueSessionId
+    if (opts.gamedayIds) params.gamedayIds = opts.gamedayIds
+    if (opts.from) params.startDate = opts.from
+    if (opts.to) params.endDate = opts.to
+    return this.getLeaguePaged('/api/v1/league/matchresults', params, mapCRMatchResult)
+  }
+
   // ── Write operations: intentionally unsupported ──────────────────────
   //
   // IQSport does NOT write back to CourtReserve — the integration is
@@ -422,5 +514,69 @@ export class CourtReserveError extends Error {
     super(message)
     this.name = 'CourtReserveError'
     this.statusCode = statusCode
+  }
+}
+
+// ── League mappers (CR PascalCase → our camelCase) ──
+
+function numOrUndef(v: any): number | undefined {
+  if (v === null || v === undefined || v === '') return undefined
+  const n = Number(v)
+  return Number.isFinite(n) ? n : undefined
+}
+
+function mapCRLeague(raw: any): CRLeague {
+  return {
+    id: String(raw.Id ?? raw.id ?? ''),
+    name: raw.Name ?? raw.name ?? 'League',
+    description: raw.Description ?? raw.description ?? undefined,
+    sessions: (raw.Sessions ?? raw.sessions ?? []).map(mapCRLeagueSession),
+  }
+}
+
+function mapCRLeagueSession(raw: any): CRLeagueSession {
+  return {
+    id: String(raw.Id ?? raw.id ?? ''),
+    name: raw.Name ?? raw.name ?? undefined,
+    leagueId: String(raw.LeagueId ?? raw.leagueId ?? ''),
+    gameDays: (raw.GameDays ?? raw.gameDays ?? []).map(mapCRGameDay),
+    players: (raw.Players ?? raw.players ?? []).map((p: any) => ({
+      organizationMemberId: String(p.OrganizationMemberId ?? p.organizationMemberId ?? ''),
+      firstName: p.FirstName ?? p.firstName ?? undefined,
+      lastName: p.LastName ?? p.lastName ?? undefined,
+      email: p.Email ?? p.email ?? undefined,
+    })),
+  }
+}
+
+function mapCRGameDay(raw: any): CRGameDay {
+  return {
+    reservationId: String(raw.ReservationId ?? raw.reservationId ?? ''),
+    leagueSessionId: String(raw.LeagueSessionId ?? raw.leagueSessionId ?? ''),
+    gameDate: raw.GameDate ?? raw.gameDate ?? '',
+    players: (raw.Players ?? raw.players ?? []).map((p: any) => ({
+      organizationMemberId: String(p.OrganizationMemberId ?? p.organizationMemberId ?? ''),
+      firstName: p.FirstName ?? p.firstName ?? undefined,
+      lastName: p.LastName ?? p.lastName ?? undefined,
+      optedIn: (p.OptedIn ?? p.optedIn) ?? false,
+    })),
+    matches: (raw.Matches ?? raw.matches ?? []).map(mapCRMatchResult),
+  }
+}
+
+function mapCRMatchResult(raw: any): CRMatchResult {
+  return {
+    id: String(raw.Id ?? raw.id ?? ''),
+    gameDay: String(raw.GameDay ?? raw.gameDay ?? ''),
+    side1Id: numOrUndef(raw.Match1PlayerId ?? raw.match1PlayerId),
+    side2Id: numOrUndef(raw.Match2PlayerId ?? raw.match2PlayerId),
+    side1Score: numOrUndef(raw.Match1Score ?? raw.match1Score),
+    side2Score: numOrUndef(raw.Match2Score ?? raw.match2Score),
+    players: (raw.Players ?? raw.players ?? []).map((p: any) => ({
+      organizationMemberId: String(p.OrganizationMemberId ?? p.organizationMemberId ?? ''),
+      firstName: p.FirstName ?? p.firstName ?? undefined,
+      lastName: p.LastName ?? p.lastName ?? undefined,
+      team: numOrUndef(p.Team ?? p.team),
+    })),
   }
 }
