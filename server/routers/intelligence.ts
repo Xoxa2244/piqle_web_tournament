@@ -5615,6 +5615,7 @@ export const intelligenceRouter = createTRPCRouter({
           lastConfirmedAgg,
           preferences,
           lifetimeRevenueAgg,
+          lifecycleAgg,
         ] = await Promise.all([
           // A — last 90 days with full data for per-window scoring
           ctx.prisma.playSessionBooking.findMany({
@@ -5693,6 +5694,23 @@ export const intelligenceRouter = createTRPCRouter({
             WHERE ps."clubId" = ${input.clubId} AND psb.status = 'CONFIRMED'
             GROUP BY psb."userId"
           `,
+
+          // Lifetime session-date lifecycle aggregate per user — activity-based
+          // stage + first-play tenure proxy (joinedAt/createdAt is import-stamped
+          // on synced clubs). ps.date is a TIMESTAMP here → ::date for clean day
+          // diffs. Same raw-SQL safety as B5: text clubId param, quoted camelCase,
+          // NO ::uuid casts.
+          ctx.prisma.$queryRaw<Array<{ uid: string; total_past: number; days_since_last: number | null; first_days_ago: number | null; has_future: boolean }>>`
+            SELECT psb."userId" AS uid,
+              COUNT(*) FILTER (WHERE ps.date::date <= CURRENT_DATE)::int AS total_past,
+              (CURRENT_DATE - MAX(ps.date::date) FILTER (WHERE ps.date::date <= CURRENT_DATE))::int AS days_since_last,
+              (CURRENT_DATE - MIN(ps.date::date) FILTER (WHERE ps.date::date <= CURRENT_DATE))::int AS first_days_ago,
+              BOOL_OR(ps.date::date > CURRENT_DATE) AS has_future
+            FROM play_session_bookings psb
+            JOIN play_sessions ps ON ps.id = psb."sessionId"
+            WHERE ps."clubId" = ${input.clubId} AND psb.status = 'CONFIRMED'
+            GROUP BY psb."userId"
+          `,
         ])
 
         log.info(
@@ -5706,6 +5724,7 @@ export const intelligenceRouter = createTRPCRouter({
         const noShowMap = new Map(noShowAgg.map(a => [a.userId, a._count._all]))
         const lastConfirmedMap = new Map(lastConfirmedAgg.map(a => [a.userId, a._max.bookedAt]))
         const lifetimeRevenueMap = new Map(lifetimeRevenueAgg.map(r => [r.uid, Number(r.revenue) || 0]))
+        const lifecycleMap = new Map(lifecycleAgg.map(r => [r.uid, r]))
         const recentByUser = new Map<string, typeof recentBookings>()
         for (const b of recentBookings) {
           if (!recentByUser.has(b.userId)) recentByUser.set(b.userId, [])
@@ -5800,6 +5819,17 @@ export const intelligenceRouter = createTRPCRouter({
               pricePerSlot: (b as any).playSession?.pricePerSlot ?? null,
               status: b.status as 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW',
             })),
+            // Activity-based lifecycle inputs (CR-data-safe; lifetime session-date
+            // aggregate above) → engine derives stage + risk band from these.
+            lifecycle: (() => {
+              const l = lifecycleMap.get(f.userId)
+              return {
+                totalPastPlays: l ? Number(l.total_past) : 0,
+                daysSinceLastPast: l && l.days_since_last != null ? Number(l.days_since_last) : null,
+                firstPlayDaysAgo: l && l.first_days_ago != null ? Number(l.first_days_ago) : null,
+                hasFuture: l ? !!l.has_future : false,
+              }
+            })(),
           }
         })
         log.info(`[Intelligence] getMemberHealth memberInputs: ${memberInputs.length}`)

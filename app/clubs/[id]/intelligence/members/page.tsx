@@ -39,6 +39,8 @@ const riskConfig: Record<RiskLevel, { color: string; bg: string; border: string;
 }
 
 const stageLabels: Record<LifecycleStage, string> = {
+  prospect: 'Prospect',
+  casual: 'Casual',
   onboarding: 'Onboarding',
   ramping: 'Ramping Up',
   active: 'Active',

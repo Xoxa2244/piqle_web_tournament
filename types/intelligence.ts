@@ -430,6 +430,8 @@ export interface SessionCalendarData {
 // ====== Member Health & Lifecycle Types ======
 
 export type LifecycleStage =
+  | 'prospect'     // never played a session (activation problem, not churn)
+  | 'casual'       // 1–2 lifetime plays then quiet (low-value drop, not a churn alarm)
   | 'onboarding'   // tenure < 14 days
   | 'ramping'      // tenure 14-60 days
   | 'active'       // tenure 60+, healthScore >= 50

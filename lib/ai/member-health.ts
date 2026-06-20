@@ -97,6 +97,16 @@ interface MemberHealthInput {
   // for SQL efficiency, while the value-tier classifier needs lifetime
   // numbers to stay consistent across members.
   lifetimeRevenue?: number;
+  // Activity-based lifecycle inputs (session-date axis), supplied by the loader
+  // from a LIFETIME aggregate (not the 60-day window). When present, lifecycle
+  // stage + risk band derive from these (CR-data-safe — see riskLevelFromLifecycle);
+  // when absent, the engine falls back to the legacy score/joinedAt path.
+  lifecycle?: {
+    totalPastPlays: number;
+    daysSinceLastPast: number | null;
+    firstPlayDaysAgo: number | null;
+    hasFuture: boolean;
+  };
 }
 
 // ── Segmentation Classifiers ──
@@ -269,8 +279,15 @@ function calculateHealthScore(input: MemberHealthInput, weights: HealthWeights =
   const tierWeight = getMembershipTierWeight(normalizedMembership);
   const adjustedScore = Math.round(clamp(healthScore * tierWeight, 0, 100));
 
-  const riskLevel = getRiskLevel(adjustedScore);
-  const lifecycleStage = getLifecycleStage(adjustedScore, joinedDaysAgo, history.daysSinceLastConfirmedBooking);
+  // Lifecycle + risk from ACTIVITY when the loader supplies it (CR-data-safe);
+  // else the legacy score/joinedAt path. healthScore stays for sorting/avg.
+  const lc = input.lifecycle;
+  const lifecycleStage = lc
+    ? getLifecycleStageActivity(lc)
+    : getLifecycleStage(adjustedScore, joinedDaysAgo, history.daysSinceLastConfirmedBooking);
+  const riskLevel = lc
+    ? riskLevelFromLifecycle(lifecycleStage, lc.daysSinceLastPast)
+    : getRiskLevel(adjustedScore);
 
   // Trend: compare current score conceptually to last week
   // Simple heuristic: if recent bookings > previous → improving
@@ -734,6 +751,63 @@ function getLifecycleStage(
   return 'active';
 }
 
+/**
+ * Activity-based lifecycle (CR-data-safe). joinedAt = club_followers.createdAt is
+ * import-stamped on synced clubs (e.g. 7285 members on 7 dates), so tenure is
+ * proxied by first PAST play. prospect = never played; casual = 1–2 lifetime plays
+ * then quiet; churned = ≥3 plays + ≥90d quiet + no upcoming. (bookedAt axis is fine
+ * on app./iqsport-prod, so daysSinceLastPast comes from the loader as-is.)
+ */
+function getLifecycleStageActivity(lc: {
+  totalPastPlays: number;
+  daysSinceLastPast: number | null;
+  firstPlayDaysAgo: number | null;
+  hasFuture: boolean;
+}): LifecycleStage {
+  const { totalPastPlays, daysSinceLastPast, firstPlayDaysAgo, hasFuture } = lc;
+  if (totalPastPlays === 0) return hasFuture ? 'onboarding' : 'prospect';
+  const recentlyActive =
+    hasFuture || (daysSinceLastPast !== null && daysSinceLastPast <= 20);
+  if (recentlyActive) {
+    if (firstPlayDaysAgo !== null && firstPlayDaysAgo < 14) return 'onboarding';
+    if (firstPlayDaysAgo !== null && firstPlayDaysAgo < 60) return 'ramping';
+    return 'active';
+  }
+  if (totalPastPlays < 3) return 'casual';
+  if (daysSinceLastPast !== null && daysSinceLastPast >= 90) return 'churned';
+  return 'lapsing';
+}
+
+/**
+ * Risk band from the LIFECYCLE, not the 8-factor score. On CR data the score
+ * floors (no no-show data → noShowTrend always 100; no preferences → patternBreak
+ * always 70), so score-based bands collapse — Critical was always empty and lapsed
+ * VIPs never reached at_risk. Lifecycle is the calibrated, reliable signal:
+ *   active → healthy · onboarding/ramping → watch · lapsing 21–59d → at_risk ·
+ *   lapsing ≥60d → critical · churned → critical · prospect/casual → healthy.
+ */
+export function riskLevelFromLifecycle(
+  stage: LifecycleStage,
+  daysSinceLastPast: number | null,
+): RiskLevel {
+  switch (stage) {
+    case 'active':
+      return 'healthy';
+    case 'onboarding':
+    case 'ramping':
+      return 'watch';
+    case 'lapsing':
+      return daysSinceLastPast !== null && daysSinceLastPast >= 60
+        ? 'critical'
+        : 'at_risk';
+    case 'churned':
+      return 'critical';
+    case 'prospect':
+    case 'casual':
+      return 'healthy';
+  }
+}
+
 function getSuggestedAction(
   riskLevel: RiskLevel,
   stage: LifecycleStage,
@@ -758,7 +832,11 @@ function buildSummary(
   // Separate churned (45+ days inactive) from at-risk/critical
   // These are members who already left — not "at risk of leaving"
   const churned = members.filter(m => m.lifecycleStage === 'churned').length;
-  const activeMembers = members.filter(m => m.lifecycleStage !== 'churned');
+  // Engaged = on the churn-risk ladder; exclude never-activated 'prospect',
+  // low-value 'casual', and already-'churned' so the at-risk bands reflect
+  // retainable members only (mirrors the greenfield calibration).
+  const nonEngaged = new Set<LifecycleStage>(['churned', 'prospect', 'casual']);
+  const activeMembers = members.filter(m => !nonEngaged.has(m.lifecycleStage));
 
   const healthy = activeMembers.filter(m => m.riskLevel === 'healthy').length;
   const watch = activeMembers.filter(m => m.riskLevel === 'watch').length;

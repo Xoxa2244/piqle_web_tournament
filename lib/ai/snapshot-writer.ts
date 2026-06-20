@@ -84,6 +84,26 @@ export async function snapshotAllActiveMembersForClub(
     bookingMap.set(b.userId, list)
   }
 
+  // Lifetime confirmed-play aggregate (session-date axis) for the activity-based
+  // lifecycle. The 60-day window above can't see lifetime plays / first-play
+  // tenure (joinedAt = club_followers.createdAt is import-stamped on synced
+  // clubs), so pull ALL confirmed bookings once and fold per user.
+  const lifetimeBookings = await prisma.playSessionBooking.findMany({
+    where: { userId: { in: userIds }, status: 'CONFIRMED', playSession: { clubId } },
+    select: { userId: true, playSession: { select: { date: true } } },
+  })
+  const nowMs = now.getTime()
+  const DAY = 86400000
+  const lifecycleAgg = new Map<string, { total: number; firstMs: number; lastMs: number; future: boolean }>()
+  for (const b of lifetimeBookings) {
+    if (!b.userId) continue
+    const t = (b.playSession as any).date.getTime()
+    const e = lifecycleAgg.get(b.userId) ?? { total: 0, firstMs: Infinity, lastMs: -Infinity, future: false }
+    if (t > nowMs) e.future = true
+    else { e.total++; if (t < e.firstMs) e.firstMs = t; if (t > e.lastMs) e.lastMs = t }
+    lifecycleAgg.set(b.userId, e)
+  }
+
   // 3. Existing-snapshot lookup so we can short-circuit duplicates.
   const todaySnapshots = await prisma.memberHealthSnapshot.findMany({
     where: {
@@ -147,6 +167,16 @@ export async function snapshotAllActiveMembersForClub(
         firstVisit: null,
         membershipMappings: undefined,
       },
+      lifecycle: (() => {
+        const e = lifecycleAgg.get(f.userId)
+        if (!e) return { totalPastPlays: 0, daysSinceLastPast: null, firstPlayDaysAgo: null, hasFuture: false }
+        return {
+          totalPastPlays: e.total,
+          daysSinceLastPast: e.lastMs > 0 ? Math.floor((nowMs - e.lastMs) / DAY) : null,
+          firstPlayDaysAgo: e.firstMs < Infinity ? Math.floor((nowMs - e.firstMs) / DAY) : null,
+          hasFuture: e.future,
+        }
+      })(),
     } as any
   })
 
