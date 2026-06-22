@@ -36,6 +36,7 @@ const LIVE_SECTIONS = new Set([
   'billing',           // Billing
   'integrations',      // CourtReserve connector setup and health
   'settings',          // club settings (operational; /settings/automation is gated below)
+  'team',              // club admin/moderator management (restored 2026-06-22 — admins-only via sidebar)
   'onboarding',        // first-run setup wizard
   'import',            // CSV import (reachable from empty states / settings)
   'agent',             // legacy redirect → /advisor (old reminder URLs)

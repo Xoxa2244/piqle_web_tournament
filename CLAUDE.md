@@ -8,7 +8,7 @@ AI-powered revenue optimization platform for racquet sports clubs. Built on exis
 - **API**: tRPC with `protectedProcedure`
 - **DB**: Prisma 6.16.2 + PostgreSQL (Supabase)
 - **UI**: shadcn/ui, Radix UI, Tailwind CSS, Lucide icons
-- **Deploy**: Vercel, branch `Sol2` → stest.piqle.io
+- **Deploy**: Vercel, branch `Sol2` → app.iqsport.ai
 - **Repo**: github.com/Xoxa2244/piqle_web_tournament
 
 ## Intelligence Module Structure

@@ -666,9 +666,16 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
                           <Settings className="w-4 h-4" style={{ color: isDark ? "#64748B" : "#94A3B8" }} />
                           <span className="text-sm" style={{ fontWeight: 500 }}>Club Settings</span>
                         </button>
-                        {/* sol2-lean: Team Management hidden — /team is gated
-                            (Coming Soon). Restore the button from branch Sol2
-                            when the section ships. */}
+                        {isAdmin && (
+                          <button
+                            onClick={() => { router.push(`/clubs/${clubId}/intelligence/team`); setProfileOpen(false); }}
+                            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all hover:opacity-80"
+                            style={{ color: isDark ? "#CBD5E1" : "#475569" }}
+                          >
+                            <UsersRound className="w-4 h-4" style={{ color: isDark ? "#64748B" : "#94A3B8" }} />
+                            <span className="text-sm" style={{ fontWeight: 500 }}>Team Management</span>
+                          </button>
+                        )}
                         <button
                           onClick={toggleTheme}
                           className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg text-left transition-all hover:opacity-80"
