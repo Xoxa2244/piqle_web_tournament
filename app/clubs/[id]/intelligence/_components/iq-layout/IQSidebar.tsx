@@ -128,7 +128,9 @@ export function IQSidebar({ children, clubId }: { children: React.ReactNode; clu
   const pricingModel = intelligenceSettings?.settings?.pricingModel;
   // Default to membership when pricingModel is not yet configured (most clubs are membership-based)
   const isMembershipClub = pricingModel == null || pricingModel === 'membership' || pricingModel === 'free';
-  const isAdmin = intelligenceSettings?.clubRole === 'ADMIN';
+  // getIntelligenceSettings returns clubRole lowercase ('admin' | 'follower'),
+  // not the DB enum 'ADMIN'/'MODERATOR' — compare against 'admin'.
+  const isAdmin = intelligenceSettings?.clubRole === 'admin';
   const navSections = buildNavSections(isMembershipClub, isAdmin);
 
   const userName = session?.user?.name || session?.user?.email?.split("@")[0] || "User";
